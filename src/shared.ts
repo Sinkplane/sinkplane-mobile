@@ -1,0 +1,23 @@
+/**
+ * Mobile-safe re-exports from @sinkplane/shared.
+ *
+ * NEVER import from the '@sinkplane/shared' barrel in this app: it re-exports
+ * the TV connection server (TCP + Bonjour + cookie manager), which requires
+ * native modules this app does not include — the Metro bundle would fail to
+ * resolve them. Import from the mobile-safe subpaths below, or add new ones
+ * here (auth, storage, theme, content hooks, and types are all safe).
+ */
+export { Colors } from '@sinkplane/shared/constants/colors';
+export { useStorageState, setStorageItemAsync } from '@sinkplane/shared/storage/useStorageState';
+
+export { SessionProvider, useSession, type AuthState } from '@sinkplane/shared/auth/auth.context';
+export { authenticatedFetch } from '@sinkplane/shared/auth/apiClient';
+export { useOIDCDeviceFlow, type TokenResponse, type OIDCStatus } from '@sinkplane/shared/auth/useOIDCDeviceFlow';
+export { useGetProfile, fetchProfile } from '@sinkplane/shared/auth/useGetProfile';
+
+export { ThemeProvider, useTheme, type ThemeMode } from '@sinkplane/shared/theme/theme.context';
+export { useColorScheme } from '@sinkplane/shared/theme/useColorScheme';
+export { useThemeColor } from '@sinkplane/shared/theme/useThemeColor';
+
+export type { User } from '@sinkplane/shared/types/user.interface';
+export type { Subscription } from '@sinkplane/shared/types/subscriptions.interface';

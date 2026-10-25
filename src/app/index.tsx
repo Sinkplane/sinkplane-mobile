@@ -1,98 +1,144 @@
-import * as Device from 'expo-device';
-import { Platform, StyleSheet } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Image } from 'expo-image';
+import { StatusBar } from 'expo-status-bar';
 
-import { AnimatedIcon } from '@/components/animated-icon';
-import { HintRow } from '@/components/hint-row';
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
-import { WebBadge } from '@/components/web-badge';
-import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
+import { useSession, useThemeColor } from '@/shared';
 
-function getDevMenuHint() {
-  if (Platform.OS === 'web') {
-    return <ThemedText type="small">use browser devtools</ThemedText>;
-  }
-  if (Device.isDevice) {
+export default function Home() {
+  const { user, subscriptions, creators, isLoading, signOut } = useSession();
+
+  const backgroundColor = useThemeColor({}, 'background');
+  const textColor = useThemeColor({}, 'text');
+  const mutedColor = useThemeColor({}, 'icon');
+  const tintColor = useThemeColor({}, 'tint');
+
+  if (isLoading) {
     return (
-      <ThemedText type="small">
-        shake device or press <ThemedText type="code">m</ThemedText> in terminal
-      </ThemedText>
+      <View style={[styles.container, styles.center, { backgroundColor }]}>
+        <Text style={[styles.body, { color: mutedColor }]}>Loading your profile...</Text>
+      </View>
     );
   }
-  const shortcut = Platform.OS === 'android' ? 'cmd+m (or ctrl+m)' : 'cmd+d';
+
   return (
-    <ThemedText type="small">
-      press <ThemedText type="code">{shortcut}</ThemedText>
-    </ThemedText>
-  );
-}
+    <View style={[styles.container, { backgroundColor }]}>
+      <StatusBar style="auto" />
+      <ScrollView contentContainerStyle={styles.content}>
+        <View style={styles.profileRow}>
+          {user?.profileImage?.path ? (
+            <Image source={{ uri: user.profileImage.path }} style={styles.avatar} contentFit="cover" />
+          ) : (
+            <View style={[styles.avatar, styles.avatarFallback]}>
+              <Text style={styles.avatarText}>{(user?.username ?? '?').charAt(0).toUpperCase()}</Text>
+            </View>
+          )}
+          <View style={styles.profileMeta}>
+            <Text style={[styles.title, { color: textColor }]}>{user?.displayName ?? user?.username ?? 'Signed in'}</Text>
+            <Text style={[styles.body, { color: mutedColor }]}>@{user?.username}</Text>
+          </View>
+        </View>
 
-export default function HomeScreen() {
-  return (
-    <ThemedView style={styles.container}>
-      <SafeAreaView style={styles.safeArea}>
-        <ThemedView style={styles.heroSection}>
-          <AnimatedIcon />
-          <ThemedText type="title" style={styles.title}>
-            Welcome to&nbsp;Expo
-          </ThemedText>
-        </ThemedView>
+        <Text style={[styles.sectionHeader, { color: textColor }]}>Subscriptions</Text>
+        {subscriptions && subscriptions.length > 0 ? (
+          subscriptions.map(subscription => {
+            const creator = creators?.find(c => c.id === subscription.creator);
+            return (
+              <View key={subscription.creator} style={[styles.card, { borderColor: `${mutedColor}22` }]}>
+                <Text style={[styles.cardTitle, { color: textColor }]}>
+                  {creator?.title ?? creator?.owner?.username ?? `Creator ${subscription.creator}`}
+                </Text>
+                <Text style={[styles.body, { color: mutedColor }]}>{subscription.plan?.title ?? 'Active subscription'}</Text>
+              </View>
+            );
+          })
+        ) : (
+          <Text style={[styles.body, { color: mutedColor }]}>No subscriptions found.</Text>
+        )}
+      </ScrollView>
 
-        <ThemedText type="code" style={styles.code}>
-          get started
-        </ThemedText>
-
-        <ThemedView type="backgroundElement" style={styles.stepContainer}>
-          <HintRow
-            title="Try editing"
-            hint={<ThemedText type="code">src/app/index.tsx</ThemedText>}
-          />
-          <HintRow title="Dev tools" hint={getDevMenuHint()} />
-          <HintRow
-            title="Fresh start"
-            hint={<ThemedText type="code">npm run reset-project</ThemedText>}
-          />
-        </ThemedView>
-
-        {Platform.OS === 'web' && <WebBadge />}
-      </SafeAreaView>
-    </ThemedView>
+      <Pressable
+        style={({ pressed }) => [styles.signOutButton, { backgroundColor: tintColor }, pressed && styles.buttonPressed]}
+        onPress={signOut}
+      >
+        <Text style={styles.buttonText}>Sign Out</Text>
+      </Pressable>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+  },
+  center: {
     justifyContent: 'center',
+    alignItems: 'center',
+  },
+  content: {
+    padding: 24,
+    paddingBottom: 32,
+  },
+  profileRow: {
     flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 28,
   },
-  safeArea: {
+  profileMeta: {
+    marginLeft: 16,
     flex: 1,
-    paddingHorizontal: Spacing.four,
-    alignItems: 'center',
-    gap: Spacing.three,
-    paddingBottom: BottomTabInset + Spacing.three,
-    maxWidth: MaxContentWidth,
   },
-  heroSection: {
-    alignItems: 'center',
+  avatar: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+  },
+  avatarFallback: {
+    backgroundColor: '#0085FF',
     justifyContent: 'center',
-    flex: 1,
-    paddingHorizontal: Spacing.four,
-    gap: Spacing.four,
+    alignItems: 'center',
+  },
+  avatarText: {
+    color: '#fff',
+    fontSize: 26,
+    fontWeight: 'bold',
   },
   title: {
-    textAlign: 'center',
+    fontSize: 22,
+    fontWeight: 'bold',
   },
-  code: {
-    textTransform: 'uppercase',
+  sectionHeader: {
+    fontSize: 18,
+    fontWeight: '600',
+    marginBottom: 12,
   },
-  stepContainer: {
-    gap: Spacing.three,
-    alignSelf: 'stretch',
-    paddingHorizontal: Spacing.three,
-    paddingVertical: Spacing.four,
-    borderRadius: Spacing.four,
+  card: {
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 10,
+  },
+  cardTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    marginBottom: 4,
+  },
+  body: {
+    fontSize: 15,
+  },
+  signOutButton: {
+    margin: 24,
+    paddingVertical: 14,
+    paddingHorizontal: 32,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  buttonPressed: {
+    opacity: 0.8,
+  },
+  buttonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: 'bold',
   },
 });
