@@ -1,16 +1,29 @@
+import { useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Image } from 'expo-image';
 import { StatusBar } from 'expo-status-bar';
 
-import { useSession, useThemeColor } from '@/shared';
+import { logout, useSession, useThemeColor } from '@/shared';
 
 export default function Home() {
-  const { user, subscriptions, creators, isLoading, signOut } = useSession();
+  const { user, subscriptions, creators, token, isLoading, signOut } = useSession();
+  const [isSigningOut, setIsSigningOut] = useState(false);
 
   const backgroundColor = useThemeColor({}, 'background');
   const textColor = useThemeColor({}, 'text');
   const mutedColor = useThemeColor({}, 'icon');
   const tintColor = useThemeColor({}, 'tint');
+
+  const handleSignOut = async () => {
+    setIsSigningOut(true);
+    try {
+      // Best effort: invalidate the session server-side, then clear locally.
+      if (token) await logout(token).catch(() => undefined);
+    } finally {
+      signOut();
+      setIsSigningOut(false);
+    }
+  };
 
   if (isLoading) {
     return (
@@ -43,12 +56,12 @@ export default function Home() {
           subscriptions.map(subscription => {
             const creator = creators?.find(c => c.id === subscription.creator);
             return (
-              <View key={subscription.creator} style={[styles.card, { borderColor: `${mutedColor}22` }]}>
-                <Text style={[styles.cardTitle, { color: textColor }]}>
-                  {creator?.title ?? creator?.owner?.username ?? `Creator ${subscription.creator}`}
-                </Text>
-                <Text style={[styles.body, { color: mutedColor }]}>{subscription.plan?.title ?? 'Active subscription'}</Text>
-              </View>
+            <View key={subscription.creator} style={[styles.card, { borderColor: `${mutedColor}22` }]}>
+              <Text style={[styles.cardTitle, { color: textColor }]}>
+                {creator?.title ?? creator?.owner?.username ?? `Creator ${subscription.creator}`}
+              </Text>
+              <Text style={[styles.body, { color: mutedColor }]}>{subscription.plan?.title ?? 'Active'}</Text>
+            </View>
             );
           })
         ) : (
@@ -57,10 +70,15 @@ export default function Home() {
       </ScrollView>
 
       <Pressable
-        style={({ pressed }) => [styles.signOutButton, { backgroundColor: tintColor }, pressed && styles.buttonPressed]}
-        onPress={signOut}
+        style={({ pressed }) => [
+          styles.signOutButton,
+          { backgroundColor: tintColor },
+          (pressed || isSigningOut) && styles.buttonPressed,
+        ]}
+        onPress={handleSignOut}
+        disabled={isSigningOut}
       >
-        <Text style={styles.buttonText}>Sign Out</Text>
+        <Text style={styles.buttonText}>{isSigningOut ? 'Signing Out...' : 'Sign Out'}</Text>
       </Pressable>
     </View>
   );

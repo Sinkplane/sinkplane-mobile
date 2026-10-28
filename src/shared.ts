@@ -12,8 +12,16 @@ export { useStorageState, setStorageItemAsync } from '@sinkplane/shared/storage/
 
 export { SessionProvider, useSession, type AuthState } from '@sinkplane/shared/auth/auth.context';
 export { authenticatedFetch } from '@sinkplane/shared/auth/apiClient';
-export { useOIDCDeviceFlow, type TokenResponse, type OIDCStatus } from '@sinkplane/shared/auth/useOIDCDeviceFlow';
-export { useGetProfile, fetchProfile } from '@sinkplane/shared/auth/useGetProfile';
+export {
+  FloatplaneApiError,
+  checkFor2faLogin,
+  getCaptchaInfo,
+  loginWithPassword,
+  logout,
+  type CaptchaInfo,
+  type LoginResponse,
+} from '@sinkplane/shared/auth/passwordLogin';
+export { fetchProfile, useGetProfile } from '@sinkplane/shared/auth/useGetProfile';
 
 export { ThemeProvider, useTheme, type ThemeMode } from '@sinkplane/shared/theme/theme.context';
 export { useColorScheme } from '@sinkplane/shared/theme/useColorScheme';

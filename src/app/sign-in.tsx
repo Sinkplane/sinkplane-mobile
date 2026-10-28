@@ -1,352 +1,610 @@
-import { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
-import * as WebBrowser from 'expo-web-browser';
+import { useCallback, useEffect, useState, type ReactNode } from 'react';
+import { ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
-import { useGetProfile, useOIDCDeviceFlow, useSession, useThemeColor, type OIDCStatus } from '@/shared';
+import { TurnstileWidget, type TurnstileEvent } from '@/components/turnstile-widget';
+import {
+  FloatplaneApiError,
+  checkFor2faLogin,
+  fetchProfile,
+  getCaptchaInfo,
+  loginWithPassword,
+  useColorScheme,
+  useSession,
+  useThemeColor,
+  type LoginResponse,
+} from '@/shared';
 
-function getStatusText(status: OIDCStatus, errorMessage: string | null) {
-  switch (status) {
-    case 'idle':
-    case 'requesting':
-      return 'Requesting login code...';
-    case 'polling':
-      return 'Waiting for you to approve the login...';
-    case 'success':
-      return 'Login successful! Loading your profile...';
-    case 'expired':
-      return errorMessage || 'Login code expired. Refreshing...';
-    case 'error':
-      return errorMessage || 'An error occurred. Please try again.';
-    default:
-      return '';
-  }
-}
+type CaptchaState =
+  | { status: 'loading' }
+  | { status: 'ready'; siteKey: string }
+  | { status: 'disabled' }
+  | { status: 'error'; message: string };
+
+const EMAIL_NOT_CONFIRMED =
+  'Your email address has not been confirmed yet. Check your inbox for the confirmation email before signing in.';
+
+// 6-digit code or backup code (xxxxxx-xxxxxx) — same validation as the web client.
+const VALID_2FA = /(^[0-9]{6}$)|(^[a-z0-9]{6}-?[a-z0-9]{6}$)/i;
 
 export default function SignIn() {
   const { signIn } = useSession();
-  const [isLoggingIn, setIsLoggingIn] = useState(false);
-  const { status, startFlow, cancel, userCode, verificationUri, verificationUriComplete, expiresAt, errorMessage, tokenResponse } =
-    useOIDCDeviceFlow();
-  const [timeRemaining, setTimeRemaining] = useState('');
 
-  const backgroundColor = useThemeColor({}, 'background');
+  const [step, setStep] = useState<'credentials' | 'twofactor'>('credentials');
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
+  const [twoFactorCode, setTwoFactorCode] = useState('');
+  const [captcha, setCaptcha] = useState<CaptchaState>({ status: 'loading' });
+  const [captchaToken, setCaptchaToken] = useState<string | null>(null);
+  const [widgetError, setWidgetError] = useState<string | null>(null);
+  const [widgetReady, setWidgetReady] = useState(false);
+  const [turnstileKey, setTurnstileKey] = useState(0);
+  const [pendingToken, setPendingToken] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
   const textColor = useThemeColor({}, 'text');
   const mutedColor = useThemeColor({}, 'icon');
   const tintColor = useThemeColor({}, 'tint');
+  const inputBackground = useThemeColor({ light: '#f2f2f2', dark: '#222' }, 'background');
+  const colorScheme = useColorScheme();
+  const scheme: 'light' | 'dark' = colorScheme === 'dark' ? 'dark' : 'light';
 
-  const { refetch: refetchProfile } = useGetProfile(tokenResponse?.accessToken ?? undefined);
-
-  // Auto-start the OIDC device flow on mount
-  useEffect(() => {
-    startFlow();
-    return () => {
-      cancel();
-    };
-  }, [startFlow, cancel]);
-
-  // Countdown timer
-  useEffect(() => {
-    if (!expiresAt || status !== 'polling') {
-      setTimeRemaining('');
-      return;
+  const loadCaptcha = useCallback(async () => {
+    setCaptcha({ status: 'loading' });
+    setCaptchaToken(null);
+    try {
+      const info = await getCaptchaInfo();
+      const siteKey = info.turnstile?.variants?.managed?.siteKey;
+      console.info('[SignIn] captcha info:', siteKey ? `siteKey ${siteKey}` : 'not required');
+      setCaptcha(siteKey ? { status: 'ready', siteKey } : { status: 'disabled' });
+    } catch (err) {
+      console.error('[SignIn] captcha info failed:', err);
+      setCaptcha({ status: 'error', message: err instanceof Error ? err.message : 'Failed to load captcha' });
     }
+  }, []);
 
-    const updateTimer = () => {
-      const remaining = Math.max(0, expiresAt - Date.now());
-      const minutes = Math.floor(remaining / 60000);
-      const seconds = Math.floor((remaining % 60000) / 1000);
-      setTimeRemaining(`${minutes}:${seconds.toString().padStart(2, '0')}`);
-    };
-
-    updateTimer();
-    const timer = setInterval(updateTimer, 1000);
-    return () => clearInterval(timer);
-  }, [expiresAt, status]);
-
-  // Open the verification link in the system browser
-  const openVerificationLink = useCallback(async () => {
-    const url = verificationUriComplete ?? verificationUri;
-    if (!url) return;
-    await WebBrowser.openBrowserAsync(url, { presentationStyle: WebBrowser.WebBrowserPresentationStyle.PAGE_SHEET });
-  }, [verificationUri, verificationUriComplete]);
-
-  // Handle OIDC success - fetch profile and sign in
   useEffect(() => {
-    if (status !== 'success' || !tokenResponse || isLoggingIn) return;
+    loadCaptcha();
+  }, [loadCaptcha]);
 
-    const handleLogin = async () => {
-      setIsLoggingIn(true);
+  const resetCaptcha = useCallback(() => {
+    setCaptchaToken(null);
+    setWidgetError(null);
+    setWidgetReady(false);
+    setTurnstileKey(k => k + 1);
+  }, []);
+
+  const handleTurnstileEvent = useCallback((event: TurnstileEvent) => {
+    const detail = 'error' in event ? event.error : 'token' in event ? `len=${event.token.length}` : '';
+    console.info('[Turnstile] event:', event.type, detail);
+    if (event.type === 'token') {
+      setCaptchaToken(event.token);
+      setWidgetError(null);
+    } else if (event.type === 'load') {
+      setWidgetReady(true);
+      setWidgetError(null);
+    } else if (event.type === 'error') {
+      console.error('[Turnstile] widget error:', event.error);
+      setCaptchaToken(null);
+      setWidgetError(event.error);
+    } else {
+      // Token expired; managed widgets auto-refresh and re-issue a token.
+      setCaptchaToken(null);
+    }
+  }, []);
+
+  const finishLogin = useCallback(
+    async (token: string) => {
+      setIsSubmitting(true);
+      setError(null);
       try {
-        const profileResult = await refetchProfile();
-
-        if (profileResult.error) {
-          throw new Error('Failed to fetch profile with the provided token');
-        }
-
-        if (!profileResult.data?.selfUser) {
+        const profile = await fetchProfile(token);
+        const user = profile.selfUser;
+        if (!user) {
           throw new Error('No user data returned from profile');
         }
-
-        const tokenExpiration = new Date(Date.now() + tokenResponse.expiresIn * 1000).toISOString();
-
-        signIn({
-          token: tokenResponse.accessToken,
-          user: profileResult.data.selfUser,
-          tokenExpiration,
-          refreshToken: tokenResponse.refreshToken,
-        });
-      } catch (error) {
-        console.error('[SignIn] Login failed:', error);
+        await signIn({ token, user });
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Failed to load your profile');
       } finally {
-        setIsLoggingIn(false);
+        setIsSubmitting(false);
       }
-    };
-
-    handleLogin();
-  }, [status, tokenResponse, isLoggingIn, refetchProfile, signIn]);
-
-  // Auto-restart on expiration
-  useEffect(() => {
-    if (status === 'expired') {
-      const timer = setTimeout(() => {
-        startFlow();
-      }, 2000);
-      return () => clearTimeout(timer);
-    }
-    return undefined;
-  }, [status, startFlow]);
-
-  const getStatusMessage = () => getStatusText(status, errorMessage);
-
-  return (
-    <View style={[styles.container, { backgroundColor }]}>
-      <View style={styles.content}>
-        <Text style={[styles.header, { color: textColor }]}>Sign in to Floatplane</Text>
-        <Text style={[styles.description, { color: mutedColor }]}>
-          Approve the login in your browser to link this device to your account.
-        </Text>
-
-        {/* User Code Display */}
-        <DeviceCodeCard
-          status={status}
-          userCode={userCode}
-          textColor={textColor}
-          mutedColor={mutedColor}
-          tintColor={tintColor}
-        />
-
-        {/* Timer */}
-        {timeRemaining ? <Text style={[styles.timer, { color: mutedColor }]}>Expires in {timeRemaining}</Text> : null}
-
-        {/* Status */}
-        <Text style={[styles.statusText, { color: mutedColor }]}>{getStatusMessage()}</Text>
-
-        <SignInActions
-          status={status}
-          textColor={textColor}
-          mutedColor={mutedColor}
-          tintColor={tintColor}
-          hasLink={!!(verificationUriComplete || verificationUri)}
-          onOpenLink={openVerificationLink}
-          onRetry={startFlow}
-          onNewCode={() => {
-            cancel();
-            startFlow();
-          }}
-        />
-      </View>
-    </View>
+    },
+    [signIn],
   );
-}
 
-function DeviceCodeCard({
-  status,
-  userCode,
-  textColor,
-  mutedColor,
-  tintColor,
-}: {
-  status: OIDCStatus;
-  userCode: string | null;
-  textColor: string;
-  mutedColor: string;
-  tintColor: string;
-}) {
-  if (userCode && status === 'polling') {
+  const handleLoginResponse = useCallback(
+    async (response: LoginResponse) => {
+      if (response.needs2FA || !response.token) {
+        setPendingToken(response.token ?? null);
+        setTwoFactorCode('');
+        setStep('twofactor');
+        return;
+      }
+      await finishLogin(response.token);
+    },
+    [finishLogin],
+  );
+
+  const submitCredentials = useCallback(async () => {
+    if (!username.trim() || !password || isSubmitting) return;
+
+    setIsSubmitting(true);
+    setError(null);
+    try {
+      const response = await loginWithPassword(username, password, captchaToken ?? undefined);
+      await handleLoginResponse(response);
+    } catch (err) {
+      if (err instanceof FloatplaneApiError) {
+        setError(err.errorName === 'emailNotConfirmedError' ? EMAIL_NOT_CONFIRMED : err.message);
+        if (err.errorName === 'invalidCaptchaTokenError') resetCaptcha();
+      } else {
+        setError(err instanceof Error ? err.message : 'Sign-in failed. Please try again.');
+        resetCaptcha();
+      }
+    } finally {
+      setIsSubmitting(false);
+    }
+  }, [username, password, captchaToken, isSubmitting, handleLoginResponse, resetCaptcha]);
+
+  const submitTwoFactor = useCallback(async () => {
+    const code = twoFactorCode.replace(/\s/g, '');
+    if (!pendingToken || !VALID_2FA.test(code) || isSubmitting) return;
+
+    setIsSubmitting(true);
+    setError(null);
+    try {
+      await checkFor2faLogin(pendingToken, code);
+      await finishLogin(pendingToken);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Verification failed. Please try again.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  }, [twoFactorCode, pendingToken, isSubmitting, finishLogin]);
+
+  // A fresh captcha token is required for every attempt while one is enforced.
+  const captchaBlocksSubmit = captcha.status === 'loading' || captcha.status === 'error' || (captcha.status === 'ready' && !captchaToken);
+
+  if (step === 'twofactor') {
     return (
-      <View style={[styles.userCodeContainer, { borderColor: `${mutedColor}33` }]}>
-        <Text style={[styles.userCodeLabel, { color: mutedColor }]}>Your code</Text>
-        <Text style={[styles.userCode, { color: textColor }]}>{userCode}</Text>
-      </View>
+      <Screen>
+        <TwoFactorForm
+          code={twoFactorCode}
+          onCodeChange={setTwoFactorCode}
+          onSubmit={submitTwoFactor}
+          onBack={() => {
+            setStep('credentials');
+            setError(null);
+          }}
+          isSubmitting={isSubmitting}
+          error={error}
+          textColor={textColor}
+          mutedColor={mutedColor}
+          tintColor={tintColor}
+          inputBackground={inputBackground}
+        />
+      </Screen>
     );
   }
 
   return (
-    <View style={[styles.userCodePlaceholder, { borderColor: `${mutedColor}22` }]}>
-      {status === 'requesting' || status === 'idle' ? <ActivityIndicator color={tintColor} /> : (
-        <Text style={[styles.placeholderText, { color: mutedColor }]}>No code</Text>
-      )}
+    <Screen>
+      <CredentialsForm
+        username={username}
+        password={password}
+        onUsernameChange={setUsername}
+        onPasswordChange={setPassword}
+        onSubmit={submitCredentials}
+        isSubmitting={isSubmitting}
+        captchaBlocksSubmit={captchaBlocksSubmit}
+        captcha={captcha}
+        widgetError={widgetError}
+        widgetReady={widgetReady}
+        hasToken={!!captchaToken}
+        turnstileKey={turnstileKey}
+        onTurnstileEvent={handleTurnstileEvent}
+        onRetryCaptcha={loadCaptcha}
+        onRetryWidget={resetCaptcha}
+        error={error}
+        textColor={textColor}
+        mutedColor={mutedColor}
+        tintColor={tintColor}
+        inputBackground={inputBackground}
+        scheme={scheme}
+      />
+    </Screen>
+  );
+}
+
+function Screen({ children }: { children: ReactNode }) {
+  const backgroundColor = useThemeColor({}, 'background');
+  return (
+    <KeyboardAvoidingView style={[styles.screen, { backgroundColor }]} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
+        {children}
+      </ScrollView>
+    </KeyboardAvoidingView>
+  );
+}
+
+interface FormColors {
+  textColor: string;
+  mutedColor: string;
+  tintColor: string;
+  inputBackground: string;
+}
+
+function CredentialsForm({
+  username,
+  password,
+  onUsernameChange,
+  onPasswordChange,
+  onSubmit,
+  isSubmitting,
+  captchaBlocksSubmit,
+  captcha,
+  widgetError,
+  widgetReady,
+  hasToken,
+  turnstileKey,
+  onTurnstileEvent,
+  onRetryCaptcha,
+  onRetryWidget,
+  error,
+  textColor,
+  mutedColor,
+  tintColor,
+  inputBackground,
+  scheme,
+}: FormColors & {
+  username: string;
+  password: string;
+  onUsernameChange: (v: string) => void;
+  onPasswordChange: (v: string) => void;
+  onSubmit: () => void;
+  isSubmitting: boolean;
+  captchaBlocksSubmit: boolean;
+  captcha: CaptchaState;
+  widgetError: string | null;
+  widgetReady: boolean;
+  hasToken: boolean;
+  turnstileKey: number;
+  onTurnstileEvent: (event: TurnstileEvent) => void;
+  onRetryCaptcha: () => void;
+  onRetryWidget: () => void;
+  error: string | null;
+  scheme: 'light' | 'dark';
+}) {
+  const [showPassword, setShowPassword] = useState(false);
+
+  return (
+    <View style={styles.card}>
+      <Text style={[styles.header, { color: textColor }]}>Sign in to Floatplane</Text>
+      <Text style={[styles.description, { color: mutedColor }]}>Use your Floatplane username or email and password.</Text>
+
+      <TextInput
+        style={[styles.input, { color: textColor, backgroundColor: inputBackground }]}
+        placeholder="Username or email"
+        placeholderTextColor={mutedColor}
+        autoCapitalize="none"
+        autoCorrect={false}
+        keyboardType="email-address"
+        value={username}
+        onChangeText={onUsernameChange}
+        editable={!isSubmitting}
+      />
+      <View style={styles.passwordRow}>
+        <TextInput
+          style={[styles.input, styles.passwordInput, { color: textColor, backgroundColor: inputBackground }]}
+          placeholder="Password"
+          placeholderTextColor={mutedColor}
+          autoCapitalize="none"
+          autoCorrect={false}
+          secureTextEntry={!showPassword}
+          value={password}
+          onChangeText={onPasswordChange}
+          onSubmitEditing={onSubmit}
+          editable={!isSubmitting}
+        />
+        <Pressable style={styles.passwordToggle} onPress={() => setShowPassword(s => !s)} hitSlop={8}>
+          <Text style={[styles.passwordToggleText, { color: tintColor }]}>{showPassword ? 'Hide' : 'Show'}</Text>
+        </Pressable>
+      </View>
+
+      <CaptchaSection
+        captcha={captcha}
+        widgetError={widgetError}
+        widgetReady={widgetReady}
+        hasToken={hasToken}
+        turnstileKey={turnstileKey}
+        onTurnstileEvent={onTurnstileEvent}
+        onRetry={onRetryCaptcha}
+        onRetryWidget={onRetryWidget}
+        mutedColor={mutedColor}
+        scheme={scheme}
+      />
+
+      {error ? (
+        <Text style={styles.errorText} accessibilityRole="alert">
+          {error}
+        </Text>
+      ) : null}
+
+      <PrimaryButton
+        label="Sign In"
+        onPress={onSubmit}
+        disabled={isSubmitting || captchaBlocksSubmit}
+        waiting={isSubmitting}
+        tintColor={tintColor}
+      />
     </View>
   );
 }
 
-function SignInActions({
-  status,
+function CaptchaSection({
+  captcha,
+  widgetError,
+  widgetReady,
+  hasToken,
+  turnstileKey,
+  onTurnstileEvent,
+  onRetry,
+  onRetryWidget,
+  mutedColor,
+  scheme,
+}: {
+  captcha: CaptchaState;
+  widgetError: string | null;
+  widgetReady: boolean;
+  hasToken: boolean;
+  turnstileKey: number;
+  onTurnstileEvent: (event: TurnstileEvent) => void;
+  onRetry: () => void;
+  onRetryWidget: () => void;
+  mutedColor: string;
+  scheme: 'light' | 'dark';
+}) {
+  if (captcha.status === 'disabled') {
+    return (
+      <Text style={[styles.captchaStatus, { color: mutedColor }]} accessibilityLabel="Captcha not required">
+        Captcha not required.
+      </Text>
+    );
+  }
+
+  if (captcha.status === 'loading') {
+    return (
+      <View style={styles.captchaFrame}>
+        <ActivityIndicator size="small" color={mutedColor} />
+        <Text style={[styles.captchaStatus, { color: mutedColor }]}>Loading captcha requirements…</Text>
+      </View>
+    );
+  }
+
+  if (captcha.status === 'error') {
+    return (
+      <View style={styles.captchaFrame}>
+        <Text style={[styles.captchaErrorText, { color: mutedColor }]}>{captcha.message}</Text>
+        <Pressable onPress={onRetry} hitSlop={8}>
+          <Text style={styles.retryText}>Retry</Text>
+        </Pressable>
+      </View>
+    );
+  }
+
+  if (widgetError) {
+    return (
+      <View style={styles.captchaFrame}>
+        <Text style={[styles.captchaErrorText, { color: mutedColor }]}>Captcha failed to load ({widgetError})</Text>
+        <Pressable onPress={onRetryWidget} hitSlop={8}>
+          <Text style={styles.retryText}>Retry</Text>
+        </Pressable>
+      </View>
+    );
+  }
+
+  const statusText = !widgetReady ? 'Loading challenge…' : hasToken ? 'Captcha verified' : 'Complete the challenge above';
+
+  return (
+    <View style={styles.captchaFrame}>
+      <TurnstileWidget siteKey={captcha.siteKey} theme={scheme} onEvent={onTurnstileEvent} reloadKey={turnstileKey} />
+      <Text style={[styles.captchaStatus, { color: mutedColor }]}>{statusText}</Text>
+    </View>
+  );
+}
+
+function TwoFactorForm({
+  code,
+  onCodeChange,
+  onSubmit,
+  onBack,
+  isSubmitting,
+  error,
   textColor,
   mutedColor,
   tintColor,
-  hasLink,
-  onOpenLink,
-  onRetry,
-  onNewCode,
-}: {
-  status: OIDCStatus;
-  textColor: string;
-  mutedColor: string;
-  tintColor: string;
-  hasLink: boolean;
-  onOpenLink: () => void;
-  onRetry: () => void;
-  onNewCode: () => void;
+  inputBackground,
+}: FormColors & {
+  code: string;
+  onCodeChange: (v: string) => void;
+  onSubmit: () => void;
+  onBack: () => void;
+  isSubmitting: boolean;
+  error: string | null;
 }) {
   return (
-    <>
-      {/* Primary action during polling: open the link */}
-      {status === 'polling' && hasLink ? (
-        <Pressable
-          style={({ pressed }) => [styles.button, { backgroundColor: tintColor }, pressed && styles.buttonPressed]}
-          onPress={onOpenLink}
-        >
-          <Text style={styles.buttonText}>Open floatplane.com/link</Text>
-        </Pressable>
+    <View style={styles.card}>
+      <Text style={[styles.header, { color: textColor }]}>Two-factor authentication</Text>
+      <Text style={[styles.description, { color: mutedColor }]}>
+        Enter the 6-digit code from your authenticator app, or a backup code.
+      </Text>
+
+      <TextInput
+        style={[styles.input, styles.codeInput, { color: textColor, backgroundColor: inputBackground }]}
+        placeholder="123456"
+        placeholderTextColor={mutedColor}
+        autoCapitalize="none"
+        autoCorrect={false}
+        autoFocus
+        value={code}
+        onChangeText={onCodeChange}
+        onSubmitEditing={onSubmit}
+        editable={!isSubmitting}
+      />
+
+      {error ? (
+        <Text style={styles.errorText} accessibilityRole="alert">
+          {error}
+        </Text>
       ) : null}
 
-      {/* Retry Button */}
-      {(status === 'error' || status === 'expired') && (
-        <Pressable
-          style={({ pressed }) => [styles.button, { backgroundColor: tintColor }, pressed && styles.buttonPressed]}
-          onPress={onRetry}
-        >
-          <Text style={styles.buttonText}>Try Again</Text>
-        </Pressable>
-      )}
+      <PrimaryButton label="Verify" onPress={onSubmit} disabled={isSubmitting} waiting={isSubmitting} tintColor={tintColor} />
 
-      {/* New Code during polling */}
-      {status === 'polling' && (
-        <Pressable
-          style={({ pressed }) => [
-            styles.cancelButton,
-            { borderColor: `${mutedColor}66` },
-            pressed && styles.cancelButtonPressed,
-          ]}
-          onPress={onNewCode}
-        >
-          <Text style={[styles.cancelButtonText, { color: textColor }]}>Get New Code</Text>
-        </Pressable>
-      )}
-    </>
+      <Pressable style={styles.backButton} onPress={onBack} disabled={isSubmitting} hitSlop={8}>
+        <Text style={[styles.backButtonText, { color: mutedColor }]}>Back to sign in</Text>
+      </Pressable>
+    </View>
+  );
+}
+
+function PrimaryButton({
+  label,
+  onPress,
+  disabled,
+  waiting,
+  tintColor,
+}: {
+  label: string;
+  onPress: () => void;
+  disabled: boolean;
+  waiting: boolean;
+  tintColor: string;
+}) {
+  return (
+    <Pressable
+      style={({ pressed }) => [
+        styles.button,
+        { backgroundColor: tintColor },
+        (pressed || disabled) && styles.buttonDisabled,
+      ]}
+      onPress={onPress}
+      disabled={disabled}
+    >
+      {waiting ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>{label}</Text>}
+    </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
+  screen: {
     flex: 1,
+  },
+  scroll: {
+    flexGrow: 1,
     justifyContent: 'center',
-    alignItems: 'center',
     padding: 24,
   },
-  content: {
+  card: {
     width: '100%',
-    maxWidth: 480,
-    alignItems: 'center',
+    maxWidth: 440,
+    alignSelf: 'center',
   },
   header: {
-    fontSize: 28,
+    fontSize: 26,
     fontWeight: 'bold',
-    marginBottom: 12,
+    marginBottom: 10,
     textAlign: 'center',
   },
   description: {
-    fontSize: 16,
-    marginBottom: 32,
+    fontSize: 15,
+    marginBottom: 24,
     textAlign: 'center',
   },
-  userCodeContainer: {
-    alignItems: 'center',
-    backgroundColor: 'transparent',
-    borderWidth: 1,
-    borderRadius: 16,
-    paddingHorizontal: 32,
-    paddingVertical: 20,
+  input: {
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    fontSize: 16,
     marginBottom: 12,
-    minWidth: 240,
   },
-  userCodeLabel: {
+  passwordRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  passwordInput: {
+    flex: 1,
+    marginBottom: 0,
+  },
+  passwordToggle: {
+    position: 'absolute',
+    right: 12,
+    padding: 6,
+  },
+  passwordToggleText: {
     fontSize: 14,
-    marginBottom: 6,
+    fontWeight: '600',
   },
-  userCode: {
-    fontSize: 36,
-    fontWeight: 'bold',
-    letterSpacing: 4,
-  },
-  userCodePlaceholder: {
-    width: 240,
-    height: 96,
-    borderWidth: 1,
-    borderStyle: 'dashed',
-    borderRadius: 16,
+  captchaFrame: {
+    minHeight: 70,
     justifyContent: 'center',
     alignItems: 'center',
+    gap: 6,
+    marginVertical: 10,
+    paddingVertical: 8,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(128, 128, 128, 0.25)',
+  },
+  captchaStatus: {
+    fontSize: 12,
+    textAlign: 'center',
+  },
+  captchaErrorText: {
+    fontSize: 13,
+    textAlign: 'center',
+    marginBottom: 6,
+  },
+  retryText: {
+    color: '#0085FF',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  errorText: {
+    color: '#ff6b6b',
+    fontSize: 14,
+    textAlign: 'center',
     marginBottom: 12,
   },
-  placeholderText: {
-    fontSize: 16,
-  },
-  timer: {
-    fontSize: 14,
-    marginBottom: 8,
-  },
-  statusText: {
-    fontSize: 15,
-    textAlign: 'center',
-    marginBottom: 32,
-    minHeight: 20,
-  },
   button: {
-    width: '100%',
-    maxWidth: 400,
     paddingVertical: 14,
     paddingHorizontal: 32,
     borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 12,
+    marginTop: 6,
   },
   buttonPressed: {
     opacity: 0.8,
+  },
+  buttonDisabled: {
+    opacity: 0.5,
   },
   buttonText: {
     color: '#fff',
     fontSize: 16,
     fontWeight: 'bold',
   },
-  cancelButton: {
-    width: '100%',
-    maxWidth: 400,
-    backgroundColor: 'transparent',
-    borderWidth: 1,
-    paddingVertical: 14,
-    paddingHorizontal: 32,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
+  codeInput: {
+    fontSize: 22,
+    letterSpacing: 3,
+    textAlign: 'center',
   },
-  cancelButtonPressed: {
-    opacity: 0.7,
+  backButton: {
+    marginTop: 18,
+    alignSelf: 'center',
   },
-  cancelButtonText: {
-    fontSize: 16,
-    fontWeight: '600',
+  backButtonText: {
+    fontSize: 15,
   },
 });

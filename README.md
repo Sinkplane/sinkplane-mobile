@@ -11,7 +11,7 @@ npm install
 npm start
 ```
 
-Sign-in uses Floatplane's OIDC device flow: the app shows a device code and opens `floatplane.com/link` in the system browser; once approved, tokens are stored in `expo-secure-store` and refreshed automatically.
+Sign-in uses the standard floatplane.com username/password flow: a Cloudflare Turnstile challenge is rendered in an embedded WebView, and the resulting session token is stored in `expo-secure-store` and sent as a Bearer token (same as Floatplane's own native apps).
 
 > `expo-secure-store` is a native module, so running on a device/simulator requires a development build (`npx expo run:ios|android` or `eas build --profile development`). Expo Go will not work.
 

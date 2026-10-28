@@ -6,7 +6,7 @@ Guidance for AI coding agents (opencode, Claude Code, Cursor, etc.) working in t
 
 Sinkplane Mobile is the phone/tablet companion to **sinkplane-tv**, a fan-made app for [floatplane.com](https://www.floatplane.com). Built on Expo (SDK 58, new architecture) with Expo Router for file-based navigation. Package manager is **npm** (`package-lock.json`; no bun/pnpm here).
 
-Authentication uses Floatplane's official **OIDC device flow** against `auth.floatplane.com` (client ID `hydravion`, same as [Hydravion](https://github.com/Inertia-Network/Hydravion)): the sign-in screen requests a device code, opens `floatplane.com/link` in the system browser (or shows the code for another device), polls until the user approves, then stores the tokens in `expo-secure-store` with automatic refresh. All of this lives in `@sinkplane/shared` — this app only wires it up.
+Authentication uses the same **username/password flow as floatplane.com/login**: the sign-in screen fetches captcha requirements from `/api/v3/auth/captcha/info`, renders the Cloudflare **Turnstile** challenge in a WebView (`src/components/turnstile-widget.tsx`), then `POST /api/v3/auth/login` with `returnSessionToken: true` (plus a 2FA step via `/api/v3/auth/checkFor2faLogin` when the account requires it). The returned session token is stored in `expo-secure-store` via the shared `SessionProvider` and sent as `Authorization: Bearer` on all API calls — the same mechanism Floatplane's own native apps use. All of this lives in `@sinkplane/shared` (`auth/passwordLogin.ts`) — this app only wires it up. (The TV app keeps the OIDC device flow because TV platforms can't render Turnstile.)
 
 ## Essential Commands
 
@@ -67,7 +67,15 @@ Other shared-package notes:
 | Data fetching | `@tanstack/react-query` |
 | Images | `expo-image` |
 | Auth/token storage | `expo-secure-store` |
-| Browser (login link) | `expo-web-browser` |
+| Captcha (login) | Cloudflare Turnstile in `react-native-webview` |
+
+### Auth notes (gotchas learned the hard way)
+
+- **Never import the `@sinkplane/shared` barrel** — see the shared package section below.
+- Floatplane API requests **must send a browser User-Agent** — floatplane.com sits behind Cloudflare bot management and serves a JS challenge page to RN/okhttp/CFNetwork default UAs. `shared/auth/apiClient.ts` sets `BROWSER_USER_AGENT` on every call.
+- The login session token may be opaque (not a JWT); it is sent as `Authorization: Bearer` regardless (this matches Floatplane's own token-mode web/native clients).
+- Turnstile tokens are **single-use and short-lived**; reset the widget (remount via `reloadKey`) after every failed login attempt.
+- 2FA codes are 6 digits or backup codes (`xxxxxx-xxxxxx`); submitted via `POST /api/v3/auth/checkFor2faLogin` with the pending session token.
 
 ## Code Style & Conventions
 
