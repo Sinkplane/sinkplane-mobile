@@ -27,5 +27,12 @@ export { ThemeProvider, useTheme, type ThemeMode } from '@sinkplane/shared/theme
 export { useColorScheme } from '@sinkplane/shared/theme/useColorScheme';
 export { useThemeColor } from '@sinkplane/shared/theme/useThemeColor';
 
+export { AssDass, useGetVideosInfinite } from '@sinkplane/shared/videos/useGetVideos';
+export { useGetVideoProgress } from '@sinkplane/shared/videos/useGetVideoProgress';
+
 export type { User } from '@sinkplane/shared/types/user.interface';
 export type { Subscription } from '@sinkplane/shared/types/subscriptions.interface';
+export type { Video } from '@sinkplane/shared/types/video.interface';
+// The creator-list module intentionally collides with video.interface names (Creator, Channel);
+// these are the session-side shapes returned by useSession().
+export type { Channel, Creator } from '@sinkplane/shared/types/creator-list.interface';

@@ -39,13 +39,15 @@ Always install packages with `npx expo install <package>` so versions resolve SD
 ### Directory Structure
 
 - **`src/app/`** — Expo Router screens (file-based routing; typed routes enabled). Keep non-route code out of it.
-  - `_layout.tsx` — Root layout: shared `ThemeProvider` → react-query → `SessionProvider` → auth-gated `Stack`.
-  - `sign-in.tsx` — OIDC device-flow sign-in screen.
-  - `index.tsx` — Home (post-auth placeholder for now).
+  - `_layout.tsx` — Root layout: shared `ThemeProvider` → react-query → `SessionProvider` → auth-gated `Stack`. Also syncs the in-app theme override to `Appearance.setColorScheme` so native chrome follows it.
+  - `sign-in.tsx` — Username/password + Turnstile sign-in, on the `assets/images/bg.jpg` photo background (fixed white-on-dark palette).
+  - `(tabs)/_layout.tsx` — `NativeTabs` (`expo-router/native-tabs`; Android `md` icons need `expo-symbols`).
+  - `(tabs)/index.tsx` — Videos tab: infinite list of the active creator's posts, channel chips, newest/oldest sort.
+  - `(tabs)/settings.tsx` — Profile, theme switcher (System / Light / Dark via shared `useTheme`), subscriptions, sign out.
 - **`src/shared.ts`** — The ONLY place that imports `@sinkplane/shared` subpaths. See below.
 - **`assets/`** — Icons, splash images.
 - **`scripts/`** — `link-shared-dist.sh` (local shared-package override).
-- **`metro.config.js`** — watches the sibling `../sinkplane-shared` clone when present (see below).
+- **`metro.config.js`** — watches the sibling `../shared` clone when present (see below).
 
 ### Shared Package (`@sinkplane/shared`) — read this before importing
 
@@ -56,7 +58,7 @@ Always install packages with `npx expo install <package>` so versions resolve SD
 Other shared-package notes:
 
 - The package is built against Expo SDK 57 / the TV app; this app is on SDK 58. That is why `.npmrc` sets `legacy-peer-deps=true` — npm would otherwise fail ERESOLVE on the `~57` peers and auto-install unwanted native modules. The modules its `dist` actually imports here (react, `@tanstack/react-query`, `expo-secure-store`) are installed as direct dependencies of this app.
-- For local development against the sibling clone `../sinkplane-shared`: `npm run link:shared` symlinks `node_modules/@sinkplane/shared/dist` to the clone's `dist/` (Metro watches the clone via `metro.config.js`). Re-run it after every `npm install`. `npm run unlink:shared` restores the published dist. Never run `pnpm install` inside `sinkplane-shared` (its `node_modules` is a symlink into the TV repo).
+- For local development against the sibling clone `../shared`: `npm run link:shared` symlinks `node_modules/@sinkplane/shared/dist` to the clone's `dist/` (Metro watches the clone via `metro.config.js`). Re-run it after every `npm install`. `npm run unlink:shared` restores the published dist. Never run `pnpm install` inside `../shared` (its `node_modules` is a symlink into the TV repo).
 - To consume shared changes: bump to a published version (`npm i @sinkplane/shared@^x.y.z`) or use the link script above.
 
 ### Key Technologies
