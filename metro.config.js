@@ -10,7 +10,7 @@ const config = getDefaultConfig(__dirname);
 // @sinkplane/shared installs from GitHub Packages (see .npmrc). For local
 // development, `npm run link:shared` points node_modules/@sinkplane/shared/dist
 // at the sibling clone's dist/ build output, so Metro must watch the clone.
-const sharedDir = path.resolve(__dirname, '../sinkplane-shared');
+const sharedDir = path.resolve(__dirname, '../shared');
 const hasSharedClone = fs.existsSync(sharedDir);
 if (hasSharedClone) {
   config.watchFolders = [...config.watchFolders, sharedDir];

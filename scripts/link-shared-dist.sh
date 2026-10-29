@@ -4,7 +4,7 @@
 #
 # @sinkplane/shared installs from GitHub Packages (see .npmrc), so this repo
 # is self-contained and EAS builds resolve the published tarball. For local
-# development against the sibling clone (../sinkplane-shared), this script
+# development against the sibling clone (../shared), this script
 # points node_modules/@sinkplane/shared/dist at the clone's dist/ build
 # output instead of the published one — no publish+reinstall needed.
 #
@@ -31,14 +31,14 @@ print_info() { echo -e "${BLUE}[info]${NC} $1"; }
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 PARENT_DIR="$(dirname "$PROJECT_DIR")"
-SHARED_DIR="$PARENT_DIR/sinkplane-shared"
+SHARED_DIR="$PARENT_DIR/shared"
 PKG_DIR="$PROJECT_DIR/node_modules/@sinkplane/shared"
 DIST_DIR="$PKG_DIR/dist"
 BACKUP_DIR="$PKG_DIR/dist.published"
 # Relative target so the link stays valid if the repo pair is moved together.
 # node_modules/@sinkplane/shared/ is three levels below the project root, and
 # the clone is a sibling of the project root — hence four levels up.
-REL_LINK="../../../../sinkplane-shared/dist"
+REL_LINK="../../../../shared/dist"
 
 if [[ "${1:-}" == "--unlink" ]]; then
     if [ -L "$DIST_DIR" ]; then
@@ -97,5 +97,5 @@ fi
 ln -s "$REL_LINK" "$DIST_DIR"
 print_success "Linked node_modules/@sinkplane/shared/dist -> $SHARED_DIR/dist"
 print_info "Metro watches the clone via metro.config.js; rebuild with:"
-echo "  cd ../sinkplane-shared && pnpm run build"
+echo "  cd ../shared && pnpm run build"
 echo "  (or pnpm exec tsc -p tsconfig.build.json --watch while developing)"

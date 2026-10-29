@@ -1,27 +1,33 @@
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Image } from 'expo-image';
+import { StatusBar } from 'expo-status-bar';
 
+import bg from '@/assets/images/bg.jpg';
 import { TurnstileWidget, type TurnstileEvent } from '@/components/turnstile-widget';
 import {
+  Colors,
   FloatplaneApiError,
   checkFor2faLogin,
   fetchProfile,
   getCaptchaInfo,
   loginWithPassword,
-  useColorScheme,
   useSession,
-  useThemeColor,
   type LoginResponse,
 } from '@/shared';
 
 type CaptchaState =
-  | { status: 'loading' }
-  | { status: 'ready'; siteKey: string }
-  | { status: 'disabled' }
-  | { status: 'error'; message: string };
+  { status: 'loading' } | { status: 'ready'; siteKey: string } | { status: 'disabled' } | { status: 'error'; message: string };
 
-const EMAIL_NOT_CONFIRMED =
-  'Your email address has not been confirmed yet. Check your inbox for the confirmation email before signing in.';
+const EMAIL_NOT_CONFIRMED = 'Your email address has not been confirmed yet. Check your inbox for the confirmation email before signing in.';
+
+// The sign-in screen sits on a photo background, so it uses a fixed light-on-dark
+// palette regardless of the app theme (same treatment as the TV sign-in screen).
+const textColor = '#fff';
+const mutedColor = 'rgba(255, 255, 255, 0.8)';
+const tintColor = Colors.light.tint;
+const inputBackground = 'rgba(0, 0, 0, 0.45)';
+const scheme = 'dark' as const;
 
 // 6-digit code or backup code (xxxxxx-xxxxxx) — same validation as the web client.
 const VALID_2FA = /(^[0-9]{6}$)|(^[a-z0-9]{6}-?[a-z0-9]{6}$)/i;
@@ -41,13 +47,6 @@ export default function SignIn() {
   const [pendingToken, setPendingToken] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
-
-  const textColor = useThemeColor({}, 'text');
-  const mutedColor = useThemeColor({}, 'icon');
-  const tintColor = useThemeColor({}, 'tint');
-  const inputBackground = useThemeColor({ light: '#f2f2f2', dark: '#222' }, 'background');
-  const colorScheme = useColorScheme();
-  const scheme: 'light' | 'dark' = colorScheme === 'dark' ? 'dark' : 'light';
 
   const loadCaptcha = useCallback(async () => {
     setCaptcha({ status: 'loading' });
@@ -179,10 +178,6 @@ export default function SignIn() {
           }}
           isSubmitting={isSubmitting}
           error={error}
-          textColor={textColor}
-          mutedColor={mutedColor}
-          tintColor={tintColor}
-          inputBackground={inputBackground}
         />
       </Screen>
     );
@@ -207,32 +202,24 @@ export default function SignIn() {
         onRetryCaptcha={loadCaptcha}
         onRetryWidget={resetCaptcha}
         error={error}
-        textColor={textColor}
-        mutedColor={mutedColor}
-        tintColor={tintColor}
-        inputBackground={inputBackground}
-        scheme={scheme}
       />
     </Screen>
   );
 }
 
 function Screen({ children }: { children: ReactNode }) {
-  const backgroundColor = useThemeColor({}, 'background');
   return (
-    <KeyboardAvoidingView style={[styles.screen, { backgroundColor }]} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-      <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
-        {children}
-      </ScrollView>
-    </KeyboardAvoidingView>
+    <View style={styles.screen}>
+      <StatusBar style="light" />
+      <Image source={bg} style={StyleSheet.absoluteFill} contentFit="cover" />
+      <View style={[StyleSheet.absoluteFill, styles.scrim]} />
+      <KeyboardAvoidingView style={styles.screen} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
+          {children}
+        </ScrollView>
+      </KeyboardAvoidingView>
+    </View>
   );
-}
-
-interface FormColors {
-  textColor: string;
-  mutedColor: string;
-  tintColor: string;
-  inputBackground: string;
 }
 
 function CredentialsForm({
@@ -252,12 +239,7 @@ function CredentialsForm({
   onRetryCaptcha,
   onRetryWidget,
   error,
-  textColor,
-  mutedColor,
-  tintColor,
-  inputBackground,
-  scheme,
-}: FormColors & {
+}: {
   username: string;
   password: string;
   onUsernameChange: (v: string) => void;
@@ -274,7 +256,6 @@ function CredentialsForm({
   onRetryCaptcha: () => void;
   onRetryWidget: () => void;
   error: string | null;
-  scheme: 'light' | 'dark';
 }) {
   const [showPassword, setShowPassword] = useState(false);
 
@@ -321,8 +302,6 @@ function CredentialsForm({
         onTurnstileEvent={onTurnstileEvent}
         onRetry={onRetryCaptcha}
         onRetryWidget={onRetryWidget}
-        mutedColor={mutedColor}
-        scheme={scheme}
       />
 
       {error ? (
@@ -331,13 +310,7 @@ function CredentialsForm({
         </Text>
       ) : null}
 
-      <PrimaryButton
-        label="Sign In"
-        onPress={onSubmit}
-        disabled={isSubmitting || captchaBlocksSubmit}
-        waiting={isSubmitting}
-        tintColor={tintColor}
-      />
+      <PrimaryButton label="Sign In" onPress={onSubmit} disabled={isSubmitting || captchaBlocksSubmit} waiting={isSubmitting} />
     </View>
   );
 }
@@ -351,8 +324,6 @@ function CaptchaSection({
   onTurnstileEvent,
   onRetry,
   onRetryWidget,
-  mutedColor,
-  scheme,
 }: {
   captcha: CaptchaState;
   widgetError: string | null;
@@ -362,8 +333,6 @@ function CaptchaSection({
   onTurnstileEvent: (event: TurnstileEvent) => void;
   onRetry: () => void;
   onRetryWidget: () => void;
-  mutedColor: string;
-  scheme: 'light' | 'dark';
 }) {
   if (captcha.status === 'disabled') {
     return (
@@ -421,11 +390,7 @@ function TwoFactorForm({
   onBack,
   isSubmitting,
   error,
-  textColor,
-  mutedColor,
-  tintColor,
-  inputBackground,
-}: FormColors & {
+}: {
   code: string;
   onCodeChange: (v: string) => void;
   onSubmit: () => void;
@@ -436,9 +401,7 @@ function TwoFactorForm({
   return (
     <View style={styles.card}>
       <Text style={[styles.header, { color: textColor }]}>Two-factor authentication</Text>
-      <Text style={[styles.description, { color: mutedColor }]}>
-        Enter the 6-digit code from your authenticator app, or a backup code.
-      </Text>
+      <Text style={[styles.description, { color: mutedColor }]}>Enter the 6-digit code from your authenticator app, or a backup code.</Text>
 
       <TextInput
         style={[styles.input, styles.codeInput, { color: textColor, backgroundColor: inputBackground }]}
@@ -459,7 +422,7 @@ function TwoFactorForm({
         </Text>
       ) : null}
 
-      <PrimaryButton label="Verify" onPress={onSubmit} disabled={isSubmitting} waiting={isSubmitting} tintColor={tintColor} />
+      <PrimaryButton label="Verify" onPress={onSubmit} disabled={isSubmitting} waiting={isSubmitting} />
 
       <Pressable style={styles.backButton} onPress={onBack} disabled={isSubmitting} hitSlop={8}>
         <Text style={[styles.backButtonText, { color: mutedColor }]}>Back to sign in</Text>
@@ -468,26 +431,10 @@ function TwoFactorForm({
   );
 }
 
-function PrimaryButton({
-  label,
-  onPress,
-  disabled,
-  waiting,
-  tintColor,
-}: {
-  label: string;
-  onPress: () => void;
-  disabled: boolean;
-  waiting: boolean;
-  tintColor: string;
-}) {
+function PrimaryButton({ label, onPress, disabled, waiting }: { label: string; onPress: () => void; disabled: boolean; waiting: boolean }) {
   return (
     <Pressable
-      style={({ pressed }) => [
-        styles.button,
-        { backgroundColor: tintColor },
-        (pressed || disabled) && styles.buttonDisabled,
-      ]}
+      style={({ pressed }) => [styles.button, { backgroundColor: tintColor }, (pressed || disabled) && styles.buttonDisabled]}
       onPress={onPress}
       disabled={disabled}
     >
@@ -499,6 +446,10 @@ function PrimaryButton({
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
+    backgroundColor: '#000',
+  },
+  scrim: {
+    backgroundColor: 'rgba(0, 0, 0, 0.35)',
   },
   scroll: {
     flexGrow: 1,
@@ -509,12 +460,18 @@ const styles = StyleSheet.create({
     width: '100%',
     maxWidth: 440,
     alignSelf: 'center',
+    padding: 24,
+    borderRadius: 20,
+    backgroundColor: 'rgba(0, 0, 0, 0.45)',
   },
   header: {
     fontSize: 26,
     fontWeight: 'bold',
     marginBottom: 10,
     textAlign: 'center',
+    textShadowColor: 'rgba(0, 0, 0, 0.5)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 4,
   },
   description: {
     fontSize: 15,
@@ -554,7 +511,7 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: 'rgba(128, 128, 128, 0.25)',
+    borderColor: 'rgba(255, 255, 255, 0.25)',
   },
   captchaStatus: {
     fontSize: 12,

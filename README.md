@@ -22,4 +22,5 @@ Sign-in uses the standard floatplane.com username/password flow: a Cloudflare Tu
 ```bash
 npm run lint
 npx tsc --noEmit
+npm run test:ci          # unit + E2E tests with coverage thresholds
 ```
