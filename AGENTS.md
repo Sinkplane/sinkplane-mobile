@@ -20,6 +20,13 @@ npm run web              # web dev server
 # Quality gates — run these before considering work done
 npm run lint             # ESLint (expo lint)
 npx tsc --noEmit         # typecheck
+npm run test:ci          # unit + E2E suites, coverage thresholds enforced (what CI runs)
+
+# Tests
+npm test                 # unit then E2E
+npm run test:unit        # unit only (npm run test:unit:watch while iterating)
+npm run test:e2e         # E2E only
+npm run test:coverage    # both, with coverage reports in coverage/{unit,e2e}
 ```
 
 `expo-secure-store` contains native code, so running on a device/simulator requires a **development build** (`npx expo run:ios|android`, or `eas build --profile development`). Expo Go will not work.
@@ -78,6 +85,23 @@ Other shared-package notes:
 - The login session token may be opaque (not a JWT); it is sent as `Authorization: Bearer` regardless (this matches Floatplane's own token-mode web/native clients).
 - Turnstile tokens are **single-use and short-lived**; reset the widget (remount via `reloadKey`) after every failed login attempt.
 - 2FA codes are 6 digits or backup codes (`xxxxxx-xxxxxx`); submitted via `POST /api/v3/auth/checkFor2faLogin` with the pending session token.
+
+## Testing
+
+Jest (`jest-expo` preset) with React Native Testing Library v14. Two suites, each with its own config on top of `jest.config.base.js`:
+
+| Suite | Config | Files | Coverage gate |
+|---|---|---|---|
+| Unit | `jest.config.unit.js` | colocated `src/**/*.test.ts(x)` | components/hooks/utils (everything in `src` except `src/app` routes and `src/shared.ts`): 95% statements/functions/lines, 90% branches |
+| E2E | `jest.config.e2e.js` | `__tests__/e2e/*.e2e.test.tsx` | all of `src`: 90% statements/functions/lines, 85% branches |
+
+Coverage thresholds only apply to coverage runs (`test:*:coverage`, `test:ci`); Jest exits non-zero when a metric drops below its threshold. `jest.config.js` runs both suites ungated for `npx jest` / editor integrations.
+
+- **Unit tests** render one component/hook in isolation. Shared helpers live in `jest/` (alias `@test/*`): `fixtures.ts` (user, creators, channels, videos, pinned `FIXED_NOW`) and `mocks/expo-secure-store.ts` (in-memory store, mapped for every suite).
+- **E2E tests** boot the real Expo Router app (`src/app`) with `expo-router/testing-library` against a stateful in-memory Floatplane API that replaces `fetch` (`__tests__/e2e/helpers/mock-floatplane-api.ts`: password login + Turnstile token check, 2FA, sessions, content, progress; supports failure injection, `NETWORK_ERROR`, and latency). Only native-only modules are mocked (`helpers/native-mocks.ts`: the Turnstile WebView, splash screen); native tabs render as their real host components.
+- Each E2E test starts with `const rt = loadRuntime()` (fresh module registry + reset API/storage), then `rt.seedSession()` / `rt.renderApp(url)`. Under fake timers use `rt.until(...)` instead of `waitFor`. Other helpers: `rt.turnstile.solve()`, `rt.selectTab()` / `rt.inTab()` / `rt.selectedTab()` (non-focused tabs stay mounted, so scope queries), `rt.listItemIds()` / `rt.reachListEnd()` (FlatList virtualizes), `rt.pressWithoutWaiting()` (assert in-flight UI).
+- RNTL v14: `render`, `renderHook`, and `fireEvent.*` are async — always `await` them.
+- Tests need `@sinkplane/shared` with `auth/passwordLogin` (≥ 0.1.2, or `npm run link:shared`).
 
 ## Code Style & Conventions
 

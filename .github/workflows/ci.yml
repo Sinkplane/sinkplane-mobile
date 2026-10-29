@@ -12,8 +12,8 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  lint-typecheck:
-    name: lint-and-typecheck
+  lint-typecheck-test:
+    name: lint-typecheck-test
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -34,3 +34,12 @@ jobs:
         run: npm run lint
       - name: Typecheck
         run: npx tsc --noEmit
+      - name: Test (unit + E2E, coverage thresholds enforced)
+        run: npm run test:ci
+      - name: Upload coverage reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage
+          path: coverage/
+          if-no-files-found: ignore

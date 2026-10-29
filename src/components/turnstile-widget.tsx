@@ -2,11 +2,7 @@ import { useCallback, useMemo, useRef } from 'react';
 import { Platform } from 'react-native';
 import { WebView, type WebViewMessageEvent } from 'react-native-webview';
 
-export type TurnstileEvent =
-  | { type: 'load' }
-  | { type: 'token'; token: string }
-  | { type: 'expire' }
-  | { type: 'error'; error: string };
+export type TurnstileEvent = { type: 'load' } | { type: 'token'; token: string } | { type: 'expire' } | { type: 'error'; error: string };
 
 interface TurnstileWidgetProps {
   siteKey: string;
@@ -19,12 +15,11 @@ interface TurnstileWidgetProps {
 
 // Turnstile treats generic WebView user agents as bot-like and gets stuck in an
 // unsolvable challenge loop. Present as the platform's real browser instead.
-const USER_AGENT =
-  Platform.OS === 'ios'
-    ? 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_4 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) ' +
-      'Version/17.4 Mobile/15E148 Safari/604.1'
-    : 'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) ' +
-      'Chrome/131.0.0.0 Mobile Safari/537.36';
+const IOS_USER_AGENT =
+  'Mozilla/5.0 (iPhone; CPU iPhone OS 17_4 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) ' +
+  'Version/17.4 Mobile/15E148 Safari/604.1';
+const ANDROID_USER_AGENT =
+  'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Mobile Safari/537.36';
 
 /**
  * Renders a Cloudflare Turnstile "managed" challenge in a WebView and streams
@@ -111,7 +106,7 @@ export function TurnstileWidget({ siteKey, theme, onEvent, reloadKey = 0 }: Turn
       // parent, which leaves the widget rendered but invisible.
       containerStyle={styles.container}
       style={styles.webview}
-      userAgent={USER_AGENT}
+      userAgent={Platform.OS === 'ios' ? IOS_USER_AGENT : ANDROID_USER_AGENT}
       javaScriptEnabled
       domStorageEnabled
       onMessage={handleMessage}

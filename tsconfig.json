@@ -3,12 +3,17 @@
   "compilerOptions": {
     "strict": true,
     "preserveSymlinks": true,
+    // TS 6 no longer auto-includes @types/*; jest globals are needed by the test suites.
+    "types": ["jest"],
     "paths": {
       "@/*": [
         "./src/*"
       ],
       "@/assets/*": [
         "./assets/*"
+      ],
+      "@test/*": [
+        "./jest/*"
       ]
     }
   },

@@ -47,10 +47,12 @@ export default function Videos() {
     [progressById, openVideo],
   );
 
+  // The session provider is still loading subscriptions/creators. (It signs out when there are none,
+  // so a signed-in user always ends up with a creator.)
   if (!creator) {
     return (
       <View style={[styles.container, styles.center, { backgroundColor }]}>
-        <Text style={[styles.message, { color: mutedColor }]}>You are not subscribed to any creators.</Text>
+        <ActivityIndicator testID="videos-loading" size="large" />
       </View>
     );
   }
@@ -58,6 +60,7 @@ export default function Videos() {
   return (
     <View style={[styles.container, { backgroundColor, paddingTop: insets.top }]}>
       <FlatList
+        testID="videos-list"
         style={styles.container}
         contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 24 }]}
         scrollIndicatorInsets={{ bottom: insets.bottom }}

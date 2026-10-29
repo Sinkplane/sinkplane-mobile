@@ -38,7 +38,7 @@ export const VideoListItem = memo(function VideoListItem({ video, progress, onPr
         ) : null}
         {progressPercent > 0 ? (
           <View style={styles.progressTrack}>
-            <View style={[styles.progressBar, { width: `${progressPercent}%` }]} />
+            <View testID={`video-progress-${video.id}`} style={[styles.progressBar, { width: `${progressPercent}%` }]} />
           </View>
         ) : null}
       </View>
