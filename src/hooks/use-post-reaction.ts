@@ -16,10 +16,10 @@ interface ReactionState {
  * `['dislike']` (the shared types model it as objects), so both shapes are accepted.
  */
 export function getReaction(post: Pick<VideoPost, 'userInteraction' | 'selfUserInteraction'>): Reaction {
-  const interactions: unknown[] = post.userInteraction ?? [];
-  const self = post.selfUserInteraction;
-  if (interactions.includes('like') || self?.liked) return 'like';
-  if (interactions.includes('dislike') || self?.disliked) return 'dislike';
+  const interactions = [...(post.userInteraction ?? []), post.selfUserInteraction];
+  const has = (kind: 'like' | 'dislike') => interactions.some(i => (i as unknown) === kind || (kind === 'like' ? i?.liked : i?.disliked));
+  if (has('like')) return 'like';
+  if (has('dislike')) return 'dislike';
   return null;
 }
 

@@ -40,7 +40,7 @@ function usePlaybackState(player: ReturnType<typeof useVideoPlayer>) {
     currentLiveTimestamp: null,
     currentOffsetFromLive: null,
   });
-  const { status } = useEvent(player, 'statusChange', { status: player.status });
+  const { status, error } = useEvent(player, 'statusChange', { status: player.status, error: undefined });
   const [ended, setEnded] = useState(false);
 
   useEventListener(player, 'playToEnd', () => setEnded(true));
@@ -48,7 +48,7 @@ function usePlaybackState(player: ReturnType<typeof useVideoPlayer>) {
     if (nowPlaying) setEnded(false);
   });
 
-  return { playing: isPlaying, ended, status, currentTime: time.currentTime, bufferedPosition: time.bufferedPosition };
+  return { playing: isPlaying, ended, status, error, currentTime: time.currentTime, bufferedPosition: time.bufferedPosition };
 }
 
 /** Controls stay up while paused/ended/scrubbing, and hide after a few idle seconds while playing. */
@@ -117,6 +117,23 @@ function PlaybackFeedback({ seek, holding, loading }: { seek: SeekFeedback | nul
   );
 }
 
+/** Shown when the stream fails to load or play; Retry reloads the same source. */
+function PlaybackError({ message, onRetry }: { message?: string; onRetry: () => void }) {
+  return (
+    <View testID="player-error" style={styles.errorOverlay}>
+      <Text style={styles.badgeText}>Playback failed</Text>
+      {message ? (
+        <Text style={styles.errorMessage} numberOfLines={2}>
+          {message}
+        </Text>
+      ) : null}
+      <Pressable onPress={onRetry} style={styles.retryButton} accessibilityRole="button">
+        <Text style={styles.badgeText}>Retry</Text>
+      </Pressable>
+    </View>
+  );
+}
+
 /**
  * Floatplane video player with custom touch controls: tap to show/hide the controls, double-tap
  * the left/right half to skip back/forward, press and hold for 2× speed. Picture-in-picture starts
@@ -153,6 +170,11 @@ export function VideoPlayer({
   useEffect(() => {
     if (!holding) player.playbackRate = rate;
   }, [player, rate, holding]);
+
+  // The error overlay replaces the controls (incl. the exit-fullscreen button), so don't strand the user in fullscreen.
+  useEffect(() => {
+    if (state.status === 'error' && fullscreen) onFullscreenChange(false);
+  }, [state.status, fullscreen, onFullscreenChange]);
 
   const duration = player.duration > 0 ? player.duration : fallbackDuration;
 
@@ -218,7 +240,19 @@ export function VideoPlayer({
 
       <PlaybackFeedback seek={seekFeedback.feedback} holding={holding} loading={state.status === 'loading'} />
 
-      {showControls ? (
+      {state.status === 'error' ? (
+        <PlaybackError
+          message={state.error?.message}
+          onRetry={() => {
+            player
+              .replaceAsync(initialSource)
+              .then(() => player.play())
+              .catch(() => {});
+          }}
+        />
+      ) : null}
+
+      {showControls && state.status !== 'error' ? (
         <PlayerControls
           title={title}
           playing={state.playing}
@@ -278,6 +312,25 @@ const styles = StyleSheet.create({
   },
   seekFeedbackRight: {
     right: '12%',
+  },
+  errorOverlay: {
+    ...StyleSheet.absoluteFill,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+    padding: 16,
+    backgroundColor: '#000',
+  },
+  errorMessage: {
+    color: 'rgba(255, 255, 255, 0.7)',
+    fontSize: 13,
+    textAlign: 'center',
+  },
+  retryButton: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 16,
+    backgroundColor: 'rgba(255, 255, 255, 0.15)',
   },
   loading: {
     ...StyleSheet.absoluteFill,
