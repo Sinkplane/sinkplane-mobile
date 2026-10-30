@@ -5,6 +5,7 @@ import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
+import { lockPortrait } from '@/hooks/use-fullscreen-orientation';
 import { SessionProvider, ThemeProvider as AppThemeProvider, useColorScheme, useSession, useTheme } from '@/shared';
 
 // Prevent the splash screen from auto-hiding before the first render is ready.
@@ -35,6 +36,8 @@ function RootNavigation() {
 
   useEffect(() => {
     SplashScreen.hideAsync();
+    // app.json allows every orientation so the fullscreen player can rotate; everything else is portrait.
+    lockPortrait();
   }, []);
 
   // Push the in-app override down to the native layer so system-drawn chrome
@@ -65,6 +68,7 @@ function RootNavigator() {
     <Stack screenOptions={{ headerShown: false }}>
       <Stack.Protected guard={signedIn}>
         <Stack.Screen name="(tabs)" />
+        <Stack.Screen name="video/[id]" />
       </Stack.Protected>
       <Stack.Protected guard={!signedIn}>
         <Stack.Screen name="sign-in" />

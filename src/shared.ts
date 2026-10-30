@@ -11,7 +11,7 @@ export { Colors } from '@sinkplane/shared/constants/colors';
 export { useStorageState, setStorageItemAsync } from '@sinkplane/shared/storage/useStorageState';
 
 export { SessionProvider, useSession, type AuthState } from '@sinkplane/shared/auth/auth.context';
-export { authenticatedFetch } from '@sinkplane/shared/auth/apiClient';
+export { authenticatedFetch, BROWSER_USER_AGENT } from '@sinkplane/shared/auth/apiClient';
 export {
   FloatplaneApiError,
   checkFor2faLogin,
@@ -29,10 +29,15 @@ export { useThemeColor } from '@sinkplane/shared/theme/useThemeColor';
 
 export { AssDass, useGetVideosInfinite } from '@sinkplane/shared/videos/useGetVideos';
 export { useGetVideoProgress } from '@sinkplane/shared/videos/useGetVideoProgress';
+export { useGetVideoPost } from '@sinkplane/shared/videos/useGetVideoPost';
+export { useGetVideoDelivery } from '@sinkplane/shared/videos/useGetVideoDelivery';
+export { useUpdateVideoProgress } from '@sinkplane/shared/videos/useUpdateVideoProgress';
 
 export type { User } from '@sinkplane/shared/types/user.interface';
 export type { Subscription } from '@sinkplane/shared/types/subscriptions.interface';
 export type { Video } from '@sinkplane/shared/types/video.interface';
+export type { VideoPost } from '@sinkplane/shared/types/video-post.interface';
+export type { VideoDelivery } from '@sinkplane/shared/types/video-delivery.interface';
 // The creator-list module intentionally collides with video.interface names (Creator, Channel);
 // these are the session-side shapes returned by useSession().
 export type { Channel, Creator } from '@sinkplane/shared/types/creator-list.interface';
