@@ -16,7 +16,7 @@ describe('E2E smoke', () => {
     await rt.renderApp();
 
     await rt.until(() => expect(rt.inTab('index').getByText('Main Channel Video 01')).toBeTruthy());
-    expect(rt.inTab('index').getByText('Tech Channel')).toBeTruthy();
+    expect(rt.inTab('index').getByText('All Subscriptions')).toBeTruthy();
     expect(rt.selectedTab()).toBe('index');
 
     await rt.selectTab('settings');
