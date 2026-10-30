@@ -51,6 +51,10 @@ Always install packages with `npx expo install <package>` so versions resolve SD
   - `(tabs)/_layout.tsx` — `NativeTabs` (`expo-router/native-tabs`; Android `md` icons need `expo-symbols`).
   - `(tabs)/index.tsx` — Videos tab: infinite list of the active creator's posts, channel chips, newest/oldest sort.
   - `(tabs)/settings.tsx` — Profile, theme switcher (System / Light / Dark via shared `useTheme`), subscriptions, sign out.
+  - `video/[id].tsx` — Video page: player, title/channel, like/dislike, paged comments. Tapping a list item opens it.
+- **`src/components/player/`** — `VideoPlayer` (expo-video, `nativeControls={false}`) with custom touch controls: tap toggles the overlay, double-tap left/right half skips ∓15s, press-and-hold plays at 2×, speed menu (persisted), seek bar, fullscreen. Auto picture-in-picture + background audio when the app is backgrounded.
+- **`src/components/video-page/`** — `VideoDetails`, `ReactionBar`, `CommentItem`.
+- **`src/hooks/`, `src/utils/`** — data hooks (`use-post-comments`, `use-post-reaction`), player hooks (`use-player-gestures`, `use-watch-progress`, `use-fullscreen-orientation`), formatting and `stream-source` (delivery info → HLS source).
 - **`src/shared.ts`** — The ONLY place that imports `@sinkplane/shared` subpaths. See below.
 - **`assets/`** — Icons, splash images.
 - **`scripts/`** — `link-shared-dist.sh` (local shared-package override).
@@ -77,6 +81,14 @@ Other shared-package notes:
 | Images | `expo-image` |
 | Auth/token storage | `expo-secure-store` |
 | Captcha (login) | Cloudflare Turnstile in `react-native-webview` |
+| Video playback | `expo-video` (config plugin: PiP + background playback) |
+| Orientation | `expo-screen-orientation` |
+
+### Player notes
+
+- Fullscreen is a "fake" fullscreen (the same `VideoView` laid out full-screen + landscape lock), not `enterFullscreen()`: native fullscreen always shows the platform controls, so the custom controls and gestures wouldn't work there.
+- `app.json` allows every orientation; the root layout locks portrait and the player unlocks landscape only while fullscreen.
+- `VideoPlayer` reads `source` once: `useVideoPlayer` replaces the source (restarting playback) whenever its JSON changes, e.g. a refetched delivery URL or refreshed token.
 
 ### Auth notes (gotchas learned the hard way)
 

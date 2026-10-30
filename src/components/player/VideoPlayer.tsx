@@ -192,7 +192,7 @@ export function VideoPlayer({
   const showControls = controls.visible && !holding && !inPictureInPicture;
 
   return (
-    <View testID="video-player" style={[styles.container, fullscreen && styles.fullscreen]}>
+    <View testID="video-player" style={fullscreen ? styles.fullscreen : styles.inline}>
       <VideoView
         testID="video-view"
         player={player}
@@ -255,14 +255,15 @@ export function VideoPlayer({
 }
 
 const styles = StyleSheet.create({
-  container: {
+  inline: {
     width: '100%',
     aspectRatio: 16 / 9,
     backgroundColor: '#000',
   },
+  // A separate style rather than an override: `aspectRatio: undefined` doesn't cancel the inline one.
   fullscreen: {
     flex: 1,
-    aspectRatio: undefined,
+    backgroundColor: '#000',
   },
   seekFeedback: {
     position: 'absolute',

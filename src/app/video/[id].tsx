@@ -10,7 +10,7 @@ import { VideoDetails } from '@/components/video-page/VideoDetails';
 import { useFullscreenOrientation } from '@/hooks/use-fullscreen-orientation';
 import { usePostComments, type PostComment } from '@/hooks/use-post-comments';
 import { usePostReaction } from '@/hooks/use-post-reaction';
-import { useGetVideoDelivery, useGetVideoPost, useSession, useThemeColor, useUpdateVideoProgress } from '@/shared';
+import { useColorScheme, useGetVideoDelivery, useGetVideoPost, useSession, useThemeColor, useUpdateVideoProgress } from '@/shared';
 import { buildVideoSource, getStreamUrl } from '@/utils/stream-source';
 
 function PlayerPlaceholder({ message, onRetry }: { message?: string; onRetry?: () => void }) {
@@ -45,7 +45,7 @@ export default function VideoScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const backgroundColor = useThemeColor({}, 'background');
-  const textColor = useThemeColor({}, 'text');
+  const colorScheme = useColorScheme();
   const { token, tokenExpiration } = useSession();
   const [fullscreen, setFullscreen] = useState(false);
 
@@ -116,7 +116,7 @@ export default function VideoScreen() {
           }}
           onEndReachedThreshold={0.5}
           contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 24 }]}
-          indicatorStyle={textColor === '#fff' ? 'white' : 'default'}
+          indicatorStyle={colorScheme === 'dark' ? 'white' : 'default'}
         />
       )}
     </View>
