@@ -225,11 +225,13 @@ describe('watch progress', () => {
 });
 
 describe('opening a video', () => {
-  it('opens the post on floatplane.com', async () => {
+  it('pushes the in-app video page instead of leaving the app', async () => {
     await openVideos();
 
     await rt.fireEvent.press(rt.screen.getByTestId('video-list-item-ch-tech-main-01'));
-    expect(rt.linking.openURL).toHaveBeenCalledWith('https://www.floatplane.com/post/ch-tech-main-01');
+
+    await rt.until(() => expect(rt.screen.getByTestId('video-player')).toBeTruthy());
+    expect(rt.linking.openURL).not.toHaveBeenCalled();
   });
 });
 
