@@ -280,10 +280,14 @@ export class FloatplaneApiMock {
     if (!byChannel) return { status: 200, body: [] };
 
     const channel = params.get('channel');
-    const all = channel
-      ? (byChannel.get(channel) ?? [])
+    const search = (params.get('search') ?? '').trim().toLowerCase();
+    const matched = channel
+      ? byChannel.get(channel) ?? []
       : [...byChannel.values()].flat().sort((a, b) => (b.releaseDate ?? '').localeCompare(a.releaseDate ?? ''));
-    const ordered = params.get('sort') === 'ASC' ? [...all].reverse() : all;
+    const filtered = search
+      ? matched.filter(video => video.title.toLowerCase().includes(search) || video.textMarkdown.toLowerCase().includes(search))
+      : matched;
+    const ordered = params.get('sort') === 'ASC' ? [...filtered].reverse() : filtered;
     const fetchAfter = Number(params.get('fetchAfter') ?? 0);
     const limit = Number(params.get('limit') ?? 10);
     return { status: 200, body: ordered.slice(fetchAfter, fetchAfter + limit) };
