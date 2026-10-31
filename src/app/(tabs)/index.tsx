@@ -1,5 +1,6 @@
 import { useCallback, useMemo, useState } from 'react';
-import { ActivityIndicator, FlatList, Linking, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, FlatList, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useRouter } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
 
 import { SubscriptionPicker } from '@/components/videos/SubscriptionPicker';
@@ -50,10 +51,8 @@ export default function Videos() {
     if (hasNextPage && !isFetchingNextPage) fetchNextPage();
   }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
 
-  // There's no in-app player yet — hand off to floatplane.com.
-  const openVideo = useCallback((video: Video) => {
-    Linking.openURL(`https://www.floatplane.com/post/${video.id}`);
-  }, []);
+  const router = useRouter();
+  const openVideo = useCallback((video: Video) => router.push({ pathname: '/video/[id]', params: { id: video.id } }), [router]);
 
   const renderItem = useCallback(
     ({ item }: { item: Video }) => <VideoListItem video={item} progress={progressById.get(item.id)} onPress={openVideo} />,

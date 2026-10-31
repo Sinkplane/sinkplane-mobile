@@ -8,7 +8,8 @@
  *    interleaves channels and paginates (page size 20) while a single channel fits one page.
  */
 
-import type { Channel, Creator, Subscription, User, Video } from '@/shared';
+import type { Channel, Creator, Subscription, User, Video, VideoDelivery, VideoPost } from '@/shared';
+import type { PostComment } from '@/hooks/use-post-comments';
 
 /** The clock every test runs against (relative dates are computed from it). */
 export const FIXED_NOW = new Date('2026-10-28T12:00:00.000Z');
@@ -174,4 +175,110 @@ export function makeChannelVideos(creator: Creator, channel: Channel, slot = 0):
       likes: i === 0 ? 1500 : i,
     });
   });
+}
+
+// ---------------------------------------------------------------------------
+// Video page — /api/v3/content/post, /api/v3/delivery/info and /api/v3/comment fixtures.
+// ---------------------------------------------------------------------------
+
+/** A video attachment as embedded in a post (`GET /api/v3/content/post`). */
+export function makeVideoAttachment(id: string, duration = 600): VideoPost['videoAttachments'][number] {
+  return {
+    id: `${id}-attachment`,
+    guid: `${id}-guid`,
+    title: `${id} attachment`,
+    type: 'video',
+    description: '',
+    releaseDate: FIXED_NOW.toISOString(),
+    duration,
+    creator: 'creator-tech',
+    likes: 0,
+    dislikes: 0,
+    score: 0,
+    isProcessing: false,
+    primaryBlogPost: id,
+    levels: [],
+    textTracks: [],
+    selfUserInteraction: null,
+    thumbnail: image(`videos/${id}/thumb.jpg`),
+    isAccessible: true,
+    blogPosts: [id],
+    timelineSprite: { width: 0, height: 0, path: '', childImages: [] },
+  };
+}
+
+export interface MakeVideoPostOptions {
+  id?: string;
+  title?: string;
+  likes?: number;
+  dislikes?: number;
+  comments?: number;
+  /** Watch position already saved for this user (post `progress` field). */
+  progress?: number | null;
+  /** The signed-in user's existing reaction (post `userInteraction` field). */
+  userInteraction?: string[];
+  /** `false` renders the "This post has no video." placeholder. */
+  videoAttachments?: boolean;
+}
+
+/** A post as returned by `GET /api/v3/content/post?id=`, derived from a feed video. */
+export function makeVideoPost(video: Video, options: MakeVideoPostOptions = {}): VideoPost {
+  return {
+    ...video,
+    id: options.id ?? video.id,
+    title: options.title ?? video.title,
+    duration: video.metadata.videoDuration,
+    likes: options.likes ?? video.likes,
+    dislikes: options.dislikes ?? video.dislikes,
+    comments: options.comments ?? 0,
+    userInteraction: options.userInteraction ?? [],
+    selfUserInteraction: null,
+    progress: options.progress ?? null,
+    videoAttachments: options.videoAttachments === false ? [] : [makeVideoAttachment(options.id ?? video.id, video.metadata.videoDuration)],
+    // The post embeds the channel object; the feed video's creator only carries channel ids.
+    creator: { ...video.creator, channels: [] } as unknown as VideoPost['creator'],
+  } as unknown as VideoPost;
+}
+
+/** A delivery info payload for a video attachment guid: origin + ascending-quality variants. */
+export function makeVideoDelivery(guid: string, { playable = true }: { playable?: boolean } = {}): VideoDelivery {
+  const variants = playable
+    ? [
+        { url: `/${guid}/360.m3u8`, label: '360p', enabled: true, order: 0 },
+        { url: `/${guid}/720.m3u8`, label: '720p', enabled: true, order: 1 },
+        { url: `/${guid}/1080.m3u8`, label: '1080p', enabled: true, order: 2 },
+      ]
+    : [
+        { url: `/${guid}/360.m3u8`, label: '360p', enabled: false },
+        { url: `/${guid}/720.m3u8`, label: '720p', meta: { common: { access: { deniedReason: 'notSubscribed' } } } },
+      ];
+  return {
+    groups: [
+      {
+        id: `${guid}-group`,
+        label: 'hls',
+        origins: [{ id: `${guid}-origin`, url: `https://edge.floatplane.test/${guid}/` }],
+        variants,
+      },
+    ],
+  } as VideoDelivery;
+}
+
+/** `count` comments for a post, oldest first; the first has an avatar and replies. */
+export function makeComments(postId: string, count: number): PostComment[] {
+  return Array.from({ length: count }, (_, i) => ({
+    id: `${postId}-comment-${i + 1}`,
+    blogPost: postId,
+    user: {
+      id: `commenter-${i + 1}`,
+      username: `commenter${i + 1}`,
+      profileImage: i === 0 ? { path: `https://cdn.floatplane.test/users/commenter-${i + 1}.png` } : null,
+    },
+    text: `Comment number ${i + 1} on ${postId}`,
+    postDate: new Date(FIXED_NOW.getTime() - (i + 1) * 60_000).toISOString(),
+    editDate: null,
+    likes: i,
+    dislikes: 0,
+    totalReplies: i === 0 ? 2 : 0,
+  }));
 }

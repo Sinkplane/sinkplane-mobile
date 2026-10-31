@@ -5,14 +5,26 @@
  *  - password login: captcha info, login (+ Turnstile token check), 2FA, logout
  *  - profile (/status), subscriptions, creator list
  *  - creator content listing (all channels or one), with pagination + sort
- *  - watch progress
+ *  - video page: post by id, delivery info, paged comments, like/dislike toggles
+ *  - watch progress (get + set)
  *
  * It is stateful (sessions are issued and revoked like the real backend), lets tests script
  * failures, and records every request so tests can assert what the app sent.
  */
 
-import { fixtureCreators, fixtureSubscriptions, fixtureUser, gamingCreator, makeChannelVideos, techCreator } from '@test/fixtures';
-import type { Creator, Subscription, Video } from '@/shared';
+import {
+  fixtureCreators,
+  fixtureSubscriptions,
+  fixtureUser,
+  gamingCreator,
+  makeChannelVideos,
+  makeComments,
+  makeVideoDelivery,
+  makeVideoPost,
+  techCreator,
+} from '@test/fixtures';
+import type { PostComment } from '@/hooks/use-post-comments';
+import type { Creator, Subscription, Video, VideoDelivery, VideoPost } from '@/shared';
 
 export const TURNSTILE_SITE_KEY = '0x4AAAAAAATestSiteKey';
 
@@ -82,6 +94,14 @@ export class FloatplaneApiMock {
   /** creatorId → channelId → videos (newest first). */
   videos = new Map<string, Map<string, Video[]>>();
   progress = new Map<string, number>();
+  /** Post overrides: id → post (defaults are derived from `videos` + `interactions` + `progress`). */
+  posts = new Map<string, VideoPost>();
+  /** Comment overrides: postId → list (default: 3 comments per post). */
+  comments = new Map<string, PostComment[]>();
+  /** Delivery overrides: attachment guid → payload (default: playable delivery). */
+  deliveries = new Map<string, VideoDelivery>();
+  /** The signed-in user's reaction per post, as toggled through like/dislike. */
+  interactions = new Map<string, 'like' | 'dislike' | null>();
 
   /** Simulated network latency (ms of fake time) applied to every response. */
   latencyMs = 0;
@@ -105,6 +125,10 @@ export class FloatplaneApiMock {
     this.creators = fixtureCreators;
     this.videos.clear();
     this.progress.clear();
+    this.posts.clear();
+    this.comments.clear();
+    this.deliveries.clear();
+    this.interactions.clear();
     this.failures.clear();
     this.latencyMs = 0;
     this.tokenCounter = 0;
@@ -211,6 +235,9 @@ export class FloatplaneApiMock {
 
   /** Endpoints that require a valid session token. */
   private routeContent(route: string, req: RecordedRequest): MockResponse {
+    const videoPage = this.routeVideoPage(route, req);
+    if (videoPage) return videoPage;
+
     switch (route) {
       case 'GET /api/v3/status':
         return { status: 200, body: { selfUser: fixtureUser, selfCreator: null, serviceMessages: [], serviceDenied: null } };
@@ -228,6 +255,33 @@ export class FloatplaneApiMock {
       }
       default:
         return { status: 404, body: { message: `No mock handler for ${route}` } };
+    }
+  }
+
+  /** The video page's endpoints: post, delivery info, comments, reactions, progress saving. */
+  private routeVideoPage(route: string, req: RecordedRequest): MockResponse | null {
+    switch (route) {
+      case 'GET /api/v3/content/post': {
+        const post = this.postFor(req.params.get('id') ?? '');
+        return post ? { status: 200, body: post } : apiError(404, 'notFoundError', 'No post with that id.');
+      }
+      case 'GET /api/v3/delivery/info': {
+        const guid = req.params.get('entityId') ?? '';
+        return { status: 200, body: this.deliveries.get(guid) ?? makeVideoDelivery(guid) };
+      }
+      case 'GET /api/v3/comment':
+        return this.postComments(req.params);
+      case 'POST /api/v3/content/like':
+        return this.toggleReaction(req, 'like');
+      case 'POST /api/v3/content/dislike':
+        return this.toggleReaction(req, 'dislike');
+      case 'POST /api/v3/content/progress': {
+        const { id, progress } = req.body ?? {};
+        this.progress.set(String(id), Math.floor(Number(progress)));
+        return { status: 200, body: 'OK' };
+      }
+      default:
+        return null;
     }
   }
 
@@ -282,7 +336,7 @@ export class FloatplaneApiMock {
     const channel = params.get('channel');
     const search = (params.get('search') ?? '').trim().toLowerCase();
     const matched = channel
-      ? byChannel.get(channel) ?? []
+      ? (byChannel.get(channel) ?? [])
       : [...byChannel.values()].flat().sort((a, b) => (b.releaseDate ?? '').localeCompare(a.releaseDate ?? ''));
     const filtered = search
       ? matched.filter(video => video.title.toLowerCase().includes(search) || video.textMarkdown.toLowerCase().includes(search))
@@ -291,6 +345,42 @@ export class FloatplaneApiMock {
     const fetchAfter = Number(params.get('fetchAfter') ?? 0);
     const limit = Number(params.get('limit') ?? 10);
     return { status: 200, body: ordered.slice(fetchAfter, fetchAfter + limit) };
+  }
+
+  /** The post an id maps to: an explicit override, or one derived from the feed fixtures. */
+  private postFor(id: string): VideoPost | null {
+    const override = this.posts.get(id);
+    if (override) return override;
+
+    const video = [...this.videos.values()].flatMap(byChannel => [...byChannel.values()].flat()).find(v => v.id === id);
+    if (!video) return null;
+
+    const interaction = this.interactions.get(id) ?? null;
+    return makeVideoPost(video, {
+      likes: video.likes + (interaction === 'like' ? 1 : 0),
+      dislikes: video.dislikes + (interaction === 'dislike' ? 1 : 0),
+      userInteraction: interaction ? [interaction] : [],
+      progress: this.progress.get(id) ?? null,
+    });
+  }
+
+  /** One page of a post's comments, continuing after `fetchAfter` (the last id already loaded). */
+  private postComments(params: URLSearchParams): MockResponse {
+    const postId = params.get('blogPost') ?? '';
+    const list = this.comments.get(postId) ?? makeComments(postId, 3);
+    const start = params.has('fetchAfter') ? list.findIndex(c => c.id === params.get('fetchAfter')) + 1 : 0;
+    const limit = Number(params.get('limit') ?? 20);
+    return { status: 200, body: list.slice(Math.max(start, 0), Math.max(start, 0) + limit) };
+  }
+
+  /** Floatplane toggle semantics: reposting the active reaction removes it; cross-toggling switches. */
+  private toggleReaction(req: RecordedRequest, kind: 'like' | 'dislike'): MockResponse {
+    const id = String(req.body?.id ?? '');
+    if (!id) return apiError(400, 'invalidBodyError', 'Missing post id.');
+    const current = this.interactions.get(id) ?? null;
+    const next = current === kind ? null : kind;
+    this.interactions.set(id, next);
+    return { status: 200, body: next ? [next] : [] };
   }
 
   // -- internals ----------------------------------------------------------------------------

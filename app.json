@@ -3,7 +3,7 @@
     "name": "sinkplane-mobile",
     "slug": "sinkplane-mobile",
     "version": "1.0.0",
-    "orientation": "portrait",
+    "orientation": "default",
     "icon": "./assets/images/icon.png",
     "scheme": "sinkplanemobile",
     "userInterfaceStyle": "automatic",
@@ -31,6 +31,14 @@
           "backgroundColor": "#208AEF",
           "image": "./assets/images/splash-icon.png",
           "imageWidth": 76
+        }
+      ],
+      "expo-image",
+      [
+        "expo-video",
+        {
+          "supportsPictureInPicture": true,
+          "supportsBackgroundPlayback": true
         }
       ]
     ],
