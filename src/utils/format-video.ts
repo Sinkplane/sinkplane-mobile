@@ -15,6 +15,25 @@ export function formatCount(count: number) {
   return count.toString();
 }
 
+const ENTITIES: Record<string, string> = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ' };
+
+/** Post body HTML (`<p>`, `<br>`, links, entities) → plain text with paragraph breaks. */
+export function htmlToText(html: string | null | undefined) {
+  if (!html) return '';
+  return html
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/(p|div|li|h[1-6])>/gi, '\n')
+    .replace(/<[^>]*>/g, '')
+    .replace(/&(#x?[0-9a-f]+|[a-z]+);/gi, (entity, code: string) => {
+      if (code[0] !== '#') return ENTITIES[code.toLowerCase()] ?? entity;
+      const point = code[1]?.toLowerCase() === 'x' ? parseInt(code.slice(2), 16) : parseInt(code.slice(1), 10);
+      return Number.isNaN(point) ? entity : String.fromCodePoint(point);
+    })
+    .replace(/[ \t]+\n/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
 const UNITS: [string, number][] = [
   ['year', 60 * 60 * 24 * 365],
   ['month', 60 * 60 * 24 * 30],

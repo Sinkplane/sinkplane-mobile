@@ -217,7 +217,7 @@ export interface MakeVideoPostOptions {
   progress?: number | null;
   /** The signed-in user's existing reaction (post `userInteraction` field). */
   userInteraction?: string[];
-  /** `false` renders the "This post has no video." placeholder. */
+  /** `false` makes it an image/text post: the page shows the thumbnail instead of a player. */
   videoAttachments?: boolean;
 }
 

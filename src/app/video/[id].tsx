@@ -1,5 +1,6 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useMemo } from 'react';
 import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Image } from 'expo-image';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -10,7 +11,15 @@ import { VideoDetails } from '@/components/video-page/VideoDetails';
 import { useFullscreenOrientation } from '@/hooks/use-fullscreen-orientation';
 import { usePostComments, type PostComment } from '@/hooks/use-post-comments';
 import { usePostReaction } from '@/hooks/use-post-reaction';
-import { useColorScheme, useGetVideoDelivery, useGetVideoPost, useSession, useThemeColor, useUpdateVideoProgress } from '@/shared';
+import {
+  useColorScheme,
+  useGetVideoDelivery,
+  useGetVideoPost,
+  useSession,
+  useThemeColor,
+  useUpdateVideoProgress,
+  type VideoPost,
+} from '@/shared';
 import { buildVideoSource, getStreamUrl } from '@/utils/stream-source';
 
 function PlayerPlaceholder({ message, onRetry }: { message?: string; onRetry?: () => void }) {
@@ -22,6 +31,17 @@ function PlayerPlaceholder({ message, onRetry }: { message?: string; onRetry?: (
           <Text style={styles.retryText}>Retry</Text>
         </Pressable>
       ) : null}
+    </View>
+  );
+}
+
+/** Media slot for posts without a video: picture posts show their image, text-only posts show nothing. */
+function PostImage({ post }: { post: VideoPost }) {
+  const uri = post.pictureAttachments?.[0]?.thumbnail?.path ?? post.thumbnail?.path;
+  if (!uri) return null;
+  return (
+    <View testID="post-image" style={styles.placeholder}>
+      <Image source={uri} style={StyleSheet.absoluteFill} contentFit="contain" accessibilityLabel={post.title} />
     </View>
   );
 }
@@ -47,16 +67,15 @@ export default function VideoScreen() {
   const backgroundColor = useThemeColor({}, 'background');
   const colorScheme = useColorScheme();
   const { token, tokenExpiration } = useSession();
-  const [fullscreen, setFullscreen] = useState(false);
 
   const post = useGetVideoPost(token ?? undefined, tokenExpiration ?? undefined, id);
   const attachment = post.data?.videoAttachments?.[0];
   const delivery = useGetVideoDelivery(token ?? undefined, tokenExpiration ?? undefined, attachment?.guid);
   const comments = usePostComments(token, id);
   const reaction = usePostReaction(token, post.data);
+  const streamUrl = getStreamUrl(delivery.data);
 
-  const exitFullscreen = useCallback(() => setFullscreen(false), []);
-  useFullscreenOrientation(fullscreen, exitFullscreen);
+  const { fullscreen, setFullscreen } = useFullscreenOrientation(!!streamUrl);
 
   // The mutation also patches the cached post / list progress, so reopening the video resumes here.
   const { mutate: mutateProgress } = useUpdateVideoProgress(token ?? undefined);
@@ -67,12 +86,11 @@ export default function VideoScreen() {
     [token, id, mutateProgress],
   );
 
-  const streamUrl = getStreamUrl(delivery.data);
   const commentList = useMemo(() => comments.data?.pages.flat() ?? [], [comments.data]);
 
   const renderPlayer = () => {
     if (post.isError) return <PlayerPlaceholder message="Couldn't load this video." onRetry={() => post.refetch()} />;
-    if (post.data && !attachment) return <PlayerPlaceholder message="This post has no video." />;
+    if (post.data && !attachment) return <PostImage post={post.data} />;
     if (delivery.isError || (delivery.data && !streamUrl)) {
       return <PlayerPlaceholder message="This video can't be played right now." onRetry={() => delivery.refetch()} />;
     }

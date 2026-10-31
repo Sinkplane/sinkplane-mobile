@@ -213,7 +213,7 @@ function Screen({ children }: { children: ReactNode }) {
       <StatusBar style="light" />
       <Image source={bg} style={StyleSheet.absoluteFill} contentFit="cover" />
       <View style={[StyleSheet.absoluteFill, styles.scrim]} />
-      <KeyboardAvoidingView style={styles.screen} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      <KeyboardAvoidingView style={styles.fill} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
           {children}
         </ScrollView>
@@ -447,6 +447,9 @@ const styles = StyleSheet.create({
   screen: {
     flex: 1,
     backgroundColor: '#000',
+  },
+  fill: {
+    flex: 1,
   },
   scrim: {
     backgroundColor: 'rgba(0, 0, 0, 0.35)',
