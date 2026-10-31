@@ -109,4 +109,15 @@ describe('PlayerControls', () => {
     await renderControls();
     expect(screen.queryByRole('button', { name: 'Close video' })).toBeNull();
   });
+
+  it('swaps the close button for a back button that leaves fullscreen', async () => {
+    const onBack = jest.fn();
+    const onToggleFullscreen = jest.fn();
+    await renderControls({ fullscreen: true, onBack, onToggleFullscreen });
+
+    expect(screen.queryByRole('button', { name: 'Close video' })).toBeNull();
+    await fireEvent.press(screen.getByRole('button', { name: 'Back' }));
+    expect(onToggleFullscreen).toHaveBeenCalledTimes(1);
+    expect(onBack).not.toHaveBeenCalled();
+  });
 });
