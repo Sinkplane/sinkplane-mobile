@@ -44,6 +44,19 @@ describe('VideoDetails', () => {
     expect(screen.getByText('Comments · 0')).toBeTruthy();
   });
 
+  it('falls back to the creator when the post has no channel', async () => {
+    await renderDetails(undefined, { ...post, channel: undefined, comments: 7 } as unknown as VideoPost);
+    expect(screen.getByText(techCreator.title)).toBeTruthy();
+    expect(screen.getByText('Comments · 7')).toBeTruthy();
+  });
+
+  it('shows an empty icon slot when neither channel nor creator has an icon', async () => {
+    const bare = { ...post, channel: { title: 'Bare' }, creator: { title: 'Bare' }, comments: undefined };
+    await renderDetails(undefined, bare as unknown as VideoPost);
+    expect(screen.getByText('Bare')).toBeTruthy();
+    expect(screen.getByText('Comments · 0')).toBeTruthy();
+  });
+
   it('renders relative ages from the pinned clock', async () => {
     await renderDetails(undefined, {
       ...post,
@@ -72,5 +85,36 @@ describe('VideoDetails', () => {
   it('explains when the reaction could not be saved', async () => {
     await renderDetails(reactionResult({ error: new Error('nope') }));
     expect(screen.getByText("Couldn't save your reaction. Try again.")).toBeTruthy();
+  });
+
+  describe('description', () => {
+    const withText = (text: string | null) => ({ ...post, text }) as unknown as VideoPost;
+
+    it('shows a short description as plain text, without a toggle', async () => {
+      await renderDetails(undefined, withText('<p>Pumpkins &amp; candy</p>'));
+      expect(screen.getByTestId('post-description')).toHaveTextContent('Pumpkins & candy');
+      expect(screen.queryByRole('button', { name: 'Show more' })).toBeNull();
+    });
+
+    it('collapses a long description until Show more is pressed', async () => {
+      await renderDetails(undefined, withText(`<p>${'Halloween stream. '.repeat(20)}</p>`));
+      expect(screen.getByTestId('post-description')).toHaveProp('numberOfLines', 3);
+
+      await fireEvent.press(screen.getByRole('button', { name: 'Show more' }));
+      expect(screen.getByTestId('post-description')).not.toHaveProp('numberOfLines');
+
+      await fireEvent.press(screen.getByRole('button', { name: 'Show less' }));
+      expect(screen.getByTestId('post-description')).toHaveProp('numberOfLines', 3);
+    });
+
+    it('collapses a description with many short paragraphs', async () => {
+      await renderDetails(undefined, withText('<p>a</p><p>b</p><p>c</p><p>d</p>'));
+      expect(screen.getByRole('button', { name: 'Show more' })).toBeTruthy();
+    });
+
+    it('renders nothing for an empty body', async () => {
+      await renderDetails(undefined, withText(null));
+      expect(screen.queryByTestId('post-description')).toBeNull();
+    });
   });
 });
