@@ -2,8 +2,10 @@
  * Native module mocks for the E2E suite.
  *
  * Each mock is a controllable stand-in: tests drive events into it (Turnstile messages) and inspect
- * what the app did with it. expo-secure-store is mapped to an in-memory store for every suite (see
- * jest.config.base.js). Everything not mocked here (navigation, native tabs, react-query, the
+ * what the app did with it. expo-secure-store, expo-video and expo-screen-orientation are mapped to
+ * in-memory mocks for every suite (see jest.config.base.js; their per-test state is reset by
+ * helpers/runtime.ts, which also exposes them as `rt.secureStore`, `rt.mockVideoPlayerState` and
+ * `rt.orientation`). Everything not mocked here (navigation, native tabs, react-query, the
  * shared auth/session/theme providers, screens) runs as production code.
  *
  * Import this before any app module so the `jest.mock` factories register first.
