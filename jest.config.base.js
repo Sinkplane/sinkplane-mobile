@@ -17,6 +17,10 @@ module.exports = {
     '^@/assets/(.*)$': '<rootDir>/assets/$1',
     // In-memory secure store so the shared SessionProvider / ThemeProvider can persist state.
     '^expo-secure-store$': '<rootDir>/jest/mocks/expo-secure-store.ts',
+    // Fake video players (drivable event emitter + VideoView host View) and an orientation lock
+    // recorder — both modules require native code that Jest cannot load.
+    '^expo-video$': '<rootDir>/jest/mocks/expo-video.tsx',
+    '^expo-screen-orientation$': '<rootDir>/jest/mocks/expo-screen-orientation.ts',
   },
   // With `npm run link:shared`, @sinkplane/shared resolves (by realpath) into the sibling clone,
   // whose own node_modules is not this app's. Fall back to this app's node_modules so bare
