@@ -8,7 +8,8 @@
     "scheme": "sinkplanemobile",
     "userInterfaceStyle": "automatic",
     "ios": {
-      "icon": "./assets/expo.icon"
+      "icon": "./assets/expo.icon",
+      "bundleIdentifier": "com.paynoattn1989.sinkplane-mobile"
     },
     "android": {
       "adaptiveIcon": {
