@@ -184,12 +184,46 @@ describe('failure states', () => {
     await rt.until(() => expect(rt.screen.getByTestId('video-player')).toBeTruthy());
   });
 
-  it('says when a post has no video attachment', async () => {
+  it('shows the picture for an image post instead of a player', async () => {
     const video = rt.api.channelVideos(techMainChannel.id)[0];
-    rt.api.posts.set(POST_ID, makeVideoPost(video, { videoAttachments: false }));
+    const post = makeVideoPost(video, { videoAttachments: false });
+    const picture = { id: 'pic-1', type: 'picture', thumbnail: { path: 'https://cdn.floatplane.test/pic-1.jpg' } };
+    const text = `<p>Pumpkins &amp; candy&#8230;</p><p>${'We&#x27;re carving pumpkins. '.repeat(10)}</p>`;
+    rt.api.posts.set(POST_ID, { ...post, text, pictureAttachments: [picture] } as unknown as typeof post);
     await openVideo();
 
-    await rt.until(() => expect(rt.screen.getByText('This post has no video.')).toBeTruthy());
+    await rt.until(() => expect(rt.screen.getByTestId('post-image')).toBeTruthy());
+    expect(rt.screen.queryByTestId('video-player')).toBeNull();
+    expect(rt.screen.getByLabelText(post.title)).toHaveProp('source', [{ uri: 'https://cdn.floatplane.test/pic-1.jpg' }]);
+    expect(rt.api.requestsTo('/api/v3/delivery/info')).toHaveLength(0);
+
+    const description = rt.screen.getByTestId('post-description');
+    expect(description).toHaveTextContent(/^Pumpkins & candy… We're carving pumpkins\./);
+    expect(description).toHaveProp('numberOfLines', 3);
+    await rt.fireEvent.press(rt.screen.getByRole('button', { name: 'Show more' }));
+    expect(rt.screen.getByTestId('post-description')).not.toHaveProp('numberOfLines');
+  });
+
+  it('falls back to the post thumbnail for a post without picture attachments', async () => {
+    const video = rt.api.channelVideos(techMainChannel.id)[0];
+    const post = makeVideoPost(video, { videoAttachments: false });
+    rt.api.posts.set(POST_ID, post);
+    await openVideo();
+
+    await rt.until(() => expect(rt.screen.getByTestId('post-image')).toBeTruthy());
+    expect(rt.screen.getByLabelText(post.title)).toHaveProp('source', [{ uri: post.thumbnail.path }]);
+  });
+
+  it('shows no media area for a text-only post', async () => {
+    const video = rt.api.channelVideos(techMainChannel.id)[0];
+    const post = makeVideoPost(video, { videoAttachments: false });
+    rt.api.posts.set(POST_ID, { ...post, thumbnail: null } as unknown as typeof post);
+    await openVideo();
+
+    await rt.until(() => expect(rt.screen.getByTestId('video-title')).toBeTruthy());
+    expect(rt.screen.queryByTestId('post-image')).toBeNull();
+    expect(rt.screen.queryByTestId('player-placeholder')).toBeNull();
+    expect(rt.screen.queryByTestId('video-player')).toBeNull();
   });
 
   it('falls back to the creator when the post has no channel', async () => {
@@ -390,6 +424,48 @@ describe('fullscreen', () => {
     await rt.fireEvent.press(rt.screen.getByRole('button', { name: 'Exit fullscreen' }));
     await rt.until(() => expect(rt.screen.getByTestId('comment-list')).toBeTruthy());
     expect(rt.orientation.lockAsync).toHaveBeenLastCalledWith(rt.orientation.OrientationLock.PORTRAIT_UP);
+  });
+
+  it('follows the device rotation once the video is playable', async () => {
+    const rotate = (orientation: number) =>
+      rt.act(async () => {
+        rt.orientation.emitOrientationChange(orientation);
+      });
+    await openVideo();
+    await untilPlayable();
+    expect(rt.orientation.lockAsync).toHaveBeenLastCalledWith(rt.orientation.OrientationLock.DEFAULT);
+
+    await rotate(rt.orientation.Orientation.LANDSCAPE_LEFT);
+    await rt.until(() => expect(rt.screen.queryByTestId('comment-list')).toBeNull());
+    expect(rt.screen.getByRole('button', { name: 'Exit fullscreen' })).toBeTruthy();
+
+    await rotate(rt.orientation.Orientation.PORTRAIT_UP);
+    await rt.until(() => expect(rt.screen.getByTestId('comment-list')).toBeTruthy());
+    expect(rt.orientation.lockAsync).toHaveBeenLastCalledWith(rt.orientation.OrientationLock.DEFAULT);
+  });
+
+  it('the back arrow leaves rotation-driven fullscreen and keeps the page in portrait', async () => {
+    await openVideo();
+    await untilPlayable();
+    await rt.act(async () => {
+      rt.orientation.emitOrientationChange(rt.orientation.Orientation.LANDSCAPE_LEFT);
+    });
+    await rt.until(() => expect(rt.screen.queryByTestId('comment-list')).toBeNull());
+
+    await rt.fireEvent.press(rt.screen.getByRole('button', { name: 'Back' }));
+    await rt.until(() => expect(rt.screen.getByTestId('comment-list')).toBeTruthy());
+    expect(rt.screen.getByTestId('video-screen')).toBeTruthy();
+    expect(rt.orientation.lockAsync).toHaveBeenLastCalledWith(rt.orientation.OrientationLock.PORTRAIT_UP);
+  });
+
+  it('keeps an image post in portrait', async () => {
+    const video = rt.api.channelVideos(techMainChannel.id)[0];
+    rt.api.posts.set(POST_ID, makeVideoPost(video, { videoAttachments: false }));
+    await openVideo();
+    await rt.until(() => expect(rt.screen.getByTestId('post-image')).toBeTruthy());
+
+    expect(rt.orientation.lockAsync).toHaveBeenLastCalledWith(rt.orientation.OrientationLock.PORTRAIT_UP);
+    expect(rt.orientation.orientationListenerCount()).toBe(0);
   });
 
   it('the Android back button leaves fullscreen instead of the page', async () => {

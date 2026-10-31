@@ -87,7 +87,8 @@ Other shared-package notes:
 ### Player notes
 
 - Fullscreen is a "fake" fullscreen (the same `VideoView` laid out full-screen + landscape lock), not `enterFullscreen()`: native fullscreen always shows the platform controls, so the custom controls and gestures wouldn't work there.
-- `app.json` allows every orientation; the root layout locks portrait and the player unlocks landscape only while fullscreen.
+- `app.json` allows every orientation; the root layout locks portrait. On the video page (`use-fullscreen-orientation`) the screen is unlocked once a stream is playable, so rotating the device enters/leaves fullscreen. After the user toggles fullscreen by hand (fullscreen button, the fullscreen back arrow, Android back), the screen locks to their choice for the rest of the visit: a locked screen reports no rotations, so there's no signal to hand control back.
+- Posts without a video (image/text posts) show the first picture attachment's thumbnail, else the post thumbnail, else no media area.
 - `VideoPlayer` reads `source` once: `useVideoPlayer` replaces the source (restarting playback) whenever its JSON changes, e.g. a refetched delivery URL or refreshed token.
 
 ### Auth notes (gotchas learned the hard way)

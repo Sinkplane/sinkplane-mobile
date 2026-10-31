@@ -304,11 +304,16 @@ describe('VideoPlayer', () => {
     await fireEvent.press(screen.getByRole('button', { name: 'Enter fullscreen' }));
     expect(onFullscreenChange).toHaveBeenCalledWith(true);
 
-    // The parent flips the prop; in fullscreen the controls offer exit + the back button.
+    // The parent flips the prop; in fullscreen both the exit button and the back arrow leave fullscreen.
     await rerenderWith({ fullscreen: true });
     await fireEvent.press(screen.getByRole('button', { name: 'Exit fullscreen' }));
-    expect(onFullscreenChange).toHaveBeenCalledWith(false);
+    expect(onFullscreenChange).toHaveBeenLastCalledWith(false);
+    onFullscreenChange.mockClear();
+    await fireEvent.press(screen.getByRole('button', { name: 'Back' }));
+    expect(onFullscreenChange).toHaveBeenLastCalledWith(false);
+    expect(onBack).not.toHaveBeenCalled();
 
+    await rerenderWith({ fullscreen: false });
     await fireEvent.press(screen.getByRole('button', { name: 'Close video' }));
     expect(onBack).toHaveBeenCalledTimes(1);
   });

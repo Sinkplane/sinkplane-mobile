@@ -1,17 +1,49 @@
-import { StyleSheet, Text, View } from 'react-native';
+import { useMemo, useState } from 'react';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Image } from 'expo-image';
 
 import { ReactionBar } from '@/components/video-page/ReactionBar';
 import type { usePostReaction } from '@/hooks/use-post-reaction';
 import { useThemeColor, type VideoPost } from '@/shared';
-import { formatRelativeDate } from '@/utils/format-video';
+import { formatRelativeDate, htmlToText } from '@/utils/format-video';
 
 interface VideoDetailsProps {
   post: VideoPost;
   reaction: ReturnType<typeof usePostReaction>;
 }
 
-/** Title, channel, reactions and the comments heading shown above the comment list. */
+const COLLAPSED_LINES = 3;
+/** Roughly what fits in the collapsed lines; shorter descriptions get no toggle. */
+const COLLAPSIBLE_CHARS = 160;
+
+/** The post body, collapsed to a few lines with a Show more / Show less toggle when long. */
+function PostDescription({ html }: { html: string | null | undefined }) {
+  const textColor = useThemeColor({}, 'text');
+  const mutedColor = useThemeColor({}, 'icon');
+  const [expanded, setExpanded] = useState(false);
+  const text = useMemo(() => htmlToText(html), [html]);
+  if (!text) return null;
+
+  const collapsible = text.length > COLLAPSIBLE_CHARS || text.split('\n').length > COLLAPSED_LINES;
+  return (
+    <View>
+      <Text
+        testID="post-description"
+        style={[styles.description, { color: textColor }]}
+        numberOfLines={collapsible && !expanded ? COLLAPSED_LINES : undefined}
+      >
+        {text}
+      </Text>
+      {collapsible ? (
+        <Pressable onPress={() => setExpanded(e => !e)} hitSlop={8} accessibilityRole="button" style={styles.showMore}>
+          <Text style={[styles.showMoreText, { color: mutedColor }]}>{expanded ? 'Show less' : 'Show more'}</Text>
+        </Pressable>
+      ) : null}
+    </View>
+  );
+}
+
+/** Title, channel, reactions, description and the comments heading shown above the comment list. */
 export function VideoDetails({ post, reaction }: VideoDetailsProps) {
   const textColor = useThemeColor({}, 'text');
   const mutedColor = useThemeColor({}, 'icon');
@@ -42,6 +74,8 @@ export function VideoDetails({ post, reaction }: VideoDetailsProps) {
         onToggle={reaction.toggle}
       />
       {reaction.error ? <Text style={[styles.error, { color: mutedColor }]}>Couldn&apos;t save your reaction. Try again.</Text> : null}
+
+      <PostDescription html={post.text} />
 
       <Text style={[styles.commentsHeading, { color: textColor }]}>{`Comments · ${post.comments ?? 0}`}</Text>
     </View>
@@ -80,6 +114,18 @@ const styles = StyleSheet.create({
   },
   error: {
     fontSize: 13,
+  },
+  description: {
+    fontSize: 14,
+    lineHeight: 20,
+  },
+  showMore: {
+    marginTop: 4,
+    alignSelf: 'flex-start',
+  },
+  showMoreText: {
+    fontSize: 13,
+    fontWeight: '600',
   },
   commentsHeading: {
     fontSize: 16,

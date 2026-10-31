@@ -1,4 +1,21 @@
-import { formatCount, formatDuration, formatRelativeDate } from '@/utils/format-video';
+import { formatCount, formatDuration, formatRelativeDate, htmlToText } from '@/utils/format-video';
+
+describe('htmlToText', () => {
+  it.each([
+    [undefined, ''],
+    [null, ''],
+    ['', ''],
+    ['<p>Hello <strong>world</strong></p>', 'Hello world'],
+    ['<p>One</p><p>Two</p>', 'One\nTwo'],
+    ['Line<br>break<br/>again<br />', 'Line\nbreak\nagain'],
+    ['<p>A</p>\n\n\n\n<p>B</p>', 'A\n\nB'],
+    ['Tom &amp; Jerry &lt;3 &quot;hi&quot; &apos;yo&apos;&nbsp;!', 'Tom & Jerry <3 "hi" \'yo\' !'],
+    ['&#169; &#x1F383; &#ab; &bogus;', '© 🎃 &#ab; &bogus;'],
+    ['<a href="https://x.test">link</a>   \n tail', 'link\n tail'],
+  ])('converts %p to %p', (html, expected) => {
+    expect(htmlToText(html)).toBe(expected);
+  });
+});
 
 describe('formatDuration', () => {
   it.each([

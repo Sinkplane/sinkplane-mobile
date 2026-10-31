@@ -2,7 +2,8 @@
  * In-memory stand-in for expo-screen-orientation (mapped in jest.config.base.js).
  *
  * `lockAsync` records requested locks and resolves; the enums mirror the real package's values.
- * Tests assert on `lockAsync` calls (e.g. through the `orientation` handle on the E2E runtime).
+ * Tests assert on `lockAsync` calls (e.g. through the `orientation` handle on the E2E runtime) and
+ * rotate the device with `emitOrientationChange`.
  */
 
 export enum OrientationLock {
@@ -36,5 +37,22 @@ export const unlockAsync = jest.fn(async (): Promise<void> => undefined);
 export const getOrientationAsync = jest.fn(async (): Promise<Orientation> => Orientation.PORTRAIT_UP);
 export const getOrientationLockAsync = jest.fn(async (): Promise<OrientationLock> => OrientationLock.DEFAULT);
 export const supportsOrientationLockAsync = jest.fn(async (): Promise<boolean> => true);
-export const addOrientationChangeListener = jest.fn();
+
+type OrientationChangeListener = (event: { orientationInfo: { orientation: Orientation } }) => void;
+const orientationListeners = new Set<OrientationChangeListener>();
+
+export const addOrientationChangeListener = jest.fn((listener: OrientationChangeListener) => {
+  orientationListeners.add(listener);
+  return { remove: () => orientationListeners.delete(listener) };
+});
 export const removeOrientationChangeListener = jest.fn();
+
+/** Simulate the screen rotating: notifies every listener the app subscribed. */
+export function emitOrientationChange(orientation: Orientation) {
+  orientationListeners.forEach(listener => listener({ orientationInfo: { orientation } }));
+}
+
+/** How many orientation listeners are currently subscribed. */
+export function orientationListenerCount() {
+  return orientationListeners.size;
+}

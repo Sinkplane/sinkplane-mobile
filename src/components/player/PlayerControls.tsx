@@ -28,7 +28,8 @@ export interface PlayerControlsProps {
 type IconName = SymbolViewProps['name'];
 
 const ICONS = {
-  back: { ios: 'chevron.down', android: 'keyboard_arrow_down', web: 'keyboard_arrow_down' },
+  close: { ios: 'chevron.down', android: 'keyboard_arrow_down', web: 'keyboard_arrow_down' },
+  back: { ios: 'chevron.left', android: 'arrow_back', web: 'arrow_back' },
   play: { ios: 'play.fill', android: 'play_arrow', web: 'play_arrow' },
   pause: { ios: 'pause.fill', android: 'pause', web: 'pause' },
   replay: { ios: 'arrow.counterclockwise', android: 'replay', web: 'replay' },
@@ -55,7 +56,8 @@ function IconButton({ icon, label, size = 24, onPress }: { icon: IconName; label
 
 /**
  * The on-video control layer: back + speed on top, skip/play in the middle, time, fullscreen and
- * the seek bar at the bottom. Empty areas pass touches through to the gesture surface beneath.
+ * the seek bar at the bottom. Inline, the back button closes the video; in fullscreen it leaves fullscreen.
+ * Empty areas pass touches through to the gesture surface beneath.
  */
 export function PlayerControls(props: PlayerControlsProps) {
   const { playing, ended, fullscreen, onSkip } = props;
@@ -69,7 +71,11 @@ export function PlayerControls(props: PlayerControlsProps) {
   return (
     <View testID="player-controls" style={[styles.overlay, edges]} pointerEvents="box-none">
       <View style={styles.row} pointerEvents="box-none">
-        {props.onBack ? <IconButton icon={ICONS.back} label="Close video" onPress={props.onBack} /> : null}
+        {fullscreen ? (
+          <IconButton icon={ICONS.back} label="Back" onPress={props.onToggleFullscreen} />
+        ) : props.onBack ? (
+          <IconButton icon={ICONS.close} label="Close video" onPress={props.onBack} />
+        ) : null}
         <Text style={styles.title} numberOfLines={1}>
           {fullscreen ? props.title : ''}
         </Text>
