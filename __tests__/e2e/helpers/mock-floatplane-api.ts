@@ -6,7 +6,8 @@
  *  - profile (/status), subscriptions, creator list
  *  - creator content listing (all channels or one), with pagination + sort
  *  - video page: post by id, delivery info, paged comments, like/dislike toggles
- *  - watch progress (get + set)
+ *  - watch progress (get + set) and watch history (offset-paged; POSTing progress moves the
+ *    post to the front of the history, like the real backend)
  *
  * It is stateful (sessions are issued and revoked like the real backend), lets tests script
  * failures, and records every request so tests can assert what the app sent.
@@ -19,6 +20,7 @@ import {
   gamingCreator,
   makeChannelVideos,
   makeComments,
+  makeHistoryEntry,
   makeVideoDelivery,
   makeVideoPost,
   techCreator,
@@ -94,6 +96,14 @@ export class FloatplaneApiMock {
   /** creatorId → channelId → videos (newest first). */
   videos = new Map<string, Map<string, Video[]>>();
   progress = new Map<string, number>();
+  /**
+   * The signed-in user's watch history ({ video, progress, updatedAt }; GET sorts by updatedAt,
+   * newest first). POSTing watch progress upserts the post to the front, like the real backend,
+   * so the "watch a video → see it in history" loop works end-to-end.
+   */
+  history: { video: Video; progress: number; updatedAt: string }[] = [];
+  /** Page size of GET /api/v3/content/history (the server chooses it; 20 like the TV app). */
+  historyPageSize = 20;
   /** Post overrides: id → post (defaults are derived from `videos` + `interactions` + `progress`). */
   posts = new Map<string, VideoPost>();
   /** Comment overrides: postId → list (default: 3 comments per post). */
@@ -125,6 +135,8 @@ export class FloatplaneApiMock {
     this.creators = fixtureCreators;
     this.videos.clear();
     this.progress.clear();
+    this.history = [];
+    this.historyPageSize = 20;
     this.posts.clear();
     this.comments.clear();
     this.deliveries.clear();
@@ -163,6 +175,17 @@ export class FloatplaneApiMock {
     const byChannel = this.videos.get(creatorId) ?? new Map<string, Video[]>();
     byChannel.set(channelId, list);
     this.videos.set(creatorId, byChannel);
+  }
+
+  /** Upsert a watch-history entry for a video (the latest progress + updatedAt win). */
+  seedHistoryEntry(video: Video, progress: number, updatedAt = '2026-01-15T12:00:00.000Z'): void {
+    const existing = this.history.find(entry => entry.video.id === video.id);
+    if (existing) {
+      existing.progress = progress;
+      existing.updatedAt = updatedAt;
+    } else {
+      this.history.push({ video, progress, updatedAt });
+    }
   }
 
   /** Make the next `count` matching requests fail with `response`. */
@@ -249,6 +272,8 @@ export class FloatplaneApiMock {
       }
       case 'GET /api/v3/content/creator':
         return this.contentCreator(req.params);
+      case 'GET /api/v3/content/history':
+        return this.contentHistory(req.params);
       case 'GET /api/v3/content/progress': {
         const ids = this.indexedParams(req.params);
         return { status: 200, body: ids.filter(id => this.progress.has(id)).map(id => ({ id, progress: this.progress.get(id) })) };
@@ -275,11 +300,8 @@ export class FloatplaneApiMock {
         return this.toggleReaction(req, 'like');
       case 'POST /api/v3/content/dislike':
         return this.toggleReaction(req, 'dislike');
-      case 'POST /api/v3/content/progress': {
-        const { id, progress } = req.body ?? {};
-        this.progress.set(String(id), Math.floor(Number(progress)));
-        return { status: 200, body: 'OK' };
-      }
+      case 'POST /api/v3/content/progress':
+        return this.saveProgress(req);
       default:
         return null;
     }
@@ -347,12 +369,32 @@ export class FloatplaneApiMock {
     return { status: 200, body: ordered.slice(fetchAfter, fetchAfter + limit) };
   }
 
+  /** One page of the watch history, newest watch first, continuing after `offset`. */
+  private contentHistory(params: URLSearchParams): MockResponse {
+    const offset = Number(params.get('offset') ?? 0);
+    const ordered = [...this.history].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+    const page = ordered
+      .slice(offset, offset + this.historyPageSize)
+      .map(entry => makeHistoryEntry(entry.video, entry.progress, entry.updatedAt));
+    return { status: 200, body: page };
+  }
+
+  /** Save watch progress — and move the post to the front of the history, like the real backend. */
+  private saveProgress(req: RecordedRequest): MockResponse {
+    const { id, progress } = req.body ?? {};
+    const watched = Math.floor(Number(progress));
+    this.progress.set(String(id), watched);
+    const video = this.findVideo(String(id));
+    if (video) this.seedHistoryEntry(video, watched, new Date().toISOString());
+    return { status: 200, body: 'OK' };
+  }
+
   /** The post an id maps to: an explicit override, or one derived from the feed fixtures. */
   private postFor(id: string): VideoPost | null {
     const override = this.posts.get(id);
     if (override) return override;
 
-    const video = [...this.videos.values()].flatMap(byChannel => [...byChannel.values()].flat()).find(v => v.id === id);
+    const video = this.findVideo(id);
     if (!video) return null;
 
     const interaction = this.interactions.get(id) ?? null;
@@ -384,6 +426,11 @@ export class FloatplaneApiMock {
   }
 
   // -- internals ----------------------------------------------------------------------------
+
+  /** A video by id from any creator/channel registered in the content store. */
+  private findVideo(id: string): Video | undefined {
+    return [...this.videos.values()].flatMap(byChannel => [...byChannel.values()].flat()).find(v => v.id === id);
+  }
 
   private defaultAccount(): Account {
     return { username: 'testuser', email: 'test@example.com', password: 'hunter2', twoFactorCode: null, emailConfirmed: true };

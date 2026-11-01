@@ -50,11 +50,12 @@ Always install packages with `npx expo install <package>` so versions resolve SD
   - `sign-in.tsx` — Username/password + Turnstile sign-in, on the `assets/images/bg.jpg` photo background (fixed white-on-dark palette).
   - `(tabs)/_layout.tsx` — `NativeTabs` (`expo-router/native-tabs`; Android `md` icons need `expo-symbols`).
   - `(tabs)/index.tsx` — Videos tab: infinite list of the active creator's posts, channel chips, newest/oldest sort.
+  - `(tabs)/history.tsx` — History tab (as in the TV app): the watch history (`/api/v3/content/history`, offset-paged) with saved progress, newest watch first; refetches when the tab regains focus. Tapping an item opens the video page.
   - `(tabs)/settings.tsx` — Profile, theme switcher (System / Light / Dark via shared `useTheme`), subscriptions, sign out.
   - `video/[id].tsx` — Video page: player, title/channel, like/dislike, paged comments. Tapping a list item opens it.
 - **`src/components/player/`** — `VideoPlayer` (expo-video, `nativeControls={false}`) with custom touch controls: tap toggles the overlay, double-tap left/right half skips ∓15s, press-and-hold plays at 2×, speed menu (persisted), seek bar, fullscreen. Auto picture-in-picture + background audio when the app is backgrounded.
 - **`src/components/video-page/`** — `VideoDetails`, `ReactionBar`, `CommentItem`.
-- **`src/hooks/`, `src/utils/`** — data hooks (`use-post-comments`, `use-post-reaction`), player hooks (`use-player-gestures`, `use-watch-progress`, `use-fullscreen-orientation`), formatting and `stream-source` (delivery info → HLS source).
+- **`src/hooks/`, `src/utils/`** — data hooks (`use-post-comments`, `use-post-reaction`, `use-watch-history`), player hooks (`use-player-gestures`, `use-watch-progress`, `use-fullscreen-orientation`), formatting and `stream-source` (delivery info → HLS source).
 - **`src/shared.ts`** — The ONLY place that imports `@sinkplane/shared` subpaths. See below.
 - **`assets/`** — Icons, splash images.
 - **`scripts/`** — `link-shared-dist.sh` (local shared-package override).
@@ -111,7 +112,7 @@ Jest (`jest-expo` preset) with React Native Testing Library v14. Two suites, eac
 Coverage thresholds only apply to coverage runs (`test:*:coverage`, `test:ci`); Jest exits non-zero when a metric drops below its threshold. `jest.config.js` runs both suites ungated for `npx jest` / editor integrations.
 
 - **Unit tests** render one component/hook in isolation. Shared helpers live in `jest/` (alias `@test/*`): `fixtures.ts` (user, creators, channels, videos, pinned `FIXED_NOW`) and `mocks/expo-secure-store.ts` (in-memory store, mapped for every suite).
-- **E2E tests** boot the real Expo Router app (`src/app`) with `expo-router/testing-library` against a stateful in-memory Floatplane API that replaces `fetch` (`__tests__/e2e/helpers/mock-floatplane-api.ts`: password login + Turnstile token check, 2FA, sessions, content, progress; supports failure injection, `NETWORK_ERROR`, and latency). Only native-only modules are mocked (`helpers/native-mocks.ts`: the Turnstile WebView, splash screen); native tabs render as their real host components.
+- **E2E tests** boot the real Expo Router app (`src/app`) with `expo-router/testing-library` against a stateful in-memory Floatplane API that replaces `fetch` (`__tests__/e2e/helpers/mock-floatplane-api.ts`: password login + Turnstile token check, 2FA, sessions, content, progress, watch history; supports failure injection, `NETWORK_ERROR`, and latency). Only native-only modules are mocked (`helpers/native-mocks.ts`: the Turnstile WebView, splash screen); native tabs render as their real host components.
 - Each E2E test starts with `const rt = loadRuntime()` (fresh module registry + reset API/storage), then `rt.seedSession()` / `rt.renderApp(url)`. Under fake timers use `rt.until(...)` instead of `waitFor`. Other helpers: `rt.turnstile.solve()`, `rt.selectTab()` / `rt.inTab()` / `rt.selectedTab()` (non-focused tabs stay mounted, so scope queries), `rt.listItemIds()` / `rt.reachListEnd()` (FlatList virtualizes), `rt.pressWithoutWaiting()` (assert in-flight UI).
 - RNTL v14: `render`, `renderHook`, and `fireEvent.*` are async — always `await` them.
 - Tests need `@sinkplane/shared` with `auth/passwordLogin` (≥ 0.1.2, or `npm run link:shared`).
