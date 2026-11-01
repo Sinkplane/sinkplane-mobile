@@ -40,6 +40,21 @@ describe('tabs', () => {
     await rt.until(() => expect(app.getPathname()).toBe('/'));
     expect(rt.selectedTab()).toBe('index');
   });
+
+  it('switches to the History tab and back from the tab bar', async () => {
+    rt.seedSession();
+    const app = await rt.renderApp();
+    await rt.until(() => expect(rt.inTab('index').getByText('Main Channel Video 01')).toBeTruthy());
+
+    await rt.selectTab('history');
+    await rt.until(() => expect(app.getPathname()).toBe('/history'));
+    expect(rt.selectedTab()).toBe('history');
+    expect(rt.inTab('history').getByText('Watch History')).toBeTruthy();
+
+    await rt.selectTab('index');
+    await rt.until(() => expect(app.getPathname()).toBe('/'));
+    expect(rt.selectedTab()).toBe('index');
+  });
 });
 
 describe('not found', () => {

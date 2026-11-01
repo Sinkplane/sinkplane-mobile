@@ -86,7 +86,7 @@ export function pressWithoutWaiting(element: { unstable_fiber: Fiber | null }): 
 // Non-focused tabs stay mounted (native tabs preload them), so scope queries with inTab().
 // ---------------------------------------------------------------------------
 
-export type TabName = 'index' | 'settings';
+export type TabName = 'index' | 'history' | 'settings';
 
 const tabHost = () => {
   const [host] = screen.container.queryAll(node => node.type === 'RNSTabsHostIOS');

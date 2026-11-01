@@ -8,7 +8,7 @@
  *    interleaves channels and paginates (page size 20) while a single channel fits one page.
  */
 
-import type { Channel, Creator, Subscription, User, Video, VideoDelivery, VideoPost } from '@/shared';
+import type { Channel, ContentHistoryEntry, Creator, Subscription, User, Video, VideoDelivery, VideoPost } from '@/shared';
 import type { PostComment } from '@/hooks/use-post-comments';
 
 /** The clock every test runs against (relative dates are computed from it). */
@@ -175,6 +175,22 @@ export function makeChannelVideos(creator: Creator, channel: Channel, slot = 0):
       likes: i === 0 ? 1500 : i,
     });
   });
+}
+
+// ---------------------------------------------------------------------------
+// Watch history — /api/v3/content/history fixtures.
+// ---------------------------------------------------------------------------
+
+/** A watch-history entry as returned by /api/v3/content/history (newest watch first). */
+export function makeHistoryEntry(video: Video, progress: number, updatedAt = '2026-01-15T12:00:00.000Z'): ContentHistoryEntry {
+  return {
+    userId: fixtureUser.id,
+    contentId: video.id,
+    contentType: 'blogPost',
+    progress,
+    updatedAt,
+    blogPost: video,
+  };
 }
 
 // ---------------------------------------------------------------------------
