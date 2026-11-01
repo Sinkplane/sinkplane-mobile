@@ -23,6 +23,10 @@ export default function TabLayout() {
         <NativeTabs.Trigger.Label>Videos</NativeTabs.Trigger.Label>
         <NativeTabs.Trigger.Icon sf={{ default: 'play.rectangle', selected: 'play.rectangle.fill' }} md="video_library" />
       </NativeTabs.Trigger>
+      <NativeTabs.Trigger name="history" contentStyle={{ backgroundColor }} disableAutomaticContentInsets={disableAutomaticContentInsets}>
+        <NativeTabs.Trigger.Label>History</NativeTabs.Trigger.Label>
+        <NativeTabs.Trigger.Icon sf={{ default: 'clock', selected: 'clock.fill' }} md="history" />
+      </NativeTabs.Trigger>
       <NativeTabs.Trigger name="settings" contentStyle={{ backgroundColor }} disableAutomaticContentInsets={disableAutomaticContentInsets}>
         <NativeTabs.Trigger.Label>Settings</NativeTabs.Trigger.Label>
         <NativeTabs.Trigger.Icon sf={{ default: 'gearshape', selected: 'gearshape.fill' }} md="settings" />

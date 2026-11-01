@@ -32,12 +32,14 @@ export { useGetVideoProgress } from '@sinkplane/shared/videos/useGetVideoProgres
 export { useGetVideoPost } from '@sinkplane/shared/videos/useGetVideoPost';
 export { useGetVideoDelivery } from '@sinkplane/shared/videos/useGetVideoDelivery';
 export { useUpdateVideoProgress } from '@sinkplane/shared/videos/useUpdateVideoProgress';
+export { useGetWatchHistoryInfinite } from '@sinkplane/shared/videos/useGetWatchHistory';
 
 export type { User } from '@sinkplane/shared/types/user.interface';
 export type { Subscription } from '@sinkplane/shared/types/subscriptions.interface';
 export type { Video } from '@sinkplane/shared/types/video.interface';
 export type { VideoPost } from '@sinkplane/shared/types/video-post.interface';
 export type { VideoDelivery } from '@sinkplane/shared/types/video-delivery.interface';
+export type { ContentHistoryEntry } from '@sinkplane/shared/types/history.interface';
 // The creator-list module intentionally collides with video.interface names (Creator, Channel);
 // these are the session-side shapes returned by useSession().
 export type { Channel, Creator } from '@sinkplane/shared/types/creator-list.interface';
