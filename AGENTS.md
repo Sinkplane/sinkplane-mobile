@@ -51,11 +51,13 @@ Always install packages with `npx expo install <package>` so versions resolve SD
   - `(tabs)/_layout.tsx` — `NativeTabs` (`expo-router/native-tabs`; Android `md` icons need `expo-symbols`).
   - `(tabs)/index.tsx` — Videos tab: infinite list of the active creator's posts, channel chips, newest/oldest sort.
   - `(tabs)/history.tsx` — History tab (as in the TV app): the watch history (`/api/v3/content/history`, offset-paged) with saved progress, newest watch first; refetches when the tab regains focus. Tapping an item opens the video page.
-  - `(tabs)/settings.tsx` — Profile, theme switcher (System / Light / Dark via shared `useTheme`), subscriptions, sign out.
+  - `(tabs)/settings.tsx` — Profile, theme switcher (System / Light / Dark via shared `useTheme`), notifications (`components/settings/NotificationSettings`), subscriptions, sign out.
   - `video/[id].tsx` — Video page: player, title/channel, like/dislike, paged comments. Tapping a list item opens it.
 - **`src/components/player/`** — `VideoPlayer` (expo-video, `nativeControls={false}`) with custom touch controls: tap toggles the overlay, double-tap left/right half skips ∓15s, press-and-hold plays at 2×, speed menu (persisted), seek bar, fullscreen. Auto picture-in-picture + background audio when the app is backgrounded.
 - **`src/components/video-page/`** — `VideoDetails`, `ReactionBar`, `CommentItem`.
-- **`src/hooks/`, `src/utils/`** — data hooks (`use-post-comments`, `use-post-reaction`, `use-watch-history`), player hooks (`use-player-gestures`, `use-watch-progress`, `use-fullscreen-orientation`), formatting and `stream-source` (delivery info → HLS source).
+- **`src/notifications/`** — new-post notifications (see "Notifications notes"): `floatplane-socket` (sync socket client), `creator-notification` (payload parsing), `local-notifications` (permission + presenting), `notification-settings-api` (Floatplane's per-creator switches), `notification-store` (secure-store state), `background-check` (the background task).
+- **`index.ts`** — app entry: defines the background task at module scope, then loads `expo-router/entry`.
+- **`src/hooks/`, `src/utils/`** — data hooks (`use-post-comments`, `use-post-reaction`, `use-watch-history`), notification hooks (`use-notification-sync` in the root navigator, `use-notification-navigation` in the tab layout, `use-notification-preferences`, `use-creator-notification-settings`), player hooks (`use-player-gestures`, `use-watch-progress`, `use-fullscreen-orientation`), formatting and `stream-source` (delivery info → HLS source).
 - **`src/shared.ts`** — The ONLY place that imports `@sinkplane/shared` subpaths. See below.
 - **`assets/`** — Icons, splash images.
 - **`scripts/`** — `link-shared-dist.sh` (local shared-package override).
@@ -84,6 +86,7 @@ Other shared-package notes:
 | Captcha (login) | Cloudflare Turnstile in `react-native-webview` |
 | Video playback | `expo-video` (config plugin: PiP + background playback) |
 | Orientation | `expo-screen-orientation` |
+| Notifications | `expo-notifications` (local only), `expo-background-task` + `expo-task-manager` |
 
 ### Player notes
 
@@ -91,6 +94,18 @@ Other shared-package notes:
 - `app.json` allows every orientation; the root layout locks portrait. On the video page (`use-fullscreen-orientation`) the screen is unlocked once a stream is playable, so rotating the device enters/leaves fullscreen. After the user toggles fullscreen by hand (fullscreen button, the fullscreen back arrow, Android back), the screen locks to their choice for the rest of the visit: a locked screen reports no rotations, so there's no signal to hand control back.
 - Posts without a video (image/text posts) show the first picture attachment's thumbnail, else the post thumbnail, else no media area.
 - `VideoPlayer` reads `source` once: `useVideoPlayer` replaces the source (restarting playback) whenever its JSON changes, e.g. a refetched delivery URL or refreshed token.
+
+### Notifications notes
+
+Floatplane pushes only to its own apps (Firebase), so this app builds local notifications from two sources:
+
+- **Live (app in the foreground):** Floatplane's sync socket, the same one floatplane.com uses. It is Sails on Socket.IO v2 (Engine.IO 3), spoken directly over `WebSocket` in `floatplane-socket.ts` (no socket.io-client): `wss://www.floatplane.com/socket.io/?__sails_io_sdk_version=…&EIO=3&transport=websocket`, then emit `post /api/v3/socket/tk/connect` with `{ token }` (token mode; `/api/v3/socket/connect` is the cookie variant and ignores `Authorization`). Events arrive as `42["syncEvent",{"event":"creatorNotification","data":{eventType:"CONTENT_POST_RELEASE",title,message,creator,channel,content:<postId>,target:{url},…}}]`. EIO3 means the **client** pings (`2`) every `pingInterval`. The socket is closed while the app is backgrounded.
+- **Background:** `expo-background-task` runs `checkForNewPosts` about every 15+ min (OS-scheduled; physical iOS devices only, not the simulator). It lists creators from `/api/v3/user/notification/list`, fetches each one's newest posts, and notifies about posts released since the previous run.
+- Both paths key posts as `post:<postId>` and share a seen list (`notification-store`), so a post shows once. Tapping opens `/video/[id]`, including the tap that cold-launched the app (it waits for the root navigator to be ready).
+- Floatplane's per-creator `contentFirebase` switch (its "push notifications" setting, shared with floatplane.com) gates both paths. Settings edits it and `contentEmail` through `/api/v3/user/notification/update` `{ creator, property, newValue }`.
+- Background state lives in secure store with `AFTER_FIRST_UNLOCK` so the task can read it on a locked iPhone. The session token is mirrored to `sinkplane.notifications.session` for this reason (the shared `fptoken` uses the default accessibility). Sign-out clears it and cancels the task.
+- First signed-in launch asks for notification permission. The in-app switch stays off when the OS denies it (Settings then links to system settings).
+- `app.json` sets `enableRemoteNotifications: false` (no APNs entitlement, so personal-team signing works). Adding these native modules requires a new development build.
 
 ### Auth notes (gotchas learned the hard way)
 
@@ -111,8 +126,8 @@ Jest (`jest-expo` preset) with React Native Testing Library v14. Two suites, eac
 
 Coverage thresholds only apply to coverage runs (`test:*:coverage`, `test:ci`); Jest exits non-zero when a metric drops below its threshold. `jest.config.js` runs both suites ungated for `npx jest` / editor integrations.
 
-- **Unit tests** render one component/hook in isolation. Shared helpers live in `jest/` (alias `@test/*`): `fixtures.ts` (user, creators, channels, videos, pinned `FIXED_NOW`) and `mocks/expo-secure-store.ts` (in-memory store, mapped for every suite).
-- **E2E tests** boot the real Expo Router app (`src/app`) with `expo-router/testing-library` against a stateful in-memory Floatplane API that replaces `fetch` (`__tests__/e2e/helpers/mock-floatplane-api.ts`: password login + Turnstile token check, 2FA, sessions, content, progress, watch history; supports failure injection, `NETWORK_ERROR`, and latency). Only native-only modules are mocked (`helpers/native-mocks.ts`: the Turnstile WebView, splash screen); native tabs render as their real host components.
+- **Unit tests** render one component/hook in isolation. Shared helpers live in `jest/` (alias `@test/*`): `fixtures.ts` (user, creators, channels, videos, pinned `FIXED_NOW`) and `mocks/` (mapped for every suite: in-memory `expo-secure-store`; `expo-notifications` with permission state, presented notifications, and `tapNotification()`; `expo-task-manager` / `expo-background-task` with `mockTaskManager.run(name)` to run a task like the OS would).
+- **E2E tests** boot the real Expo Router app (`src/app`) with `expo-router/testing-library` against a stateful in-memory Floatplane API that replaces `fetch` (`__tests__/e2e/helpers/mock-floatplane-api.ts`: password login + Turnstile token check, 2FA, sessions, content, progress, watch history, notification settings; supports failure injection, `NETWORK_ERROR`, and latency), plus an in-memory sync socket server that replaces `WebSocket` (`helpers/mock-floatplane-socket.ts`; `rt.socket.notifyPostRelease(...)` pushes a live notification). Only native-only modules are mocked (`helpers/native-mocks.ts`: the Turnstile WebView, splash screen); native tabs render as their real host components.
 - Each E2E test starts with `const rt = loadRuntime()` (fresh module registry + reset API/storage), then `rt.seedSession()` / `rt.renderApp(url)`. Under fake timers use `rt.until(...)` instead of `waitFor`. Other helpers: `rt.turnstile.solve()`, `rt.selectTab()` / `rt.inTab()` / `rt.selectedTab()` (non-focused tabs stay mounted, so scope queries), `rt.listItemIds()` / `rt.reachListEnd()` (FlatList virtualizes), `rt.pressWithoutWaiting()` (assert in-flight UI).
 - RNTL v14: `render`, `renderHook`, and `fireEvent.*` are async — always `await` them.
 - Tests need `@sinkplane/shared` with `auth/passwordLogin` (≥ 0.1.2, or `npm run link:shared`).

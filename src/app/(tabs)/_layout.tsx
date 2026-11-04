@@ -1,9 +1,12 @@
 import { Platform } from 'react-native';
 import { NativeTabs } from 'expo-router/native-tabs';
 
+import { useNotificationNavigation } from '@/hooks/use-notification-navigation';
 import { useThemeColor } from '@/shared';
 
 export default function TabLayout() {
+  // Tapped notifications open their video (this layout only exists while signed in).
+  useNotificationNavigation();
   const backgroundColor = useThemeColor({}, 'background');
   // The shared dark tint (#aaa) is nearly indistinguishable from the unselected icon color.
   const tintColor = useThemeColor({ dark: '#fff' }, 'tabIconSelected');

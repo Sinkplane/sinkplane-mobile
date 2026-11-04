@@ -21,6 +21,10 @@ module.exports = {
     // recorder — both modules require native code that Jest cannot load.
     '^expo-video$': '<rootDir>/jest/mocks/expo-video.tsx',
     '^expo-screen-orientation$': '<rootDir>/jest/mocks/expo-screen-orientation.ts',
+    // Local notifications + background scheduling: recorders the tests can inspect and drive.
+    '^expo-notifications$': '<rootDir>/jest/mocks/expo-notifications.ts',
+    '^expo-task-manager$': '<rootDir>/jest/mocks/expo-task-manager.ts',
+    '^expo-background-task$': '<rootDir>/jest/mocks/expo-background-task.ts',
   },
   // With `npm run link:shared`, @sinkplane/shared resolves (by realpath) into the sibling clone,
   // whose own node_modules is not this app's. Fall back to this app's node_modules so bare
