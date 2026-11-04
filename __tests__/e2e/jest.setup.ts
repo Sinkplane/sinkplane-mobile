@@ -18,7 +18,7 @@ afterEach(async () => {
 // The auth/session code logs a lot; keep failure output readable. React warnings and unexpected
 // errors stay visible. Silenced: the app's own tagged error/warning logs (tests trigger those failures on
 // purpose and assert the UI instead) and the polyfill notice caused by the fetch mock.
-const EXPECTED_LOGS = [/^\[(SignIn|Turnstile|Auth|ApiClient)\]/, /Failed to set polyfill/];
+const EXPECTED_LOGS = [/^\[(SignIn|Turnstile|Auth|ApiClient|Notifications)\]/, /Failed to set polyfill/];
 const isExpected = (args: unknown[]) => typeof args[0] === 'string' && EXPECTED_LOGS.some(pattern => pattern.test(args[0] as string));
 for (const level of ['error', 'warn'] as const) {
   // eslint-disable-next-line no-console -- keep the real logger for unexpected messages

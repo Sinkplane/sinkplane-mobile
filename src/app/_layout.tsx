@@ -6,10 +6,15 @@ import { StatusBar } from 'expo-status-bar';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 import { lockPortrait } from '@/hooks/use-fullscreen-orientation';
+import { useNotificationSync } from '@/hooks/use-notification-sync';
+import { configureNotifications } from '@/notifications/local-notifications';
 import { SessionProvider, ThemeProvider as AppThemeProvider, useColorScheme, useSession, useTheme } from '@/shared';
 
 // Prevent the splash screen from auto-hiding before the first render is ready.
 SplashScreen.preventAutoHideAsync();
+
+// Show new-post notifications in the foreground too, and create the Android channel.
+configureNotifications().catch(error => console.error('[Notifications] Setup failed:', error));
 
 // Create a query client instance
 const queryClient = new QueryClient({
@@ -61,8 +66,10 @@ function RootNavigation() {
 
 // Create a new component that can access the SessionProvider context.
 function RootNavigator() {
-  const { token } = useSession();
+  const { token, isLoading } = useSession();
   const signedIn = !!token;
+
+  useNotificationSync(token, isLoading);
 
   return (
     <Stack screenOptions={{ headerShown: false }}>
