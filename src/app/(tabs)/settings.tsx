@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Image } from 'expo-image';
 import { ThemeSwitcher } from '@/components/ThemeSwitcher';
+import { NotificationSettings } from '@/components/settings/NotificationSettings';
 import { useTabScreenInsets } from '@/hooks/use-tab-screen-insets';
 import { logout, useSession, useThemeColor } from '@/shared';
 
@@ -58,6 +59,11 @@ export default function Settings() {
         <Text style={[styles.sectionHeader, { color: textColor }]}>Appearance</Text>
         <View style={styles.section}>
           <ThemeSwitcher />
+        </View>
+
+        <Text style={[styles.sectionHeader, { color: textColor }]}>Notifications</Text>
+        <View style={styles.section}>
+          <NotificationSettings token={token} />
         </View>
 
         <Text style={[styles.sectionHeader, { color: textColor }]}>Subscriptions</Text>

@@ -8,6 +8,7 @@
  *  - video page: post by id, delivery info, paged comments, like/dislike toggles
  *  - watch progress (get + set) and watch history (offset-paged; POSTing progress moves the
  *    post to the front of the history, like the real backend)
+ *  - per-creator notification settings (list + update; one entry per subscribed creator)
  *
  * It is stateful (sessions are issued and revoked like the real backend), lets tests script
  * failures, and records every request so tests can assert what the app sent.
@@ -113,6 +114,9 @@ export class FloatplaneApiMock {
   /** The signed-in user's reaction per post, as toggled through like/dislike. */
   interactions = new Map<string, 'like' | 'dislike' | null>();
 
+  /** Per-creator notification switches (unset creators: push on, email off, like Floatplane). */
+  notificationSettings = new Map<string, { contentFirebase: boolean; contentEmail: boolean }>();
+
   /** Simulated network latency (ms of fake time) applied to every response. */
   latencyMs = 0;
 
@@ -141,6 +145,7 @@ export class FloatplaneApiMock {
     this.comments.clear();
     this.deliveries.clear();
     this.interactions.clear();
+    this.notificationSettings.clear();
     this.failures.clear();
     this.latencyMs = 0;
     this.tokenCounter = 0;
@@ -274,6 +279,10 @@ export class FloatplaneApiMock {
         return this.contentCreator(req.params);
       case 'GET /api/v3/content/history':
         return this.contentHistory(req.params);
+      case 'GET /api/v3/user/notification/list':
+        return { status: 200, body: this.notificationList() };
+      case 'POST /api/v3/user/notification/update':
+        return this.updateNotificationSetting(req.body ?? {});
       case 'GET /api/v3/content/progress': {
         const ids = this.indexedParams(req.params);
         return { status: 200, body: ids.filter(id => this.progress.has(id)).map(id => ({ id, progress: this.progress.get(id) })) };
@@ -367,6 +376,38 @@ export class FloatplaneApiMock {
     const fetchAfter = Number(params.get('fetchAfter') ?? 0);
     const limit = Number(params.get('limit') ?? 10);
     return { status: 200, body: ordered.slice(fetchAfter, fetchAfter + limit) };
+  }
+
+  /** Settings for one creator (defaults when never changed). */
+  notificationSettingFor(creatorId: string): { contentFirebase: boolean; contentEmail: boolean } {
+    return this.notificationSettings.get(creatorId) ?? { contentFirebase: true, contentEmail: false };
+  }
+
+  private notificationList(): unknown[] {
+    return this.subscriptions.flatMap(sub => {
+      const creator = this.creators.find(c => c.id === sub.creator);
+      if (!creator) return [];
+      return [
+        {
+          creator,
+          userNotificationSetting: {
+            creator: creator.id,
+            user: fixtureUser.id,
+            ...this.notificationSettingFor(creator.id),
+            creatorMessageEmail: true,
+          },
+        },
+      ];
+    });
+  }
+
+  private updateNotificationSetting(body: Record<string, unknown>): MockResponse {
+    const { creator, property, newValue } = body;
+    if (typeof creator !== 'string' || (property !== 'contentFirebase' && property !== 'contentEmail') || typeof newValue !== 'boolean') {
+      return apiError(400, 'invalidBodyError', 'Invalid notification setting.');
+    }
+    this.notificationSettings.set(creator, { ...this.notificationSettingFor(creator), [property]: newValue });
+    return { status: 200, body: { [property]: newValue } };
   }
 
   /** One page of the watch history, newest watch first, continuing after `offset`. */
