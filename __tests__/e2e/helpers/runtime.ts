@@ -18,6 +18,10 @@ type NativeMocks = typeof import('./native-mocks');
 type SecureStoreMock = typeof import('@test/mocks/expo-secure-store');
 type VideoMock = typeof import('@test/mocks/expo-video');
 type OrientationMock = typeof import('@test/mocks/expo-screen-orientation');
+type NotificationsMock = typeof import('@test/mocks/expo-notifications');
+type TaskManagerMock = typeof import('@test/mocks/expo-task-manager');
+type BackgroundTaskMock = typeof import('@test/mocks/expo-background-task');
+type SocketModule = typeof import('./mock-floatplane-socket');
 type ReactNative = typeof import('react-native');
 
 export type Runtime = TestUtils & {
@@ -31,6 +35,13 @@ export type Runtime = TestUtils & {
   mockVideoPlayerState: VideoMock['mockVideoPlayerState'];
   /** The mapped expo-screen-orientation mock (assert orientation locks). */
   orientation: OrientationMock;
+  /** The in-memory sync socket server (push live notifications with `socket.notifyPostRelease`). */
+  socket: SocketModule['socketServer'];
+  /** expo-notifications mock: permission, presented notifications, taps. */
+  notifications: NotificationsMock;
+  /** expo-task-manager mock: defined/registered background tasks (`run` one like the OS would). */
+  taskManager: TaskManagerMock['mockTaskManager'];
+  backgroundTask: BackgroundTaskMock['mockBackgroundTask'];
   /** Android hardware-back subscriptions captured while the app runs (press them to exit fullscreen). */
   backHandlers: Array<(event?: unknown) => boolean | null | undefined>;
 };
@@ -46,11 +57,15 @@ export function loadRuntime(): Runtime {
   // then test-utils pulls in expo-router/testing-library (the instance every helper shares).
   const nativeMocks = jest.requireActual<NativeMocks>('./native-mocks');
   const apiModule = jest.requireActual<ApiModule>('./mock-floatplane-api');
+  const socketModule = jest.requireActual<SocketModule>('./mock-floatplane-socket');
   const utils = jest.requireActual<TestUtils>('./test-utils');
   const secureStore = jest.requireActual<SecureStoreMock>('@test/mocks/expo-secure-store');
   const videoMock = jest.requireActual<VideoMock>('@test/mocks/expo-video');
   const orientationMock = jest.requireActual<OrientationMock>('@test/mocks/expo-screen-orientation');
   const reactNative = jest.requireActual<ReactNative>('react-native');
+  const notificationsMock = jest.requireActual<NotificationsMock>('@test/mocks/expo-notifications');
+  const taskManagerMock = jest.requireActual<TaskManagerMock>('@test/mocks/expo-task-manager');
+  const backgroundTaskMock = jest.requireActual<BackgroundTaskMock>('@test/mocks/expo-background-task');
 
   jest.spyOn(reactNative.BackHandler, 'addEventListener').mockImplementation((_event, handler) => {
     backHandlers.push(handler as () => boolean | null | undefined);
@@ -58,6 +73,10 @@ export function loadRuntime(): Runtime {
   });
 
   apiModule.api.reset();
+  socketModule.socketServer.reset();
+  notificationsMock.mockNotifications.reset();
+  taskManagerMock.mockTaskManager.reset();
+  backgroundTaskMock.mockBackgroundTask.reset();
   secureStore.items.clear();
   nativeMocks.mockWebViewState.props = null;
   nativeMocks.mockWebViewState.mounts = 0;
@@ -72,6 +91,10 @@ export function loadRuntime(): Runtime {
     linking: reactNative.Linking,
     mockVideoPlayerState: videoMock.mockVideoPlayerState,
     orientation: orientationMock,
+    socket: socketModule.socketServer,
+    notifications: notificationsMock,
+    taskManager: taskManagerMock.mockTaskManager,
+    backgroundTask: backgroundTaskMock.mockBackgroundTask,
     backHandlers,
   } as Runtime;
   // RNTL reassigns `screen` on every render, so read it live. (A getter in the object literal

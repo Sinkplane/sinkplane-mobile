@@ -13,3 +13,7 @@ export const setItemAsync = jest.fn(async (key: string, value: string): Promise<
 export const deleteItemAsync = jest.fn(async (key: string): Promise<void> => {
   items.delete(key);
 });
+
+// Keychain accessibility constants (values as in the native module; the mock ignores them).
+export const AFTER_FIRST_UNLOCK = 0;
+export const WHEN_UNLOCKED = 5;

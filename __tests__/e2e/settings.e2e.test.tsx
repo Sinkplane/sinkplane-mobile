@@ -22,6 +22,8 @@ const colorOf = (element: { props: { style?: unknown } }) => StyleSheet.flatten(
 const videosBackground = () => StyleSheet.flatten(rt.screen.getByTestId('videos-list').parent?.props.style)?.backgroundColor;
 
 async function openSettings(options?: Parameters<Runtime['seedSession']>[0]) {
+  // Notifications stay off here (their section, and its per-creator list, has its own suite).
+  rt.notifications.mockNotifications.promptAnswer = 'denied';
   const token = rt.seedSession(options);
   await rt.renderApp();
   await rt.until(() => expect(rt.inTab('index').getByText('Main Channel Video 01')).toBeTruthy());
