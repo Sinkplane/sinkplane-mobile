@@ -3,7 +3,7 @@ import { AppState } from 'react-native';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { getPermissionState, requestPermission, type PermissionState } from '@/notifications/local-notifications';
-import { getNotificationsEnabled, setNotificationsEnabled } from '@/notifications/notification-store';
+import { getNotificationsEnabled, resetSeenBaseline, setNotificationsEnabled } from '@/notifications/notification-store';
 
 export interface NotificationPreferences {
   /** The in-app switch (null: never asked). */
@@ -27,7 +27,8 @@ export const notificationsActive = (preferences: NotificationPreferences | undef
  * The new-post notifications switch plus the OS permission behind it. Turning it on asks for the
  * permission when the OS still allows prompting; when the permission is refused the switch stays
  * off (the UI then points at system settings). Permission is re-read whenever the app returns to
- * the foreground, since it can be changed in system settings meanwhile.
+ * the foreground, since it can be changed in system settings meanwhile. Switching it on restarts
+ * the "new since" clock.
  */
 export function useNotificationPreferences() {
   const queryClient = useQueryClient();
@@ -44,6 +45,8 @@ export function useNotificationPreferences() {
     mutationFn: async (enable: boolean): Promise<NotificationPreferences> => {
       const permission = enable ? await requestPermission() : await getPermissionState();
       const enabled = enable && permission === 'granted';
+      // Posts released while notifications were off aren't new.
+      if (enabled) await resetSeenBaseline();
       await setNotificationsEnabled(enabled);
       return { enabled, permission };
     },

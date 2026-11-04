@@ -4,7 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 
 import { NotificationSettings } from '@/components/settings/NotificationSettings';
-import { getNotificationsEnabled, setNotificationsEnabled } from '@/notifications/notification-store';
+import { getNotificationsEnabled, loadSeenState, saveSeenState, setNotificationsEnabled } from '@/notifications/notification-store';
 import { mockNotifications, requestPermissionsAsync } from '@test/mocks/expo-notifications';
 
 // ---------------------------------------------------------------------------
@@ -102,6 +102,19 @@ describe('main switch', () => {
     expect(requestPermissionsAsync).toHaveBeenCalled();
     expect(await getNotificationsEnabled()).toBe(true);
     await waitFor(() => expect(screen.getByLabelText('Notifications for LTT')).toBeTruthy());
+  });
+
+  it('restarts the "new since" clock when turned on, keeping what was shown', async () => {
+    await saveSeenState({ since: 1, checkedAt: 2, pending: { c1: 1 }, ids: ['post:a'] });
+    await renderSettings();
+    await waitFor(() => expect(mainSwitch().props.disabled).toBe(false));
+    const before = Date.now();
+    await fireEvent(mainSwitch(), 'valueChange', true);
+    await waitFor(() => expect(mainSwitch().props.value).toBe(true));
+    const state = await loadSeenState();
+    expect(state).toMatchObject({ pending: {}, ids: ['post:a'] });
+    expect(state?.since).toBeGreaterThanOrEqual(before);
+    expect(state?.checkedAt).toBe(state?.since);
   });
 
   it('turns off and hides the creator list', async () => {
