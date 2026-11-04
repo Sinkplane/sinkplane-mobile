@@ -2,7 +2,7 @@ import { Platform } from 'react-native';
 import * as Notifications from 'expo-notifications';
 
 import type { AppNotification } from './creator-notification';
-import { markSeen } from './notification-store';
+import { deliverOnce } from './notification-store';
 
 /**
  * Showing notifications on this device. Floatplane only pushes to its own apps (Firebase), so this
@@ -73,9 +73,9 @@ export async function presentNotification(notification: AppNotification): Promis
   });
 }
 
-/** Present unless this notification was already shown (by either delivery path). Returns whether it was shown. */
-export async function notifyOnce(notification: AppNotification): Promise<boolean> {
-  if (!(await markSeen(notification.id))) return false;
-  await presentNotification(notification);
-  return true;
-}
+/**
+ * Present unless this notification was already shown (by either delivery path). Returns whether it
+ * was shown. It's only recorded as shown once presenting succeeded, so a failure can be retried.
+ */
+export const notifyOnce = (notification: AppNotification): Promise<boolean> =>
+  deliverOnce(notification.id, () => presentNotification(notification));

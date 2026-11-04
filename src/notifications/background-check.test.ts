@@ -11,11 +11,13 @@ import { loadSeenState, markSeen, saveSeenState, setBackgroundSession, setNotifi
 import type { Video } from '@/shared';
 import { gamingCreator, gamingMainChannel, makeVideo, techCreator, techMainChannel } from '@test/fixtures';
 import { BackgroundTaskResult, BackgroundTaskStatus, mockBackgroundTask } from '@test/mocks/expo-background-task';
-import { mockNotifications } from '@test/mocks/expo-notifications';
+import { mockNotifications, scheduleNotificationAsync } from '@test/mocks/expo-notifications';
 import { defineTask, mockTaskManager } from '@test/mocks/expo-task-manager';
 
 const NOW = Date.parse('2026-10-28T12:00:00.000Z');
 const LAST_RUN = NOW - 20 * 60 * 1000;
+/** Notifications were switched on long before the last run (so the slack window applies in full). */
+const SINCE = LAST_RUN - 24 * RELEASE_SLACK_MS;
 
 const respond = (status: number, body: unknown) =>
   ({ ok: status === 200, status, json: async () => body, text: async () => JSON.stringify(body) }) as Response;
@@ -47,7 +49,7 @@ beforeEach(async () => {
   mockNotifications.setPermission('granted');
   await setNotificationsEnabled(true);
   await setBackgroundSession('tok');
-  await saveSeenState({ checkedAt: LAST_RUN, ids: [] });
+  await saveSeenState({ since: SINCE, checkedAt: LAST_RUN, pending: {}, ids: [] });
 });
 
 const techPost = (id: string, releasedAgoMs: number) =>
@@ -65,7 +67,7 @@ describe('checkForNewPosts', () => {
     expect(await checkForNewPosts(NOW)).toBe(2);
     expect(presentedIds()).toEqual(['post:g-new', 'post:t-new']);
     expect(mockNotifications.presented[1].content).toMatchObject({ title: 'New post from Tech Channel', body: 'Tech t-new' });
-    expect(await loadSeenState()).toEqual({ checkedAt: NOW, ids: ['post:t-new', 'post:g-new'] });
+    expect(await loadSeenState()).toEqual({ since: SINCE, checkedAt: NOW, pending: {}, ids: ['post:t-new', 'post:g-new'] });
 
     // Same posts next run: nothing new.
     expect(await checkForNewPosts(NOW + 60_000)).toBe(0);
@@ -115,7 +117,80 @@ describe('checkForNewPosts', () => {
     await saveSeenState(null);
     postsByCreator[techCreator.id] = [techPost('existing', 60_000)];
     expect(await checkForNewPosts(NOW)).toBe(0);
-    expect(await loadSeenState()).toEqual({ checkedAt: NOW, ids: [] });
+    expect(await loadSeenState()).toEqual({ since: NOW, checkedAt: NOW, pending: {}, ids: [] });
+  });
+
+  it('never notifies about posts released before notifications were switched on', async () => {
+    const enabledAt = NOW - 10 * 60_000;
+    await saveSeenState({ since: enabledAt, checkedAt: enabledAt, pending: {}, ids: [] });
+    postsByCreator[techCreator.id] = [techPost('before', 30 * 60_000), techPost('after', 5 * 60_000)];
+    expect(await checkForNewPosts(NOW)).toBe(1);
+    expect(presentedIds()).toEqual(['post:after']);
+  });
+
+  it('keeps a failed creator’s window until its posts can be fetched', async () => {
+    jest.spyOn(console, 'error').mockImplementation(() => undefined);
+    // Released between the last run and this one, but the request fails.
+    postsByCreator[gamingCreator.id] = 'error';
+    expect(await checkForNewPosts(NOW)).toBe(0);
+    expect(await loadSeenState()).toMatchObject({ checkedAt: NOW, pending: { [gamingCreator.id]: LAST_RUN } });
+
+    // Still failing after a long gap: the original window is kept, not the latest run.
+    const later = NOW + 3 * RELEASE_SLACK_MS;
+    expect(await checkForNewPosts(later)).toBe(0);
+    expect(await loadSeenState()).toMatchObject({ checkedAt: later, pending: { [gamingCreator.id]: LAST_RUN } });
+
+    postsByCreator[gamingCreator.id] = [gamingPost('missed', 10 * 60_000)];
+    postsByCreator[techCreator.id] = [techPost('stale', 10 * 60_000)];
+    expect(await checkForNewPosts(later + 60_000)).toBe(1);
+    expect(presentedIds()).toEqual(['post:missed']);
+    expect(await loadSeenState()).toMatchObject({ pending: {} });
+  });
+
+  it('forgets a failed creator’s window once notifications for it are switched off', async () => {
+    jest.spyOn(console, 'error').mockImplementation(() => undefined);
+    postsByCreator[gamingCreator.id] = 'error';
+    await checkForNewPosts(NOW);
+    settings[1].contentFirebase = false;
+    await checkForNewPosts(NOW + 60_000);
+    expect(await loadSeenState()).toMatchObject({ pending: {} });
+  });
+
+  it('retries the whole batch when the first notification fails to show', async () => {
+    postsByCreator[techCreator.id] = [techPost('a', 2 * 60_000), techPost('b', 60_000)];
+    scheduleNotificationAsync.mockRejectedValueOnce(new Error('native failure'));
+    await expect(checkForNewPosts(NOW)).rejects.toThrow('native failure');
+    expect(await loadSeenState()).toEqual({ since: SINCE, checkedAt: LAST_RUN, pending: {}, ids: [] });
+
+    expect(await checkForNewPosts(NOW + 60_000)).toBe(2);
+    expect(presentedIds()).toEqual(['post:a', 'post:b']);
+  });
+
+  it('keeps what was shown when a later notification fails, and retries the rest', async () => {
+    postsByCreator[techCreator.id] = [techPost('a', 2 * 60_000), techPost('b', 60_000)];
+    scheduleNotificationAsync.mockImplementationOnce(async request => {
+      mockNotifications.presented.push(request);
+      return request.identifier ?? '';
+    });
+    scheduleNotificationAsync.mockRejectedValueOnce(new Error('native failure'));
+    await expect(checkForNewPosts(NOW)).rejects.toThrow('native failure');
+    expect(await loadSeenState()).toMatchObject({ checkedAt: LAST_RUN, ids: ['post:a'] });
+
+    expect(await checkForNewPosts(NOW + 60_000)).toBe(1);
+    expect(presentedIds()).toEqual(['post:a', 'post:b']);
+  });
+
+  it('does not lose ids the live socket records while it runs', async () => {
+    postsByCreator[techCreator.id] = [techPost('bg', 60_000)];
+    let live: Promise<boolean> | undefined;
+    scheduleNotificationAsync.mockImplementationOnce(async request => {
+      live = markSeen('post:live');
+      mockNotifications.presented.push(request);
+      return request.identifier ?? '';
+    });
+    expect(await checkForNewPosts(NOW)).toBe(1);
+    expect(await live).toBe(true);
+    expect((await loadSeenState())?.ids.sort()).toEqual(['post:bg', 'post:live']);
   });
 
   it('ignores a malformed post list and posts without a release date', async () => {

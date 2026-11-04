@@ -9,7 +9,7 @@ import {
   presentNotification,
   requestPermission,
 } from '@/notifications/local-notifications';
-import { mockNotifications, requestPermissionsAsync } from '@test/mocks/expo-notifications';
+import { mockNotifications, requestPermissionsAsync, scheduleNotificationAsync } from '@test/mocks/expo-notifications';
 
 const notification = { id: 'post:p1', title: 'New post from LTT', body: 'A video', creatorId: 'c1', postId: 'p1' };
 
@@ -95,6 +95,18 @@ describe('presenting', () => {
   it('notifyOnce shows each id once', async () => {
     expect(await notifyOnce(notification)).toBe(true);
     expect(await notifyOnce(notification)).toBe(false);
+    expect(mockNotifications.presented).toHaveLength(1);
+  });
+
+  it('notifyOnce shows simultaneous copies of an event once', async () => {
+    expect(await Promise.all([notifyOnce(notification), notifyOnce(notification)])).toEqual([true, false]);
+    expect(mockNotifications.presented).toHaveLength(1);
+  });
+
+  it('notifyOnce retries a notification that failed to show', async () => {
+    scheduleNotificationAsync.mockRejectedValueOnce(new Error('native failure'));
+    await expect(notifyOnce(notification)).rejects.toThrow('native failure');
+    expect(await notifyOnce(notification)).toBe(true);
     expect(mockNotifications.presented).toHaveLength(1);
   });
 
