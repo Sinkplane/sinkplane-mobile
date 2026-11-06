@@ -6,6 +6,7 @@
  *  - profile (/status), subscriptions, creator list
  *  - creator content listing (all channels or one), with pagination + sort
  *  - video page: post by id, delivery info, paged comments, like/dislike toggles
+ *  - livestreams: live delivery info for streams in `liveNow`, 404 for offline ones (like the real API)
  *  - watch progress (get + set) and watch history (offset-paged; POSTing progress moves the
  *    post to the front of the history, like the real backend)
  *  - per-creator notification settings (list + update; one entry per subscribed creator)
@@ -22,6 +23,7 @@ import {
   makeChannelVideos,
   makeComments,
   makeHistoryEntry,
+  makeLiveDelivery,
   makeVideoDelivery,
   makeVideoPost,
   techCreator,
@@ -111,6 +113,10 @@ export class FloatplaneApiMock {
   comments = new Map<string, PostComment[]>();
   /** Delivery overrides: attachment guid → payload (default: playable delivery). */
   deliveries = new Map<string, VideoDelivery>();
+  /** Livestream ids currently broadcasting (delivery info answers 404 for the rest). */
+  liveNow = new Set<string>();
+  /** Live delivery overrides: livestream id → payload (default: makeLiveDelivery). */
+  liveDeliveries = new Map<string, VideoDelivery>();
   /** The signed-in user's reaction per post, as toggled through like/dislike. */
   interactions = new Map<string, 'like' | 'dislike' | null>();
 
@@ -120,7 +126,7 @@ export class FloatplaneApiMock {
   /** Simulated network latency (ms of fake time) applied to every response. */
   latencyMs = 0;
 
-  private failures = new Map<string, { remaining: number; response: MockResponse }>();
+  private failures = new Map<string, { remaining: number; response: MockResponse; where?: (req: RecordedRequest) => boolean }>();
   private tokenCounter = 0;
 
   constructor() {
@@ -144,6 +150,8 @@ export class FloatplaneApiMock {
     this.posts.clear();
     this.comments.clear();
     this.deliveries.clear();
+    this.liveNow.clear();
+    this.liveDeliveries.clear();
     this.interactions.clear();
     this.notificationSettings.clear();
     this.failures.clear();
@@ -193,13 +201,21 @@ export class FloatplaneApiMock {
     }
   }
 
-  /** Make the next `count` matching requests fail with `response`. */
-  failRequests(method: string, path: string, response: MockResponse, count = 1): void {
-    this.failures.set(`${method.toUpperCase()} ${path}`, { remaining: count, response });
+  /**
+   * Make the next `count` matching requests fail with `response`. `where` narrows which requests to
+   * the path count (e.g. only on-demand or only live delivery checks).
+   */
+  failRequests(method: string, path: string, response: MockResponse, count = 1, where?: (req: RecordedRequest) => boolean): void {
+    this.failures.set(`${method.toUpperCase()} ${path}`, { remaining: count, response, where });
   }
 
   requestsTo(path: string, method?: string): RecordedRequest[] {
     return this.requests.filter(req => req.path === path && (!method || req.method === method.toUpperCase()));
+  }
+
+  /** Delivery info requests of one kind: video playback (`onDemand`) or livestream status checks (`live`). */
+  deliveryRequests(scenario: 'onDemand' | 'live'): RecordedRequest[] {
+    return this.requestsTo('/api/v3/delivery/info').filter(req => req.params.get('scenario') === scenario);
   }
 
   // -- fetch entry point ------------------------------------------------------------------
@@ -223,7 +239,7 @@ export class FloatplaneApiMock {
 
     if (this.latencyMs > 0) await new Promise(resolve => setTimeout(resolve, this.latencyMs));
 
-    const failure = this.consumeFailure(method, url.pathname);
+    const failure = this.consumeFailure(request);
     // Compared by value: tests import NETWORK_ERROR from a different module registry than this instance.
     if (failure?.status === NETWORK_ERROR.status) throw new TypeError('Network request failed');
     if (failure) return respond(failure);
@@ -299,10 +315,8 @@ export class FloatplaneApiMock {
         const post = this.postFor(req.params.get('id') ?? '');
         return post ? { status: 200, body: post } : apiError(404, 'notFoundError', 'No post with that id.');
       }
-      case 'GET /api/v3/delivery/info': {
-        const guid = req.params.get('entityId') ?? '';
-        return { status: 200, body: this.deliveries.get(guid) ?? makeVideoDelivery(guid) };
-      }
+      case 'GET /api/v3/delivery/info':
+        return this.deliveryInfo(req.params);
       case 'GET /api/v3/comment':
         return this.postComments(req.params);
       case 'POST /api/v3/content/like':
@@ -447,6 +461,16 @@ export class FloatplaneApiMock {
     });
   }
 
+  /** Playback info for a video attachment guid, or (`entityKind=livestream`) a livestream id. */
+  private deliveryInfo(params: URLSearchParams): MockResponse {
+    const entityId = params.get('entityId') ?? '';
+    if (params.get('entityKind') !== 'livestream') {
+      return { status: 200, body: this.deliveries.get(entityId) ?? makeVideoDelivery(entityId) };
+    }
+    if (!this.liveNow.has(entityId)) return apiError(404, 'notFoundError', 'The livestream is not live.');
+    return { status: 200, body: this.liveDeliveries.get(entityId) ?? makeLiveDelivery(entityId) };
+  }
+
   /** One page of a post's comments, continuing after `fetchAfter` (the last id already loaded). */
   private postComments(params: URLSearchParams): MockResponse {
     const postId = params.get('blogPost') ?? '';
@@ -488,10 +512,10 @@ export class FloatplaneApiMock {
     return `${prefix}-${this.tokenCounter}`;
   }
 
-  private consumeFailure(method: string, path: string): MockResponse | null {
-    const key = `${method} ${path}`;
+  private consumeFailure(req: RecordedRequest): MockResponse | null {
+    const key = `${req.method} ${req.path}`;
     const queued = this.failures.get(key);
-    if (!queued) return null;
+    if (!queued || (queued.where && !queued.where(req))) return null;
     queued.remaining -= 1;
     if (queued.remaining <= 0) this.failures.delete(key);
     return queued.response;

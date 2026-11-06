@@ -5,6 +5,7 @@ import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { PlayerPlaceholder } from '@/components/player/PlayerPlaceholder';
 import { VideoPlayer } from '@/components/player/VideoPlayer';
 import { CommentItem } from '@/components/video-page/CommentItem';
 import { VideoDetails } from '@/components/video-page/VideoDetails';
@@ -22,25 +23,12 @@ import {
 } from '@/shared';
 import { buildVideoSource, getStreamUrl } from '@/utils/stream-source';
 
-function PlayerPlaceholder({ message, onRetry }: { message?: string; onRetry?: () => void }) {
-  return (
-    <View testID="player-placeholder" style={styles.placeholder}>
-      {message ? <Text style={styles.placeholderText}>{message}</Text> : <ActivityIndicator color="#fff" />}
-      {onRetry ? (
-        <Pressable onPress={onRetry} style={styles.retryButton} accessibilityRole="button">
-          <Text style={styles.retryText}>Retry</Text>
-        </Pressable>
-      ) : null}
-    </View>
-  );
-}
-
 /** Media slot for posts without a video: picture posts show their image, text-only posts show nothing. */
 function PostImage({ post }: { post: VideoPost }) {
   const uri = post.pictureAttachments?.[0]?.thumbnail?.path ?? post.thumbnail?.path;
   if (!uri) return null;
   return (
-    <View testID="post-image" style={styles.placeholder}>
+    <View testID="post-image" style={styles.postImage}>
       <Image source={uri} style={StyleSheet.absoluteFill} contentFit="contain" accessibilityLabel={post.title} />
     </View>
   );
@@ -148,27 +136,10 @@ const styles = StyleSheet.create({
   fullscreen: {
     backgroundColor: '#000',
   },
-  placeholder: {
+  postImage: {
     width: '100%',
     aspectRatio: 16 / 9,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 12,
     backgroundColor: '#000',
-  },
-  placeholderText: {
-    color: '#fff',
-    fontSize: 15,
-  },
-  retryButton: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 16,
-    backgroundColor: 'rgba(255, 255, 255, 0.15)',
-  },
-  retryText: {
-    color: '#fff',
-    fontWeight: '600',
   },
   content: {
     paddingHorizontal: 16,

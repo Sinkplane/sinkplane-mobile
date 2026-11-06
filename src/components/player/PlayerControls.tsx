@@ -16,6 +16,8 @@ export interface PlayerControlsProps {
   bufferedPosition: number;
   rate: number;
   fullscreen: boolean;
+  /** Live stream: no seeking, skipping or speed changes; a LIVE badge replaces the time. */
+  live?: boolean;
   onTogglePlay: () => void;
   onSkip: (seconds: number) => void;
   onSeek: (seconds: number) => void;
@@ -54,71 +56,94 @@ function IconButton({ icon, label, size = 24, onPress }: { icon: IconName; label
   );
 }
 
-/**
- * The on-video control layer: back + speed on top, skip/play in the middle, time, fullscreen and
- * the seek bar at the bottom. Inline, the back button closes the video; in fullscreen it leaves fullscreen.
- * Empty areas pass touches through to the gesture surface beneath.
- */
-export function PlayerControls(props: PlayerControlsProps) {
-  const { playing, ended, fullscreen, onSkip } = props;
-  const insets = useSafeAreaInsets();
-  const edges = fullscreen
-    ? { paddingLeft: insets.left + 12, paddingRight: insets.right + 12, paddingTop: 12, paddingBottom: Math.max(insets.bottom, 12) }
-    : null;
+function LiveBadge() {
+  return (
+    <View testID="player-live-badge" style={styles.liveBadge}>
+      <View style={styles.liveDot} />
+      <Text style={styles.liveText}>LIVE</Text>
+    </View>
+  );
+}
+
+function SpeedButton({ rate, onPress }: { rate: number; onPress: () => void }) {
+  return (
+    <Pressable
+      onPress={onPress}
+      hitSlop={8}
+      style={({ pressed }) => [styles.speedButton, pressed && styles.pressed]}
+      accessibilityRole="button"
+      accessibilityLabel={`Playback speed ${formatRate(rate)}`}
+    >
+      <SymbolView name={ICONS.speed} size={18} tintColor="#fff" />
+      <Text style={styles.speedText}>{`${rate}×`}</Text>
+    </Pressable>
+  );
+}
+
+/** Back / close, the title (fullscreen only) and the speed button. */
+function TopRow({ title, fullscreen, live, rate, onOpenSpeedMenu, onToggleFullscreen, onBack }: PlayerControlsProps) {
+  return (
+    <View style={styles.row} pointerEvents="box-none">
+      {fullscreen ? (
+        <IconButton icon={ICONS.back} label="Back" onPress={onToggleFullscreen} />
+      ) : onBack ? (
+        <IconButton icon={ICONS.close} label="Close video" onPress={onBack} />
+      ) : null}
+      <Text style={styles.title} numberOfLines={1}>
+        {fullscreen ? title : ''}
+      </Text>
+      {live ? null : <SpeedButton rate={rate} onPress={onOpenSpeedMenu} />}
+    </View>
+  );
+}
+
+/** Skip back, play/pause/replay, skip forward (live: play/pause only). */
+function CenterRow({ playing, ended, live, onTogglePlay, onSkip }: PlayerControlsProps) {
   const playIcon = ended ? ICONS.replay : playing ? ICONS.pause : ICONS.play;
   const playLabel = ended ? 'Replay' : playing ? 'Pause' : 'Play';
+  const skipButton = (seconds: number) => (
+    <IconButton
+      icon={seconds < 0 ? ICONS.skipBack : ICONS.skipForward}
+      label={`${seconds < 0 ? 'Back' : 'Forward'} ${SEEK_STEP_SECONDS} seconds`}
+      size={30}
+      onPress={() => onSkip(seconds)}
+    />
+  );
 
   return (
-    <View testID="player-controls" style={[styles.overlay, edges]} pointerEvents="box-none">
+    <View style={styles.center} pointerEvents="box-none">
+      {live ? null : skipButton(-SEEK_STEP_SECONDS)}
+      <IconButton icon={playIcon} label={playLabel} size={44} onPress={onTogglePlay} />
+      {live ? null : skipButton(SEEK_STEP_SECONDS)}
+    </View>
+  );
+}
+
+/** Time (live: the LIVE badge), fullscreen toggle and the seek bar. */
+function BottomRow(props: PlayerControlsProps) {
+  const { live, fullscreen } = props;
+  return (
+    <View pointerEvents="box-none">
       <View style={styles.row} pointerEvents="box-none">
-        {fullscreen ? (
-          <IconButton icon={ICONS.back} label="Back" onPress={props.onToggleFullscreen} />
-        ) : props.onBack ? (
-          <IconButton icon={ICONS.close} label="Close video" onPress={props.onBack} />
-        ) : null}
-        <Text style={styles.title} numberOfLines={1}>
-          {fullscreen ? props.title : ''}
-        </Text>
-        <Pressable
-          onPress={props.onOpenSpeedMenu}
-          hitSlop={8}
-          style={({ pressed }) => [styles.speedButton, pressed && styles.pressed]}
-          accessibilityRole="button"
-          accessibilityLabel={`Playback speed ${formatRate(props.rate)}`}
-        >
-          <SymbolView name={ICONS.speed} size={18} tintColor="#fff" />
-          <Text style={styles.speedText}>{`${props.rate}×`}</Text>
-        </Pressable>
-      </View>
-
-      <View style={styles.center} pointerEvents="box-none">
-        <IconButton
-          icon={ICONS.skipBack}
-          label={`Back ${SEEK_STEP_SECONDS} seconds`}
-          size={30}
-          onPress={() => onSkip(-SEEK_STEP_SECONDS)}
-        />
-        <IconButton icon={playIcon} label={playLabel} size={44} onPress={props.onTogglePlay} />
-        <IconButton
-          icon={ICONS.skipForward}
-          label={`Forward ${SEEK_STEP_SECONDS} seconds`}
-          size={30}
-          onPress={() => onSkip(SEEK_STEP_SECONDS)}
-        />
-      </View>
-
-      <View pointerEvents="box-none">
-        <View style={styles.row} pointerEvents="box-none">
+        {live ? (
+          <View style={styles.time}>
+            <LiveBadge />
+          </View>
+        ) : (
           <Text testID="player-time" style={styles.time}>
             {`${formatDuration(props.currentTime)} / ${formatDuration(props.duration)}`}
           </Text>
-          <IconButton
-            icon={fullscreen ? ICONS.exitFullscreen : ICONS.enterFullscreen}
-            label={fullscreen ? 'Exit fullscreen' : 'Enter fullscreen'}
-            size={20}
-            onPress={props.onToggleFullscreen}
-          />
-        </View>
+        )}
+        <IconButton
+          icon={fullscreen ? ICONS.exitFullscreen : ICONS.enterFullscreen}
+          label={fullscreen ? 'Exit fullscreen' : 'Enter fullscreen'}
+          size={20}
+          onPress={props.onToggleFullscreen}
+        />
+      </View>
+      {live ? (
+        <View style={styles.liveSpacer} />
+      ) : (
         <SeekBar
           currentTime={props.currentTime}
           duration={props.duration}
@@ -126,7 +151,27 @@ export function PlayerControls(props: PlayerControlsProps) {
           onSeek={props.onSeek}
           onScrub={props.onScrub}
         />
-      </View>
+      )}
+    </View>
+  );
+}
+
+/**
+ * The on-video control layer: back + speed on top, skip/play in the middle, time, fullscreen and
+ * the seek bar at the bottom. Inline, the back button closes the video; in fullscreen it leaves fullscreen.
+ * Live streams only get play/pause and fullscreen. Empty areas pass touches through to the gesture surface beneath.
+ */
+export function PlayerControls(props: PlayerControlsProps) {
+  const insets = useSafeAreaInsets();
+  const edges = props.fullscreen
+    ? { paddingLeft: insets.left + 12, paddingRight: insets.right + 12, paddingTop: 12, paddingBottom: Math.max(insets.bottom, 12) }
+    : null;
+
+  return (
+    <View testID="player-controls" style={[styles.overlay, edges]} pointerEvents="box-none">
+      <TopRow {...props} />
+      <CenterRow {...props} />
+      <BottomRow {...props} />
     </View>
   );
 }
@@ -173,6 +218,31 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
     fontVariant: ['tabular-nums'],
+  },
+  liveBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    gap: 5,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 4,
+    backgroundColor: '#e0001b',
+  },
+  liveDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#fff',
+  },
+  liveText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+  },
+  liveSpacer: {
+    height: 8,
   },
   time: {
     flex: 1,

@@ -42,4 +42,4 @@ export type { VideoDelivery } from '@sinkplane/shared/types/video-delivery.inter
 export type { ContentHistoryEntry } from '@sinkplane/shared/types/history.interface';
 // The creator-list module intentionally collides with video.interface names (Creator, Channel);
 // these are the session-side shapes returned by useSession().
-export type { Channel, Creator } from '@sinkplane/shared/types/creator-list.interface';
+export type { Channel, Creator, LiveStream } from '@sinkplane/shared/types/creator-list.interface';
