@@ -407,5 +407,72 @@ describe('VideoPlayer', () => {
       });
       expect(screen.queryByTestId('player-error')).toBeNull();
     });
+
+    it('reports each failure through onError with the native message', async () => {
+      const onError = jest.fn();
+      const { player } = await renderPlayer({ onError });
+
+      await fail(player, 'HTTP 404: File Not Found');
+      expect(onError).toHaveBeenCalledTimes(1);
+      expect(onError).toHaveBeenCalledWith('HTTP 404: File Not Found');
+
+      await act(async () => {
+        player.setStatus('readyToPlay');
+      });
+      await fail(player);
+      expect(onError).toHaveBeenCalledTimes(2);
+      expect(onError).toHaveBeenLastCalledWith(undefined);
+    });
+
+    it('Retry calls onRetry instead of reloading the original source when given', async () => {
+      const onRetry = jest.fn();
+      const { player } = await renderPlayer({ onRetry });
+      await fail(player, 'boom');
+
+      await fireEvent.press(screen.getByRole('button', { name: 'Retry' }));
+
+      expect(onRetry).toHaveBeenCalledTimes(1);
+      expect(player.replaceAsync).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('live mode', () => {
+    it('autoplays without saving progress and shows live controls', async () => {
+      const { player, onSaveProgress, unmount } = await renderPlayer({ live: true, initialTime: 120 });
+      await startPlaying(player, 500);
+      expect(player.seeks).toEqual([500]);
+      await act(async () => player.pause());
+
+      expect(screen.getByTestId('player-live-badge')).toBeTruthy();
+      expect(screen.queryByTestId('player-seek-bar')).toBeNull();
+      expect(screen.queryByRole('button', { name: /^Playback speed/ })).toBeNull();
+      expect(screen.getByLabelText('Live video. Tap to show controls')).toBeTruthy();
+
+      await unmount();
+      expect(onSaveProgress).not.toHaveBeenCalled();
+    });
+
+    it('ignores double-tap seeks and press-and-hold', async () => {
+      const { player } = await renderPlayer({ live: true });
+      await startPlaying(player);
+      const seeks = player.seeks.length;
+
+      await tap(250);
+      await advance(100);
+      await tap(250);
+      expect(player.seeks).toHaveLength(seeks);
+      expect(screen.queryByTestId('seek-feedback-forward')).toBeNull();
+
+      await fireEvent(screen.getByTestId('player-gesture-surface'), 'longPress');
+      expect(player.playbackRate).toBe(1);
+      expect(screen.queryByTestId('hold-speed-badge')).toBeNull();
+    });
+
+    it('always plays at 1× regardless of the stored speed', async () => {
+      secureStore.set('playbackSpeed', JSON.stringify(1.5));
+      const { player } = await renderPlayer({ live: true });
+      await advance(0);
+      expect(player.playbackRate).toBe(1);
+    });
   });
 });

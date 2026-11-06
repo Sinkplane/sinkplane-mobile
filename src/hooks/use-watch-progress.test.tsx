@@ -210,4 +210,17 @@ describe('useWatchProgress', () => {
     expect(second).toHaveBeenCalledWith(40);
     expect(first).toHaveBeenCalledTimes(1);
   });
+
+  it('only autoplays without a save callback (live streams)', async () => {
+    const mock = createMockVideoPlayer();
+    const { unmount } = await renderHook(() => useWatchProgress(mock as unknown as VideoPlayer, undefined, undefined));
+
+    await act(async () => mock.setStatus('readyToPlay'));
+    expect(mock.play).toHaveBeenCalled();
+    await act(async () => {
+      emitTime(mock, 40);
+      mock.pause();
+    });
+    await expect(unmount()).resolves.toBeUndefined();
+  });
 });

@@ -9,9 +9,10 @@ const MIN_PROGRESS_DELTA = 2;
 
 /**
  * Starts playback once the source is ready, resuming at `initialTime`, and reports the watch position
- * through `save` periodically while playing, on pause, and when the player unmounts.
+ * through `save` periodically while playing, on pause, and when the player unmounts (live streams
+ * pass no `save`: they only need the autoplay).
  */
-export function useWatchProgress(player: VideoPlayer, initialTime: number | undefined, save: (seconds: number) => void) {
+export function useWatchProgress(player: VideoPlayer, initialTime: number | undefined, save: ((seconds: number) => void) | undefined) {
   const lastSaved = useRef(initialTime ?? 0);
   const position = useRef(initialTime ?? 0);
   const resumed = useRef(false);
@@ -26,7 +27,7 @@ export function useWatchProgress(player: VideoPlayer, initialTime: number | unde
   const saveIfMoved = (seconds: number, minDelta: number) => {
     if (Math.abs(seconds - lastSaved.current) < minDelta) return;
     lastSaved.current = seconds;
-    saveRef.current(seconds);
+    saveRef.current?.(seconds);
   };
 
   const resume = () => {

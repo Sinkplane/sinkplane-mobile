@@ -22,8 +22,22 @@ export interface VideoPlayerProps {
   onFullscreenChange: (fullscreen: boolean) => void;
   onBack?: () => void;
   /** Called with the watch position (seconds) to persist it. */
-  onSaveProgress: (seconds: number) => void;
+  onSaveProgress?: (seconds: number) => void;
+  /**
+   * Live stream: no seeking (skip buttons, double-tap, seek bar), no speed changes (menu, hold
+   * for 2×) and no saved progress; the controls show a LIVE badge instead of the time.
+   */
+  live?: boolean;
+  /** Called with the native error message whenever the stream fails to load or play. */
+  onError?: (message: string | undefined) => void;
+  /** Replaces the error overlay's default Retry (reloading the original source). */
+  onRetry?: () => void;
 }
+
+const GESTURE_LABELS = {
+  live: 'Live video. Tap to show controls',
+  onDemand: 'Video. Tap to show controls, double-tap a side to skip, press and hold for 2× speed',
+};
 
 const SEEK_FEEDBACK_MS = 600;
 
@@ -49,6 +63,29 @@ function usePlaybackState(player: ReturnType<typeof useVideoPlayer>) {
   });
 
   return { playing: isPlaying, ended, status, error, currentTime: time.currentTime, bufferedPosition: time.bufferedPosition };
+}
+
+/**
+ * The playback speed picked in the speed menu (persisted across videos), applied to the player
+ * unless a press-and-hold boost is active. Live streams always play at 1×.
+ */
+function usePlaybackRate(player: ReturnType<typeof useVideoPlayer>, live: boolean, holding: boolean) {
+  const [[, storedRate], setStoredRate] = useStorageState<number>('playbackSpeed');
+  const rate = live ? 1 : (storedRate ?? 1);
+
+  useEffect(() => {
+    if (!holding) player.playbackRate = rate;
+  }, [player, rate, holding]);
+
+  return [rate, setStoredRate] as const;
+}
+
+/** Live streams autoplay without resuming a saved position or reporting watch progress. */
+function usePlaybackProgress(
+  player: ReturnType<typeof useVideoPlayer>,
+  { live, initialTime, onSaveProgress }: Pick<VideoPlayerProps, 'live' | 'initialTime' | 'onSaveProgress'>,
+) {
+  useWatchProgress(player, live ? undefined : initialTime, live ? undefined : onSaveProgress);
 }
 
 /** Controls stay up while paused/ended/scrubbing, and hide after a few idle seconds while playing. */
@@ -117,6 +154,39 @@ function PlaybackFeedback({ seek, holding, loading }: { seek: SeekFeedback | nul
   );
 }
 
+/**
+ * Reacts to playback errors: leaves fullscreen (the error overlay replaces the controls, incl. the
+ * exit-fullscreen button, so don't strand the user there) and reports the error. Returns the
+ * overlay's Retry action: `onRetry`, or else reloading the original source.
+ */
+function usePlaybackErrors(
+  player: ReturnType<typeof useVideoPlayer>,
+  initialSource: VideoSource,
+  { status, error }: ReturnType<typeof usePlaybackState>,
+  { fullscreen, onFullscreenChange, onError, onRetry }: Pick<VideoPlayerProps, 'fullscreen' | 'onFullscreenChange' | 'onError' | 'onRetry'>,
+) {
+  useEffect(() => {
+    if (status === 'error' && fullscreen) onFullscreenChange(false);
+  }, [status, fullscreen, onFullscreenChange]);
+
+  const onErrorRef = useRef(onError);
+  onErrorRef.current = onError;
+  const message = error?.message;
+  useEffect(() => {
+    if (status === 'error') onErrorRef.current?.(message);
+  }, [status, message]);
+
+  return (
+    onRetry ??
+    (() => {
+      player
+        .replaceAsync(initialSource)
+        .then(() => player.play())
+        .catch(() => {});
+    })
+  );
+}
+
 /** Shown when the stream fails to load or play; Retry reloads the same source. */
 function PlaybackError({ message, onRetry }: { message?: string; onRetry: () => void }) {
   return (
@@ -148,6 +218,9 @@ export function VideoPlayer({
   onFullscreenChange,
   onBack,
   onSaveProgress,
+  live,
+  onError,
+  onRetry,
 }: VideoPlayerProps) {
   const [initialSource] = useState(source);
   const player = useVideoPlayer(initialSource, p => {
@@ -156,25 +229,17 @@ export function VideoPlayer({
     p.showNowPlayingNotification = true;
   });
   const state = usePlaybackState(player);
-  useWatchProgress(player, initialTime, onSaveProgress);
+  usePlaybackProgress(player, { live, initialTime, onSaveProgress });
 
-  const [[, storedRate], setStoredRate] = useStorageState<number>('playbackSpeed');
-  const rate = storedRate ?? 1;
   const [holding, setHolding] = useState(false);
+  const [rate, setStoredRate] = usePlaybackRate(player, !!live, holding);
   const [scrubTime, setScrubTime] = useState<number | null>(null);
   const [speedMenuOpen, setSpeedMenuOpen] = useState(false);
   const [inPictureInPicture, setInPictureInPicture] = useState(false);
   const seekFeedback = useSeekFeedback();
   const controls = useControlsVisibility(!state.playing || scrubTime !== null || speedMenuOpen);
 
-  useEffect(() => {
-    if (!holding) player.playbackRate = rate;
-  }, [player, rate, holding]);
-
-  // The error overlay replaces the controls (incl. the exit-fullscreen button), so don't strand the user in fullscreen.
-  useEffect(() => {
-    if (state.status === 'error' && fullscreen) onFullscreenChange(false);
-  }, [state.status, fullscreen, onFullscreenChange]);
+  const retry = usePlaybackErrors(player, initialSource, state, { fullscreen, onFullscreenChange, onError, onRetry });
 
   const duration = player.duration > 0 ? player.duration : fallbackDuration;
 
@@ -190,11 +255,12 @@ export function VideoPlayer({
   const gestures = usePlayerGestures({
     onSingleTap: controls.toggle,
     onDoubleTap: side => {
+      if (live) return;
       seekTo(player.currentTime + (side === 'back' ? -SEEK_STEP_SECONDS : SEEK_STEP_SECONDS));
       seekFeedback.show(side);
     },
     onHoldStart: () => {
-      if (!player.playing) return;
+      if (live || !player.playing) return;
       setHolding(true);
       player.playbackRate = HOLD_PLAYBACK_RATE;
     },
@@ -235,22 +301,12 @@ export function VideoPlayer({
         onPress={gestures.onPress}
         onLongPress={gestures.onLongPress}
         onPressOut={gestures.onPressOut}
-        accessibilityLabel="Video. Tap to show controls, double-tap a side to skip, press and hold for 2× speed"
+        accessibilityLabel={GESTURE_LABELS[live ? 'live' : 'onDemand']}
       />
 
       <PlaybackFeedback seek={seekFeedback.feedback} holding={holding} loading={state.status === 'loading'} />
 
-      {state.status === 'error' ? (
-        <PlaybackError
-          message={state.error?.message}
-          onRetry={() => {
-            player
-              .replaceAsync(initialSource)
-              .then(() => player.play())
-              .catch(() => {});
-          }}
-        />
-      ) : null}
+      {state.status === 'error' ? <PlaybackError message={state.error?.message} onRetry={retry} /> : null}
 
       {showControls && state.status !== 'error' ? (
         <PlayerControls
@@ -262,6 +318,7 @@ export function VideoPlayer({
           bufferedPosition={state.bufferedPosition}
           rate={rate}
           fullscreen={fullscreen}
+          live={live}
           onTogglePlay={togglePlay}
           onSkip={skip}
           onSeek={seekTo}

@@ -45,6 +45,23 @@ describe('getStreamUrl', () => {
     expect(getStreamUrl(shape)).toBe('https://edge.floatplane.test/guid/1080.m3u8');
   });
 
+  it('picks the first playable variant (the adaptive playlist) for live deliveries', () => {
+    const live = {
+      groups: [
+        {
+          origins: [{ url: 'https://live.floatplane.test/' }],
+          variants: [
+            { url: '/live/off.m3u8', enabled: false },
+            { url: '/live/abr.m3u8', label: 'live-abr' },
+            { url: '/live/1080.m3u8', label: '1080p' },
+          ],
+        },
+      ],
+    } as unknown as VideoDelivery;
+    expect(getStreamUrl(live, { live: true })).toBe('https://live.floatplane.test/live/abr.m3u8');
+    expect(getStreamUrl(live)).toBe('https://live.floatplane.test/live/1080.m3u8');
+  });
+
   it('returns null when there is nothing playable', () => {
     const denied = {
       groups: [
