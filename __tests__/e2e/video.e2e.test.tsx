@@ -46,7 +46,7 @@ describe('opening a video', () => {
 
     // The player was pointed at the delivery's first origin / highest playable variant.
     expect(rt.mockVideoPlayerState.viewProps).not.toBeNull();
-    expect(rt.api.requestsTo('/api/v3/delivery/info')[0]?.params.get('entityId')).toBe(GUID);
+    expect(rt.api.deliveryRequests('onDemand')[0]?.params.get('entityId')).toBe(GUID);
   });
 
   it('requests the post and delivery with the session token', async () => {
@@ -54,7 +54,7 @@ describe('opening a video', () => {
     await untilPlayable();
 
     const post = rt.api.requestsTo('/api/v3/content/post')[0];
-    const delivery = rt.api.requestsTo('/api/v3/delivery/info')[0];
+    const delivery = rt.api.deliveryRequests('onDemand')[0];
     expect(post.bearer).toBeTruthy();
     expect(delivery.bearer).toBe(post.bearer);
     expect(delivery.params.get('scenario')).toBe('onDemand');
@@ -195,7 +195,7 @@ describe('failure states', () => {
     await rt.until(() => expect(rt.screen.getByTestId('post-image')).toBeTruthy());
     expect(rt.screen.queryByTestId('video-player')).toBeNull();
     expect(rt.screen.getByLabelText(post.title)).toHaveProp('source', [{ uri: 'https://cdn.floatplane.test/pic-1.jpg' }]);
-    expect(rt.api.requestsTo('/api/v3/delivery/info')).toHaveLength(0);
+    expect(rt.api.deliveryRequests('onDemand')).toHaveLength(0);
 
     const description = rt.screen.getByTestId('post-description');
     expect(description).toHaveTextContent(/^Pumpkins & candy… We're carving pumpkins\./);
@@ -239,7 +239,8 @@ describe('failure states', () => {
   });
 
   it('offers retry when the delivery request fails', async () => {
-    rt.api.failRequests('GET', '/api/v3/delivery/info', { status: 503, body: 'cdn down' }, 3);
+    const onDemand = (req: { params: URLSearchParams }) => req.params.get('scenario') === 'onDemand';
+    rt.api.failRequests('GET', '/api/v3/delivery/info', { status: 503, body: 'cdn down' }, 3, onDemand);
     await openVideo();
 
     await rt.until(() => expect(rt.screen.getByText("This video can't be played right now.")).toBeTruthy());

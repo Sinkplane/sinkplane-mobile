@@ -15,6 +15,8 @@ import { mockWebViewState } from './native-mocks';
 
 // Re-exported so tests use the exact instances renderRouter binds to.
 export { act, fireEvent, screen, testRouter, userEvent, within } from 'expo-router/testing-library';
+// The imperative router of this test's module registry (navigate like a deep link / notification would).
+export { router } from 'expo-router';
 export { api };
 
 // renderRouter resolves this against the working directory (the project root under the npm scripts).
@@ -86,7 +88,7 @@ export function pressWithoutWaiting(element: { unstable_fiber: Fiber | null }): 
 // Non-focused tabs stay mounted (native tabs preload them), so scope queries with inTab().
 // ---------------------------------------------------------------------------
 
-export type TabName = 'index' | 'history' | 'settings';
+export type TabName = 'index' | 'history' | 'live' | 'settings';
 
 const tabHost = () => {
   const [host] = screen.container.queryAll(node => node.type === 'RNSTabsHostIOS');
@@ -97,12 +99,19 @@ const tabHost = () => {
 /** The tab the native tab bar currently shows. */
 export const selectedTab = (): string | undefined => tabHost().props.navStateRequest?.selectedScreenKey;
 
+const tabScreen = (name: TabName) => {
+  const [found] = screen.container.queryAll(node => node.type === 'RNSTabsScreenIOS' && node.props.screenKey === name);
+  if (!found) throw new Error(`Tab "${name}" is not rendered`);
+  return found;
+};
+
 /** Queries scoped to one tab's screen. */
 export function inTab(name: TabName) {
-  const [tabScreen] = screen.container.queryAll(node => node.type === 'RNSTabsScreenIOS' && node.props.screenKey === name);
-  if (!tabScreen) throw new Error(`Tab "${name}" is not rendered`);
-  return within(tabScreen);
+  return within(tabScreen(name));
 }
+
+/** The badge text on a tab bar item (undefined when it shows no badge). */
+export const tabBadge = (name: TabName): string | undefined => tabScreen(name).props.badgeValue;
 
 /** Tap a native tab bar item (the selection event UITabBar / BottomNavigationView report). */
 export async function selectTab(name: TabName): Promise<void> {
@@ -120,6 +129,7 @@ export async function selectTab(name: TabName): Promise<void> {
 
 interface ListProps {
   data?: readonly { id: string }[];
+  renderItem?: unknown;
   onEndReached?: (info: { distanceFromEnd: number }) => void;
 }
 
@@ -127,7 +137,8 @@ function listProps(testID: string): ListProps {
   let fiber = screen.getByTestId(testID).unstable_fiber;
   while (fiber) {
     const props = fiber.memoizedProps as ListProps | null;
-    if (props?.data && props.onEndReached) return props;
+    // The FlatList itself (the VirtualizedList below it gets the same `data`, the host ScrollView none).
+    if (Array.isArray(props?.data) && 'renderItem' in props) return props;
     fiber = fiber.return;
   }
   throw new Error(`No FlatList found for testID "${testID}"`);
