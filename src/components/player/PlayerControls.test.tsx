@@ -120,4 +120,19 @@ describe('PlayerControls', () => {
     expect(onToggleFullscreen).toHaveBeenCalledTimes(1);
     expect(onBack).not.toHaveBeenCalled();
   });
+
+  it('live: only play/pause and fullscreen, with a LIVE badge instead of the time and seek bar', async () => {
+    const onToggleFullscreen = jest.fn();
+    await renderControls({ live: true, playing: true, onToggleFullscreen });
+
+    expect(screen.getByTestId('player-live-badge')).toHaveTextContent('LIVE');
+    expect(screen.queryByTestId('player-time')).toBeNull();
+    expect(screen.queryByTestId('player-seek-bar')).toBeNull();
+    expect(screen.queryByRole('button', { name: /seconds$/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: /^Playback speed/ })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Pause' })).toBeTruthy();
+
+    await fireEvent.press(screen.getByRole('button', { name: 'Enter fullscreen' }));
+    expect(onToggleFullscreen).toHaveBeenCalledTimes(1);
+  });
 });

@@ -4,11 +4,13 @@
  * The world:
  *  - 1 user (testuser)
  *  - 2 subscriptions → "Tech Channel" (channels: Main + Side) and "Gaming Channel" (channel: Main)
+ *  - a Tech Channel livestream (LIVESTREAM_ID), offline unless a test starts it; Gaming has none
  *  - 13 videos per channel, one per day going back from FIXED_NOW, so the creator-wide feed
  *    interleaves channels and paginates (page size 20) while a single channel fits one page.
  */
 
 import type { Channel, ContentHistoryEntry, Creator, Subscription, User, Video, VideoDelivery, VideoPost } from '@/shared';
+import type { CreatorLiveStream } from '@/hooks/use-live-streams';
 import type { PostComment } from '@/hooks/use-post-comments';
 
 /** The clock every test runs against (relative dates are computed from it). */
@@ -49,7 +51,20 @@ export const techMainChannel = makeChannel('ch-tech-main', 'creator-tech', 'Main
 export const techSideChannel = makeChannel('ch-tech-side', 'creator-tech', 'Side Channel', 1);
 export const gamingMainChannel = makeChannel('ch-gaming-main', 'creator-gaming', 'Gaming Main', 0);
 
-const makeCreator = (id: string, title: string, channels: Channel[]): Creator => ({
+export const LIVESTREAM_ID = '5c13f3c006f1be15e08e05c0';
+
+export const techLiveStream: NonNullable<Creator['liveStream']> = {
+  id: LIVESTREAM_ID,
+  title: 'Tech Live: Friday Show',
+  description: '<p>Live tech talk &amp; news</p>',
+  thumbnail: image('live/tech/thumb.jpg'),
+  owner: 'owner-creator-tech',
+  channel: 'ch-tech-main',
+  streamPath: '/live/tech',
+  offline: { title: 'We are offline', description: '<p>Back Friday at 4pm</p>', thumbnail: image('live/tech/offline.jpg') },
+};
+
+const makeCreator = (id: string, title: string, channels: Channel[], liveStream?: Creator['liveStream']): Creator => ({
   id,
   owner: { id: `owner-${id}`, username: `${id}-owner` },
   title,
@@ -69,9 +84,10 @@ const makeCreator = (id: string, title: string, channels: Channel[]): Creator =>
   socialLinks: {},
   channels,
   discordServers: [],
+  ...(liveStream ? { liveStream } : {}),
 });
 
-export const techCreator = makeCreator('creator-tech', 'Tech Channel', [techMainChannel, techSideChannel]);
+export const techCreator = makeCreator('creator-tech', 'Tech Channel', [techMainChannel, techSideChannel], techLiveStream);
 export const gamingCreator = makeCreator('creator-gaming', 'Gaming Channel', [gamingMainChannel]);
 export const fixtureCreators: Creator[] = [techCreator, gamingCreator];
 
@@ -278,6 +294,39 @@ export function makeVideoDelivery(guid: string, { playable = true }: { playable?
       },
     ],
   } as VideoDelivery;
+}
+
+/** Live delivery info for a broadcasting livestream: one origin, the adaptive playlist first. */
+export function makeLiveDelivery(liveStreamId = LIVESTREAM_ID): VideoDelivery {
+  return {
+    groups: [
+      {
+        id: `${liveStreamId}-live`,
+        label: 'live',
+        origins: [{ id: 'origin-live', url: 'https://live.floatplane.test/' }],
+        variants: [
+          { url: `/${liveStreamId}/live-abr.m3u8?token=signed`, label: 'live-abr', enabled: true },
+          { url: `/${liveStreamId}/1080.m3u8?token=signed`, label: '1080p', enabled: true },
+        ],
+      },
+    ],
+  } as VideoDelivery;
+}
+
+/** A `useLiveStreams` entry for Tech Channel's livestream in the given state (for component tests). */
+export function makeCreatorLiveStream(status: CreatorLiveStream['status'], overrides: Partial<CreatorLiveStream> = {}): CreatorLiveStream {
+  return {
+    id: techCreator.id,
+    creator: techCreator,
+    liveStream: techLiveStream,
+    status,
+    streamUrl: status === 'live' ? `https://live.floatplane.test/${LIVESTREAM_ID}/live-abr.m3u8?token=signed` : null,
+    error: status === 'error' ? new Error('Failed to check the live stream: 503 - down') : null,
+    isFetching: false,
+    checkedAt: status === 'loading' ? 0 : FIXED_NOW.getTime(),
+    refetch: jest.fn(async () => undefined),
+    ...overrides,
+  };
 }
 
 /** `count` comments for a post, oldest first; the first has an avatar and replies. */
