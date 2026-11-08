@@ -560,5 +560,29 @@ describe('VideoPlayer', () => {
       expect(running.play).not.toHaveBeenCalled();
       expect(store.getSnapshot()?.minimized).toBe(false);
     });
+
+    it('records the resume position on the session media, so a takeover of a still-loading player can finish it', async () => {
+      const page = await render(tree(true, 30));
+      expect(store.getSnapshot()?.media.resumeAt).toBe(30);
+      await page.unmount();
+
+      // Live streams carry no resume position (they never resume a saved watch position).
+      await render(
+        <SafeAreaProvider initialMetrics={metrics}>
+          <PlaybackProvider>
+            <CaptureStore />
+            <VideoPlayer
+              source={SOURCE}
+              media={{ key: 'live:a', kind: 'live', id: 'a' }}
+              live
+              initialTime={30}
+              fullscreen={false}
+              onFullscreenChange={jest.fn()}
+            />
+          </PlaybackProvider>
+        </SafeAreaProvider>,
+      );
+      expect(store.getSnapshot()?.media.resumeAt).toBeUndefined();
+    });
   });
 });

@@ -19,9 +19,12 @@ private const val POSTURE_EVENT = "onPostureChange"
  * Only while JS listens, and re-attached when the activity comes back to the foreground.
  */
 class FoldPostureModule : Module() {
+  // Only touched on the UI thread (see start/stop).
   private var tracker: WindowInfoTrackerCallbackAdapter? = null
   private var trackedActivity = WeakReference<Activity>(null)
-  private var observing = false
+
+  // Written on Expo's module queue, read by the UI-thread blocks it schedules.
+  @Volatile private var observing = false
   private var latest: Map<String, Any?>? = null
 
   private val consumer = Consumer<WindowLayoutInfo> { info ->
@@ -61,11 +64,17 @@ class FoldPostureModule : Module() {
     }
   }
 
+  /**
+   * Registration and removal both run on the UI thread, in the order they were requested, and a
+   * queued registration re-checks `observing`: an unsubscribe that lands before the block runs
+   * (stop() while `tracker` is still null) must not leave a listener behind.
+   */
   private fun start() {
     val activity = appContext.currentActivity ?: return
-    if (tracker != null && trackedActivity.get() === activity) return
-    stop()
     activity.runOnUiThread {
+      if (!observing) return@runOnUiThread
+      if (tracker != null && trackedActivity.get() === activity) return@runOnUiThread
+      removeListener()
       val adapter = WindowInfoTrackerCallbackAdapter(WindowInfoTracker.getOrCreate(activity))
       trackedActivity = WeakReference(activity)
       tracker = adapter
@@ -74,6 +83,11 @@ class FoldPostureModule : Module() {
   }
 
   private fun stop() {
+    val activity = trackedActivity.get() ?: appContext.currentActivity
+    if (activity != null) activity.runOnUiThread { removeListener() } else removeListener()
+  }
+
+  private fun removeListener() {
     tracker?.removeWindowLayoutInfoListener(consumer)
     tracker = null
     trackedActivity = WeakReference(null)

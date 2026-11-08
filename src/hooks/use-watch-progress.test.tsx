@@ -224,19 +224,53 @@ describe('useWatchProgress', () => {
     await expect(unmount()).resolves.toBeUndefined();
   });
 
-  it('takes over a running player (started): no seek or autoplay, saves relative to its position', async () => {
+  it('a view taking over a started player neither seeks nor autoplays again, and saves relative to its position', async () => {
     const mock = createMockVideoPlayer();
-    mock.status = 'readyToPlay';
-    mock.playing = true;
-    mock.currentTime = 200;
     const save = jest.fn();
-    await renderHook(() => useWatchProgress(mock as unknown as VideoPlayer, 30, save, true));
-    expect(mock.play).not.toHaveBeenCalled();
-    expect(mock.seeks).toEqual([200]);
+    // The video page started this player and saved some progress before the close arrow.
+    const page = await renderHook(() => useWatchProgress(mock as unknown as VideoPlayer, undefined, save));
+    await act(async () => {
+      mock.emit('statusChange', { status: 'readyToPlay' });
+      mock.currentTime = 200;
+      emitTime(mock, 200);
+    });
+    expect(mock.play).toHaveBeenCalledTimes(1);
+    expect(save).toHaveBeenCalledWith(200);
+    await page.unmount();
+
+    // The mini player takes the same player over (even with the post's saved progress handed to
+    // it): no seek to 30, no autoplay, and saving continues relative to 200.
+    await renderHook(() => useWatchProgress(mock as unknown as VideoPlayer, 30, save));
+    expect(mock.play).toHaveBeenCalledTimes(1);
+    expect(mock.seeks).toEqual([200]); // only the position the page reached
 
     await act(async () => emitTime(mock, 210));
-    expect(save).not.toHaveBeenCalled();
+    expect(save).toHaveBeenCalledTimes(1); // 10s past 200: below the 15s interval
     await act(async () => emitTime(mock, 200 + PROGRESS_SAVE_INTERVAL));
-    expect(save).toHaveBeenCalledWith(200 + PROGRESS_SAVE_INTERVAL);
+    expect(save).toHaveBeenCalledTimes(2);
+    expect(save).toHaveBeenLastCalledWith(200 + PROGRESS_SAVE_INTERVAL);
+  });
+
+  it('a view taking over a player that was still loading finishes the resume the page never got to', async () => {
+    const mock = createMockVideoPlayer();
+    const save = jest.fn();
+    // Minimized before the stream ever became ready: the page's resume (seek + autoplay) never ran.
+    const page = await renderHook(() => useWatchProgress(mock as unknown as VideoPlayer, 42, save));
+    expect(mock.play).not.toHaveBeenCalled();
+    expect(mock.seeks).toEqual([]);
+    await page.unmount();
+
+    // The tile takes over with the session's saved position and completes the resume once ready.
+    await renderHook(() => useWatchProgress(mock as unknown as VideoPlayer, 42, save));
+    await act(async () => {
+      mock.setStatus('readyToPlay');
+    });
+    expect(mock.seeks).toEqual([42]);
+    expect(mock.play).toHaveBeenCalledTimes(1);
+
+    // Having started, the player is marked: a third view taking it over skips seek and autoplay.
+    await renderHook(() => useWatchProgress(mock as unknown as VideoPlayer, 42, save));
+    expect(mock.seeks).toEqual([42]);
+    expect(mock.play).toHaveBeenCalledTimes(1);
   });
 });

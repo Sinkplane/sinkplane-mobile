@@ -88,7 +88,8 @@ function useMiniPlayerProgress({ media, player }: PlaybackSession) {
   const { token } = useSession();
   const { mutate } = useUpdateVideoProgress(token ?? undefined);
   const save = media.kind === 'video' && token ? (seconds: number) => mutate({ id: media.id, progress: seconds }) : undefined;
-  useWatchProgress(player, undefined, save, true);
+  // A player minimized while still loading resumes here; a started one just keeps saving.
+  useWatchProgress(player, media.resumeAt, save);
 }
 
 function MiniButton({ icon, label, onPress }: { icon: SymbolViewProps['name']; label: string; onPress: () => void }) {

@@ -197,6 +197,93 @@ describe('the mini player', () => {
   });
 });
 
+describe('resuming across the close arrow', () => {
+  it('a video minimized while still loading resumes at its saved progress once the tile has it', async () => {
+    rt.seedSession();
+    rt.api.progress.set(POST_ID, 48); // where a previous watch left off
+    await rt.renderApp();
+    await openVideo();
+
+    // The stream is still loading: nothing plays yet, but the close arrow already works.
+    const loading = player();
+    expect(loading.playing).toBe(false);
+    await minimize();
+    expect(shownIn('mini-player-video')).toBe(loading);
+    expect(loading.playing).toBe(false);
+
+    // The stream becomes ready only in the tile: the tile finishes the resume the page never got
+    // to — seeking to the saved position and playing from there.
+    await rt.act(async () => loading.setStatus('readyToPlay'));
+    await rt.until(() => expect(loading.playing).toBe(true));
+    expect(loading.seeks).toEqual([48]);
+  });
+});
+
+describe('player pages stacked on top of each other', () => {
+  /** Press the close arrow of the topmost video page (several can be mounted in a stack). */
+  async function minimizeTop() {
+    const screens = rt.screen.getAllByTestId('video-screen');
+    const top = screens[screens.length - 1];
+    await rt.fireEvent.press(rt.within(top).getByRole('button', { name: 'Close video' }));
+    await rt.until(() => expect(rt.screen.getByTestId('mini-player')).toBeTruthy());
+  }
+
+  it('a video pushed over another one suspends it; back on top, its close arrow hands it to the tile', async () => {
+    await playVideo();
+    const a = player();
+
+    // Video B opens on top of A's page (a notification): A pauses — its page is kept mounted
+    // underneath (hidden by the stack activity), so its session is suspended, not released.
+    await rt.act(async () => rt.router.push(`/video/${OTHER_ID}`));
+    await rt.until(() => expect(rt.mockVideoPlayerState.players).toHaveLength(2));
+    await rt.until(() => expect(a.playing).toBe(false));
+    expect(a.released).toBe(false);
+    const b = player();
+    await rt.act(async () => b.setStatus('readyToPlay'));
+    expect(b.playing).toBe(true);
+
+    // Back to A: its suspended session returns — the page shows its own player again, paused,
+    // and no fresh player is created.
+    await rt.act(async () => rt.router.back());
+    await rt.until(() => expect(rt.screen.getByTestId('video-player')).toBeTruthy());
+    await rt.until(() => expect(b.released).toBe(true));
+    expect(rt.mockVideoPlayerState.players).toHaveLength(2);
+    expect(a.released).toBe(false);
+    expect(a.playing).toBe(false);
+
+    // Play A again from its controls, then its close arrow hands that player to the mini player.
+    await rt.fireEvent.press(rt.screen.getByLabelText('Play'));
+    await rt.until(() => expect(a.playing).toBe(true));
+    await minimize();
+
+    expect(rt.screen.queryByTestId('video-screen')).toBeNull();
+    expect(rt.inTab('index').getByText('Main Channel Video 01')).toBeTruthy();
+    expect(shownIn('mini-player-video')).toBe(a);
+    expect(a.playing).toBe(true);
+  });
+
+  it('minimizing the top video with another page underneath returns to the list and drops the one below', async () => {
+    await playVideo();
+    const a = player();
+
+    await rt.act(async () => rt.router.push(`/video/${OTHER_ID}`));
+    await rt.until(() => expect(rt.mockVideoPlayerState.players).toHaveLength(2));
+    const b = player();
+    await rt.act(async () => b.setStatus('readyToPlay'));
+
+    // B's close arrow: back to the list — A's page underneath goes away too, or it would cover
+    // the tile — and the mini player carries B, while A's suspended player is released.
+    await minimizeTop();
+    expect(rt.screen.queryByTestId('video-screen')).toBeNull();
+    expect(rt.inTab('index').getByText('Main Channel Video 01')).toBeTruthy();
+    expect(shownIn('mini-player-video')).toBe(b);
+    expect(b.playing).toBe(true);
+    await rt.advanceTime(10);
+    expect(a.released).toBe(true);
+    expect(rt.mockVideoPlayerState.players).toHaveLength(2);
+  });
+});
+
 describe('leaving the page another way', () => {
   it('a back gesture / Android back stops playback instead of minimizing', async () => {
     await playVideo();
@@ -249,7 +336,7 @@ describe('live streams', () => {
     expect(rt.screen.queryByTestId('mini-player')).toBeNull();
   });
 
-  it('a reload attempt gets a fresh player, and so does reopening the tile afterwards', async () => {
+  it('a reload attempt gets a fresh player; reopening the tile afterwards reuses that player', async () => {
     rt.api.liveNow.add(LIVESTREAM_ID);
     rt.seedSession();
     await rt.renderApp();
@@ -260,7 +347,8 @@ describe('live streams', () => {
     await rt.act(async () => player().setStatus('readyToPlay'));
     const first = player();
 
-    // A playback error reloads the stream with a fresh player (fresh signed URL) 5s later.
+    // A playback error reloads the stream with a fresh player (fresh signed URL) 5s later: the
+    // reload ends this stream's session first, so the remount can't reuse the erroring player.
     await rt.act(async () => {
       first.status = 'error';
       first.emit('statusChange', { status: 'error', error: { message: 'The network connection was lost.' } });
@@ -279,14 +367,57 @@ describe('live streams', () => {
     expect(shownIn('mini-player-video')).toBe(reloaded);
     expect(reloaded.playing).toBe(true);
 
-    // …but reopening remounts the live page, whose reload bookkeeping starts over: the page
-    // takes a fresh player and releases the reloaded one rather than keeping two streams.
+    // …and reopening the live page takes that same player over: the session is keyed by the
+    // creator, so the reload bookkeeping starting over doesn't force a fresh player anymore.
     await rt.fireEvent.press(rt.screen.getByTestId('mini-player-expand'));
     await rt.until(() => expect(rt.screen.getByTestId('live-screen')).toBeTruthy());
-    await rt.until(() => expect(rt.mockVideoPlayerState.players).toHaveLength(3));
-    expect(reloaded.release).toHaveBeenCalled();
-    expect(shownIn('video-view')).not.toBe(reloaded);
-    expect(shownIn('video-view')).not.toBe(first);
+    await rt.until(() => expect(rt.screen.getByTestId('video-player')).toBeTruthy());
+    expect(rt.mockVideoPlayerState.players).toHaveLength(2);
+    expect(shownIn('video-view')).toBe(reloaded);
+    expect(reloaded.playing).toBe(true);
+    expect(reloaded.release).not.toHaveBeenCalled();
+    expect(rt.screen.queryByTestId('mini-player')).toBeNull();
+  });
+
+  it("a reload whose refetch resolves after the page was left doesn't disturb the stream opened later", async () => {
+    rt.api.liveNow.add(LIVESTREAM_ID);
+    rt.seedSession();
+    await rt.renderApp();
+    await rt.selectTab('live');
+    await rt.until(() => expect(rt.inTab('live').getByTestId('live-status-live')).toBeTruthy());
+    await rt.fireEvent.press(rt.inTab('live').getByTestId(`live-stream-${techCreator.id}`));
+    await rt.until(() => expect(rt.screen.getByTestId('video-player')).toBeTruthy());
+    await rt.act(async () => player().setStatus('readyToPlay'));
+    const first = player();
+
+    // A recoverable playback error schedules a reload in 5s…
+    await rt.act(async () => {
+      first.status = 'error';
+      first.emit('statusChange', { status: 'error', error: { message: 'The network connection was lost.' } });
+    });
+    // …whose status refetch is still in flight (a slow network) when the user gives up and leaves.
+    rt.api.latencyMs = 30000;
+    await rt.advanceTime(5000);
+    await rt.act(async () => rt.router.back());
+    await rt.until(() => expect(rt.screen.queryByTestId('live-screen')).toBeNull());
+    await rt.advanceTime(10);
+    expect(first.released).toBe(true);
+
+    // Coming back to the live page later starts a fresh, working stream.
+    rt.api.latencyMs = 0;
+    await rt.fireEvent.press(rt.inTab('live').getByTestId(`live-stream-${techCreator.id}`));
+    await rt.until(() => expect(rt.screen.getByTestId('video-player')).toBeTruthy());
+    const reopened = player();
+    expect(reopened).not.toBe(first);
+    await rt.act(async () => reopened.setStatus('readyToPlay'));
+    expect(reopened.playing).toBe(true);
+
+    // The abandoned reload's refetch only resolves now: the page it belonged to is gone, so it
+    // must not close (and so stop) the session the reopened page is playing through.
+    await rt.advanceTime(30000);
+    expect(reopened.playing).toBe(true);
+    expect(reopened.release).not.toHaveBeenCalled();
+    expect(rt.mockVideoPlayerState.players).toHaveLength(2);
     expect(rt.screen.queryByTestId('mini-player')).toBeNull();
   });
 });

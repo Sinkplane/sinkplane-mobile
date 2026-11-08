@@ -148,6 +148,87 @@ describe('PlaybackStore', () => {
     expect(mock(shown).release).toHaveBeenCalledTimes(1);
   });
 
+  it('a replaced session whose page is still mounted is suspended, and returns when the new one ends', async () => {
+    const store = new PlaybackStore();
+    const { player: a } = store.acquire(video('a'), SOURCE);
+    store.attach(a);
+
+    // Video B opens on top of A's page (a notification): A pauses, but its page can take it back.
+    const { player: b } = store.acquire(video('b'), SOURCE);
+    await flushMicrotasks();
+    expect(mock(a).pause).toHaveBeenCalledTimes(1);
+    expect(mock(a).release).not.toHaveBeenCalled();
+    store.attach(b);
+
+    // B's page unmounts without minimizing: A becomes the session again, unpaused by nobody.
+    store.detach(b);
+    expect(store.getSnapshot()).toMatchObject({ media: video('a'), player: a, minimized: false });
+    await tick();
+    expect(mock(a).release).not.toHaveBeenCalled();
+    expect(mock(b).release).toHaveBeenCalledTimes(1);
+  });
+
+  it('restores the most recent still-mounted suspended page; one whose page unmounts is released', async () => {
+    const store = new PlaybackStore();
+    const { player: a } = store.acquire(video('a'), SOURCE);
+    store.attach(a);
+    const { player: b } = store.acquire(video('b'), SOURCE);
+    store.attach(b);
+    const { player: c } = store.acquire(video('c'), SOURCE);
+    store.attach(c);
+    await flushMicrotasks();
+    expect(mock(a).pause).toHaveBeenCalled();
+    expect(mock(b).pause).toHaveBeenCalled();
+
+    // A's page unmounts while suspended: its player is released, and it can never come back.
+    store.detach(a);
+    expect(store.getSnapshot()?.media.key).toBe('video:c');
+    await tick();
+    expect(mock(a).release).toHaveBeenCalledTimes(1);
+
+    // C's page unmounts without minimizing: the most recent page still mounted (B) returns.
+    store.detach(c);
+    expect(store.getSnapshot()).toMatchObject({ media: video('b'), player: b });
+  });
+
+  it('does not restore a suspended page when the current session is minimized away', async () => {
+    const store = new PlaybackStore();
+    const { player: a } = store.acquire(video('a'), SOURCE);
+    store.attach(a);
+    const { player: b } = store.acquire(video('b'), SOURCE);
+    store.attach(b);
+    await flushMicrotasks();
+
+    // B's close arrow: the tile takes B, and A's page underneath stays suspended (paused).
+    store.minimize();
+    store.detach(b);
+    expect(store.getSnapshot()).toMatchObject({ media: video('b'), player: b, minimized: true });
+    await tick();
+    expect(mock(a).release).not.toHaveBeenCalled();
+    expect(mock(b).release).not.toHaveBeenCalled();
+  });
+
+  it('close (the tile ✕ / sign-out) drops the session without resurrecting a suspended page', async () => {
+    const store = new PlaybackStore();
+    const { player: a } = store.acquire(video('a'), SOURCE);
+    store.attach(a);
+    const { player: b } = store.acquire(video('b'), SOURCE);
+    store.attach(b);
+    await flushMicrotasks();
+
+    store.close();
+    expect(store.getSnapshot()).toBeNull();
+
+    // The pages unmount (sign-out resets the navigator): everything is released, nothing restored.
+    store.detach(b);
+    expect(store.getSnapshot()).toBeNull();
+    store.detach(a);
+    expect(store.getSnapshot()).toBeNull();
+    await tick();
+    expect(mock(a).release).toHaveBeenCalledTimes(1);
+    expect(mock(b).release).toHaveBeenCalledTimes(1);
+  });
+
   it('claim stops other media but keeps the same media playing', () => {
     const store = new PlaybackStore();
     const { player } = store.acquire(video('a'), SOURCE);
