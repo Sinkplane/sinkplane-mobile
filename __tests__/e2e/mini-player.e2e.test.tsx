@@ -282,6 +282,72 @@ describe('player pages stacked on top of each other', () => {
     expect(a.released).toBe(true);
     expect(rt.mockVideoPlayerState.players).toHaveLength(2);
   });
+
+  it('a page backed out of before its video ever loaded hands the covered page its session back', async () => {
+    await playVideo();
+    const a = player();
+
+    // Video B opens on top (a notification), but its post/delivery never resolve (slow network):
+    // B never reaches a player, so A's page underneath suspends instead of being released.
+    rt.api.latencyMs = 60000;
+    await rt.act(async () => rt.router.push(`/video/${OTHER_ID}`));
+    await rt.until(() => expect(rt.screen.getByTestId('player-placeholder')).toBeTruthy());
+    await rt.until(() => expect(a.playing).toBe(false));
+    expect(rt.screen.queryByTestId('video-player')).toBeNull(); // B's page is the one on top
+    expect(rt.mockVideoPlayerState.players).toHaveLength(1);
+    expect(a.released).toBe(false);
+
+    // Back to A before B ever loaded: the closing page left no session (it never got a player),
+    // so A's suspended session is restored and its page shows its own player again…
+    rt.api.latencyMs = 0;
+    await rt.act(async () => rt.router.back());
+    await rt.until(() => {
+      expect(rt.screen.getAllByTestId('video-player')).toHaveLength(1);
+      expect(rt.screen.queryByTestId('player-placeholder')).toBeNull();
+    });
+
+    // …so A's close arrow now hands A's own player to the mini player tile.
+    await minimize();
+    expect(rt.screen.queryByTestId('video-screen')).toBeNull();
+    expect(shownIn('mini-player-video')).toBe(a);
+    expect(a.released).toBe(false);
+  });
+
+  it('a covered page whose stream becomes ready seeks to its progress but never plays behind the one on top', async () => {
+    rt.seedSession();
+    rt.api.progress.set(POST_ID, 48); // where a previous watch of A left off
+    await rt.renderApp();
+    await openVideo();
+    const a = player();
+    expect(a.playing).toBe(false); // A's stream is still loading
+
+    // B opens on top (a notification) and becomes the session; A suspends.
+    await rt.act(async () => rt.router.push(`/video/${OTHER_ID}`));
+    await rt.until(() => expect(rt.mockVideoPlayerState.players).toHaveLength(2));
+    const b = player();
+    await rt.act(async () => b.setStatus('readyToPlay'));
+    await rt.until(() => expect(b.playing).toBe(true));
+    await rt.until(() => expect(a.playing).toBe(false));
+    expect(a.released).toBe(false);
+
+    // A's stream becomes ready only now: it finishes the resume seek to its saved progress, but
+    // must not autoplay behind B's page (B keeps playing untouched).
+    await rt.act(async () => a.setStatus('readyToPlay'));
+    await rt.advanceTime(100);
+    expect(a.seeks).toEqual([48]);
+    expect(a.play).not.toHaveBeenCalled();
+    expect(a.playing).toBe(false);
+    expect(b.playing).toBe(true);
+
+    // Back to A: it is the session again, paused — playing it is up to the user.
+    await rt.act(async () => rt.router.back());
+    await rt.until(() => expect(b.released).toBe(true));
+    await rt.until(() => expect(rt.screen.getAllByTestId('video-player')).toHaveLength(1));
+    expect(a.playing).toBe(false);
+    await rt.fireEvent.press(rt.screen.getByLabelText('Play'));
+    await rt.until(() => expect(a.playing).toBe(true));
+    expect(rt.screen.queryByTestId('mini-player')).toBeNull();
+  });
 });
 
 describe('leaving the page another way', () => {

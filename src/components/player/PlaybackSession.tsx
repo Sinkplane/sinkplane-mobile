@@ -106,6 +106,21 @@ export class PlaybackStore {
     if (media && (media.kind !== kind || media.id !== id)) this.close();
   }
 
+  /**
+   * A player page closed. If it left no session (it never got as far as a player, e.g. backed out
+   * while loading), the page it covered takes its suspended session back.
+   */
+  unclaim() {
+    if (this.session) return;
+    const resumed = this.resumeSuspended();
+    if (resumed) this.setSession(resumed);
+  }
+
+  /** Whether `player` is the current session's (a suspended or retired one isn't). */
+  isCurrent(player: VideoPlayer) {
+    return this.session?.player === player;
+  }
+
   /** Stop and drop the session (mini player close, sign-out). */
   close() {
     const current = this.session;
@@ -183,5 +198,5 @@ export function useSessionPlayer(source: VideoSource, setup: (instance: VideoPla
     return () => store.detach(player);
   }, [store, player]);
 
-  return acquired;
+  return { ...acquired, isCurrent: () => store.isCurrent(player) };
 }

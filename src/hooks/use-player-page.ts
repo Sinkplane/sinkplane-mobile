@@ -22,7 +22,9 @@ export function usePlayerPage(kind: PlaybackMedia['kind'], id: string | undefine
   const tabletop = playable ? posture : null;
 
   useEffect(() => {
-    if (id) store?.claim(kind, id);
+    if (!id) return;
+    store?.claim(kind, id);
+    return () => store?.unclaim();
   }, [store, kind, id]);
 
   return {
