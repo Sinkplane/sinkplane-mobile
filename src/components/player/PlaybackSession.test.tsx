@@ -16,6 +16,9 @@ const SOURCE = { uri: 'https://edge.floatplane.test/a.m3u8' };
 const video = (id: string): PlaybackMedia => ({ key: `video:${id}`, kind: 'video', id, title: `Video ${id}` });
 const mock = (player: VideoPlayer) => player as unknown as MockVideoPlayer;
 
+/** Run the retire `acquire` queues for a replaced player. */
+const flushMicrotasks = () => act(async () => {});
+
 /** Flush the deferred release a detach schedules. */
 const tick = () =>
   act(async () => {
@@ -125,8 +128,10 @@ describe('PlaybackStore', () => {
     store.minimize();
     store.detach(minimized);
 
-    // Opening another video while the mini player plays: released right away.
+    // Opening another video while the mini player plays: released right after the (render-time) acquire.
     store.acquire(video('b'), SOURCE);
+    expect(mock(minimized).pause).not.toHaveBeenCalled();
+    await flushMicrotasks();
     expect(mock(minimized).pause).toHaveBeenCalled();
     expect(mock(minimized).release).toHaveBeenCalledTimes(1);
 
@@ -134,6 +139,7 @@ describe('PlaybackStore', () => {
     const { player: shown } = store.acquire(video('c'), SOURCE);
     store.attach(shown);
     store.acquire(video('d'), SOURCE);
+    await flushMicrotasks();
     expect(mock(shown).pause).toHaveBeenCalled();
     expect(mock(shown).release).not.toHaveBeenCalled();
     store.detach(shown);
@@ -175,6 +181,38 @@ describe('PlaybackStore', () => {
     store.detach(player);
     await tick();
     expect(mock(player).release).toHaveBeenCalledTimes(1);
+  });
+
+  it('a view that never attached still releases its player when it unmounts (stray detach)', async () => {
+    const store = new PlaybackStore();
+    const { player } = store.acquire(video('a'), SOURCE);
+
+    // A detach with no matching attach (a defensive race): no view count, just end the session.
+    store.detach(player);
+    expect(store.getSnapshot()).toBeNull();
+    await tick();
+    expect(mock(player).release).toHaveBeenCalledTimes(1);
+
+    // The ended session starts over with a fresh player.
+    expect(store.acquire(video('a'), SOURCE).reused).toBe(false);
+  });
+
+  it('a second deferred release of the same player finds no view record and stays guarded', async () => {
+    const store = new PlaybackStore();
+    const { player } = store.acquire(video('a'), SOURCE);
+    store.attach(player);
+    store.attach(player);
+
+    // The page unmounts (ending the session) and an effect re-run attaches and detaches again,
+    // so two deferred releases end up queued for the same player.
+    store.detach(player); // one view left: nothing to do
+    store.detach(player); // last view gone, session ends: deferred release queued
+    store.attach(player); // the re-run re-attaches the same view…
+    store.detach(player); // …and unmounts again: a second deferred release queued
+    await tick(); // the first releases the player; the second finds no view record: still guarded
+
+    expect(mock(player).release).toHaveBeenCalledTimes(1);
+    expect(store.getSnapshot()).toBeNull();
   });
 
   it('unsubscribes listeners', () => {

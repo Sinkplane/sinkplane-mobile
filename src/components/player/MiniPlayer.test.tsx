@@ -1,6 +1,6 @@
 import type { ReactElement } from 'react';
 import type { GestureResponderEvent } from 'react-native';
-import { act, fireEvent, render, screen } from '@testing-library/react-native';
+import { act, fireEvent, render, screen, userEvent } from '@testing-library/react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import type { MockVideoPlayer } from '@test/mocks/expo-video';
 
@@ -136,6 +136,27 @@ describe('MiniPlayer', () => {
     expect(player.pause).toHaveBeenCalled();
     await fireEvent.press(screen.getByLabelText('Play'));
     expect(player.play).toHaveBeenCalled();
+  });
+
+  it('highlights its buttons while they are pressed (full press interaction)', async () => {
+    const player = await renderMinimized();
+    const button = screen.getByLabelText('Pause');
+    // The host View resolves the style callback, so read it off the Pressable fiber.
+    const styleCallback = () => {
+      let fiber = button.unstable_fiber;
+      while (fiber && typeof fiber.memoizedProps?.style !== 'function') fiber = fiber.return;
+      if (!fiber) throw new Error('No Pressable style callback found');
+      return fiber.memoizedProps.style as (state: { pressed: boolean }) => readonly unknown[];
+    };
+
+    // A full press drives the real Pressable pressed state (press-in → press → press-out).
+    const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
+    await user.press(button);
+    expect(player.pause).toHaveBeenCalled();
+
+    // That state is what paints the pressed tint, and it clears on release.
+    expect(styleCallback()({ pressed: true })).toContainEqual({ opacity: 0.6 });
+    expect(styleCallback()({ pressed: false })).toContainEqual(false);
   });
 
   it('closing stops playback and removes the tile', async () => {

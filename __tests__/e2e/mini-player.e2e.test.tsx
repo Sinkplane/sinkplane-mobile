@@ -3,6 +3,7 @@
  * in a floating tile (YouTube-style); tapping the tile reopens the page on the same player, ✕ stops
  * it, and opening other media or leaving the page any other way doesn't leave it playing.
  */
+import type { GestureResponderEvent } from 'react-native';
 import { LIVESTREAM_ID, techCreator } from '@test/fixtures';
 
 import { loadRuntime, type Runtime } from './helpers/runtime';
@@ -38,6 +39,33 @@ async function playVideo() {
 async function minimize() {
   await rt.fireEvent.press(rt.screen.getByRole('button', { name: 'Close video' }));
   await rt.until(() => expect(rt.screen.getByTestId('mini-player')).toBeTruthy());
+}
+
+/** A single-touch responder event at (x, y): the `touchHistory` PanResponder computes gestures from. */
+function touch(x: number, y: number, timestamp: number, start = { x: 300, y: 100, timestamp: 0 }) {
+  const touchHistory = {
+    numberActiveTouches: 1,
+    indexOfSingleActiveTouch: 0,
+    mostRecentTimeStamp: timestamp,
+    touchBank: [
+      {
+        touchActive: true,
+        startPageX: start.x,
+        startPageY: start.y,
+        startTimeStamp: start.timestamp,
+        currentPageX: x,
+        currentPageY: y,
+        currentTimeStamp: timestamp,
+        previousPageX: start.x,
+        previousPageY: start.y,
+        previousTimeStamp: start.timestamp,
+      },
+    ],
+  };
+  return {
+    nativeEvent: { touches: [{}], changedTouches: [{}], pageX: x, pageY: y, timestamp },
+    touchHistory,
+  } as unknown as GestureResponderEvent;
 }
 
 describe('the close arrow', () => {
@@ -125,6 +153,48 @@ describe('the mini player', () => {
     await rt.until(() => expect(rt.screen.queryByTestId('video-screen')).toBeNull());
     expect(rt.screen.queryByTestId('mini-player')).toBeNull();
   });
+
+  it('drags to another corner and snaps there, and keeps the corner across tabs', async () => {
+    await playVideo();
+    await minimize();
+    const tile = rt.screen.getByTestId('mini-player');
+
+    // A tiny movement is still a tap, not a drag; a real move captures the responder.
+    expect(tile.props.onMoveShouldSetResponderCapture(touch(302, 102, 10))).toBe(false);
+    expect(tile.props.onMoveShouldSetResponderCapture(touch(200, 500, 20))).toBe(true);
+
+    // Drag towards the bottom-left: the tile follows the finger and springs into that corner.
+    await rt.act(async () => {
+      tile.props.onResponderGrant(touch(300, 100, 0));
+      tile.props.onResponderMove(touch(60, 700, 400));
+      tile.props.onResponderRelease(touch(60, 700, 400));
+    });
+    await rt.advanceTime(2000);
+    await rt.until(() => expect(rt.screen.getByLabelText('Mini player, corner bottom-left')).toBeTruthy());
+
+    // The chosen corner survives leaving the tab (it is the tile's parked position).
+    await rt.selectTab('history');
+    expect(rt.screen.getByLabelText('Mini player, corner bottom-left')).toBeTruthy();
+
+    // Flung up and to the right, it snaps back to the top-right corner it started in.
+    const dragged = rt.screen.getByTestId('mini-player');
+    await rt.act(async () => {
+      dragged.props.onResponderGrant(touch(60, 700, 1000, { x: 60, y: 700, timestamp: 1000 }));
+      dragged.props.onResponderMove(touch(600, 60, 1400, { x: 60, y: 700, timestamp: 1000 }));
+      dragged.props.onResponderRelease(touch(600, 60, 1400, { x: 60, y: 700, timestamp: 1000 }));
+    });
+    await rt.advanceTime(2000);
+    await rt.until(() => expect(rt.screen.getByLabelText('Mini player, corner top-right')).toBeTruthy());
+  });
+
+  it('highlights its buttons while they are pressed (full press interaction)', async () => {
+    await playVideo();
+    await minimize();
+
+    const user = rt.userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
+    await user.press(rt.screen.getByLabelText('Pause'));
+    expect(player().playing).toBe(false);
+  });
 });
 
 describe('leaving the page another way', () => {
@@ -137,6 +207,23 @@ describe('leaving the page another way', () => {
     await rt.advanceTime(10);
     expect(rt.screen.queryByTestId('mini-player')).toBeNull();
     expect(playing.release).toHaveBeenCalled();
+  });
+});
+
+describe('signing out', () => {
+  it('Settings sign-out while the mini player is up stops playback and drops the tile', async () => {
+    await playVideo();
+    const playing = player();
+    await minimize();
+
+    await rt.selectTab('settings');
+    await rt.fireEvent.press(rt.inTab('settings').getByText('Sign Out'));
+
+    await rt.until(() => expect(rt.screen.getByText('Sign in to Floatplane')).toBeTruthy());
+    expect(rt.screen.queryByTestId('mini-player')).toBeNull();
+    expect(playing.playing).toBe(false);
+    expect(playing.release).toHaveBeenCalled();
+    expect(rt.api.revokedSessions).toHaveLength(1);
   });
 });
 
@@ -159,6 +246,47 @@ describe('live streams', () => {
     await rt.until(() => expect(rt.screen.getByTestId('live-screen')).toBeTruthy());
     await rt.until(() => expect(rt.screen.getByTestId('video-player')).toBeTruthy());
     expect(shownIn('video-view')).toBe(live);
+    expect(rt.screen.queryByTestId('mini-player')).toBeNull();
+  });
+
+  it('a reload attempt gets a fresh player, and so does reopening the tile afterwards', async () => {
+    rt.api.liveNow.add(LIVESTREAM_ID);
+    rt.seedSession();
+    await rt.renderApp();
+    await rt.selectTab('live');
+    await rt.until(() => expect(rt.inTab('live').getByTestId('live-status-live')).toBeTruthy());
+    await rt.fireEvent.press(rt.inTab('live').getByTestId(`live-stream-${techCreator.id}`));
+    await rt.until(() => expect(rt.screen.getByTestId('video-player')).toBeTruthy());
+    await rt.act(async () => player().setStatus('readyToPlay'));
+    const first = player();
+
+    // A playback error reloads the stream with a fresh player (fresh signed URL) 5s later.
+    await rt.act(async () => {
+      first.status = 'error';
+      first.emit('statusChange', { status: 'error', error: { message: 'The network connection was lost.' } });
+    });
+    expect(rt.screen.getByTestId('player-error')).toBeTruthy();
+    await rt.advanceTime(5000);
+    await rt.until(() => expect(rt.mockVideoPlayerState.players).toHaveLength(2));
+    await rt.advanceTime(10);
+    const reloaded = player();
+    expect(reloaded).not.toBe(first);
+    expect(first.release).toHaveBeenCalled();
+    await rt.act(async () => reloaded.setStatus('readyToPlay'));
+
+    // The tile carries the reloaded stream…
+    await minimize();
+    expect(shownIn('mini-player-video')).toBe(reloaded);
+    expect(reloaded.playing).toBe(true);
+
+    // …but reopening remounts the live page, whose reload bookkeeping starts over: the page
+    // takes a fresh player and releases the reloaded one rather than keeping two streams.
+    await rt.fireEvent.press(rt.screen.getByTestId('mini-player-expand'));
+    await rt.until(() => expect(rt.screen.getByTestId('live-screen')).toBeTruthy());
+    await rt.until(() => expect(rt.mockVideoPlayerState.players).toHaveLength(3));
+    expect(reloaded.release).toHaveBeenCalled();
+    expect(shownIn('video-view')).not.toBe(reloaded);
+    expect(shownIn('video-view')).not.toBe(first);
     expect(rt.screen.queryByTestId('mini-player')).toBeNull();
   });
 });

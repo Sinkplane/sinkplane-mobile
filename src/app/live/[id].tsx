@@ -119,7 +119,8 @@ export default function LiveScreen() {
             onFullscreenChange={setFullscreen}
             onBack={minimize}
             onError={onPlaybackError}
-            // Each reload attempt (fresh signed URL) is a new playback; reopening from the mini player isn't.
+            // Each reload attempt (fresh signed URL) is a new playback. Reopening from the mini player
+            // reuses its player only while the key still matches (no reload happened since).
             media={{
               key: `live:${id}:${attempt}:${stream.streamUrl}`,
               kind: 'live',

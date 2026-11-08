@@ -7,6 +7,7 @@ android/
 !/modules/*/android/
 !/modules/*/ios/
 /modules/*/android/build/
+/modules/*/ios/build/
 web-build/
 npm-debug.*
 yarn-debug.*

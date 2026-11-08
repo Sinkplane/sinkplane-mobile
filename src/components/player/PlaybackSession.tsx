@@ -52,7 +52,10 @@ export class PlaybackStore {
   /** The session's player when `media.key` matches it (`reused`), else a new player replacing the session. */
   acquire(media: PlaybackMedia, source: VideoSource, setup?: (instance: VideoPlayer) => void) {
     if (this.session?.media.key === media.key) return { player: this.session.player, reused: true };
-    if (this.session) this.retire(this.session.player);
+    // Called while rendering: pausing can synchronously notify the replaced player's still-mounted
+    // view, which must not update state mid-render, so retire it right after.
+    const replaced = this.session?.player;
+    if (replaced) void Promise.resolve().then(() => this.retire(replaced));
     const player = createVideoPlayer(source);
     setup?.(player);
     this.session = { media, player, minimized: false };
