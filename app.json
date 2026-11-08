@@ -8,6 +8,7 @@
     "scheme": "sinkplanemobile",
     "userInterfaceStyle": "automatic",
     "ios": {
+      "supportsTablet": true,
       "icon": "./assets/expo.icon",
       "bundleIdentifier": "com.paynoattn1989.sinkplane-mobile"
     },

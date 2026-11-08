@@ -4,6 +4,7 @@ import { useRouter } from 'expo-router';
 import { usePlaybackStore, type PlaybackMedia } from '@/components/player/PlaybackSession';
 import { useTabletopLayout } from '@/hooks/use-fold-posture';
 import { useFullscreenOrientation } from '@/hooks/use-fullscreen-orientation';
+import { useScreenLayout } from '@/hooks/use-screen-layout';
 
 /**
  * Shared wiring for a player page (video / live):
@@ -12,14 +13,17 @@ import { useFullscreenOrientation } from '@/hooks/use-fullscreen-orientation';
  *   to the list, like YouTube.
  * - layout: rotation-driven `fullscreen` (see `useFullscreenOrientation`) and, on a foldable
  *   half-opened like a laptop, the `tabletop` split. Either one makes the page `immersive`: the
- *   player takes the whole screen. Both only apply once the stream is `playable`.
+ *   player takes the whole screen. Both only apply once the stream is `playable`. On a large
+ *   screen in landscape (and not immersive) the page goes `sideBySide`: details next to the player.
  */
 export function usePlayerPage(kind: PlaybackMedia['kind'], id: string | undefined, playable: boolean) {
   const store = usePlaybackStore();
   const router = useRouter();
-  const { fullscreen, setFullscreen } = useFullscreenOrientation(playable);
+  const { large, sideBySide } = useScreenLayout();
+  const { fullscreen, setFullscreen } = useFullscreenOrientation(playable, large);
   const posture = useTabletopLayout();
   const tabletop = playable ? posture : null;
+  const immersive = fullscreen || !!tabletop;
 
   useEffect(() => {
     if (!id) return;
@@ -31,7 +35,8 @@ export function usePlayerPage(kind: PlaybackMedia['kind'], id: string | undefine
     fullscreen,
     setFullscreen,
     tabletop,
-    immersive: fullscreen || !!tabletop,
+    immersive,
+    sideBySide: sideBySide && !immersive,
     minimize: () => {
       store?.minimize();
       // Back to the list, past any other player page underneath (it would hide the mini player).

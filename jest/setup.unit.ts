@@ -4,6 +4,7 @@ import { mockNotifications } from '@test/mocks/expo-notifications';
 import { mockTaskManager } from '@test/mocks/expo-task-manager';
 import { mockBackgroundTask } from '@test/mocks/expo-background-task';
 import { mockFoldPosture } from '@test/mocks/fold-posture';
+import { resetTestWindow } from '@test/window-size';
 
 beforeEach(() => {
   secureStoreItems.clear();
@@ -12,4 +13,5 @@ beforeEach(() => {
   mockTaskManager.reset();
   mockBackgroundTask.reset();
   mockFoldPosture.reset();
+  resetTestWindow();
 });

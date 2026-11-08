@@ -1,9 +1,11 @@
 /**
  * E2E: foldables. Half-opening the device like a laptop (tabletop, hinge across the window) splits
  * the player page: the video above the hinge, the controls on the half below (YouTube's flex
- * mode). Unfolding flat restores the normal page. The jest window is portrait (750×1334).
+ * mode). Unfolding flat restores the normal page. The window is an unfolded foldable's inner
+ * screen: portrait 750×1334 — a large screen, so tabletop mode wins over the side-by-side layout.
  */
 import { LIVESTREAM_ID, techCreator } from '@test/fixtures';
+import { LARGE_PORTRAIT_WINDOW } from '@test/window-size';
 
 import { loadRuntime, type Runtime } from './helpers/runtime';
 
@@ -11,6 +13,7 @@ let rt: Runtime;
 
 beforeEach(() => {
   rt = loadRuntime();
+  rt.setWindow(LARGE_PORTRAIT_WINDOW);
 });
 
 const POST_ID = 'ch-tech-main-01';
