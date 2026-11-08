@@ -70,6 +70,22 @@ describe('tabletop posture on the video page', () => {
     expect(rt.screen.getByTestId('comment-list')).toBeTruthy();
   });
 
+  it('ignores a hinge the window does not span (at its top or below its bottom)', async () => {
+    await openVideo();
+
+    // Hinge flush with the window's top edge: nothing above it to show the video in.
+    await fold({ ...ANDROID_TABLETOP, bounds: { x: 0, y: 0, width: 750, height: 14 } });
+    await rt.advanceTime(100);
+    expect(rt.screen.queryByTestId('player-tabletop-panel')).toBeNull();
+    expect(rt.screen.getByTestId('comment-list')).toBeTruthy();
+
+    // Hinge ending past the window's bottom edge: no lower half for the controls.
+    await fold({ ...ANDROID_TABLETOP, bounds: { x: 0, y: 1320, width: 750, height: 14 } });
+    await rt.advanceTime(100);
+    expect(rt.screen.queryByTestId('player-tabletop-panel')).toBeNull();
+    expect(rt.screen.getByTestId('comment-list')).toBeTruthy();
+  });
+
   it('closing from the panel hands the video to the mini player', async () => {
     await openVideo();
     await fold(ANDROID_TABLETOP);
@@ -78,6 +94,28 @@ describe('tabletop posture on the video page', () => {
     await rt.fireEvent.press(rt.screen.getByRole('button', { name: 'Close video' }));
     await rt.until(() => expect(rt.screen.getByTestId('mini-player')).toBeTruthy());
     expect(rt.screen.queryByTestId('video-screen')).toBeNull();
+  });
+
+  it('reopening from the mini player while still folded restores the tabletop split on the same player', async () => {
+    await openVideo();
+    const playing = rt.mockVideoPlayerState.lastPlayer();
+    await fold(ANDROID_TABLETOP);
+    await rt.until(() => expect(rt.screen.getByTestId('player-tabletop-panel')).toBeTruthy());
+
+    await rt.fireEvent.press(rt.screen.getByRole('button', { name: 'Close video' }));
+    await rt.until(() => expect(rt.screen.getByTestId('mini-player')).toBeTruthy());
+    // Still folded, the tile keeps playing…
+    expect(rt.mockVideoPlayerState.viewsByTestID.get('mini-player-video')?.player).toBe(playing);
+
+    // …and tapping it reopens the page straight back into the split, without a reload.
+    await rt.fireEvent.press(rt.screen.getByTestId('mini-player-expand'));
+    await rt.until(() => expect(rt.screen.getByTestId('video-screen')).toBeTruthy());
+    await rt.until(() => expect(rt.screen.getByTestId('player-tabletop-panel')).toBeTruthy());
+    expect(rt.screen.getByTestId('player-video-area')).toHaveStyle({ top: 0, height: 660 });
+    expect(rt.screen.queryByTestId('comment-list')).toBeNull();
+    expect(rt.screen.queryByTestId('mini-player')).toBeNull();
+    expect(rt.mockVideoPlayerState.players).toHaveLength(1);
+    expect(rt.mockVideoPlayerState.viewsByTestID.get('video-view')?.player).toBe(playing);
   });
 });
 

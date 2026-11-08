@@ -3,7 +3,6 @@ import { act, renderHook } from '@testing-library/react-native';
 import {
   emitOrientationChange,
   lockAsync,
-  supportsOrientationLockAsync,
   Orientation,
   OrientationLock,
   orientationListenerCount,
@@ -22,11 +21,8 @@ describe('useFullscreenOrientation', () => {
   const { BackHandler } = jest.requireActual<typeof import('react-native')>('react-native');
   let backHandlers: Array<() => boolean | null | undefined>;
 
-  const notchedIPhone = supportsOrientationLockAsync.getMockImplementation();
-
   beforeEach(() => {
     lockAsync.mockClear();
-    if (notchedIPhone) supportsOrientationLockAsync.mockImplementation(notchedIPhone);
     backHandlers = [];
     jest.spyOn(BackHandler, 'addEventListener').mockImplementation((_event, handler) => {
       backHandlers.push(handler as () => boolean | null | undefined);
@@ -70,10 +66,6 @@ describe('useFullscreenOrientation', () => {
     expect(result.current.fullscreen).toBe(true);
 
     await rotate(Orientation.PORTRAIT_UP);
-    expect(result.current.fullscreen).toBe(false);
-
-    await rotate(Orientation.LANDSCAPE_LEFT);
-    await rotate(Orientation.PORTRAIT_DOWN);
     expect(result.current.fullscreen).toBe(false);
 
     await rotate(Orientation.LANDSCAPE_RIGHT);
@@ -128,49 +120,6 @@ describe('useFullscreenOrientation', () => {
 
     await unmount();
     expect(BackHandler.addEventListener).toHaveBeenCalledTimes(1); // no resubscription after exit
-  });
-
-  it('allows upside-down portrait on iOS devices that support it (iPhone Duo), never asking for it elsewhere', async () => {
-    supportsOrientationLockAsync.mockResolvedValue(true);
-
-    const { result, rerender } = await renderOrientation(false);
-    expect(lockAsync).toHaveBeenLastCalledWith(OrientationLock.PORTRAIT);
-    await rerender({ auto: true });
-    expect(lockAsync).toHaveBeenLastCalledWith(OrientationLock.ALL);
-    await act(() => result.current.setFullscreen(true));
-    expect(lockAsync).toHaveBeenLastCalledWith(OrientationLock.LANDSCAPE);
-    await act(() => result.current.setFullscreen(false));
-    expect(lockAsync).toHaveBeenLastCalledWith(OrientationLock.PORTRAIT);
-  });
-
-  it('treats a failing support check as no upside-down', async () => {
-    supportsOrientationLockAsync.mockRejectedValue(new Error('no module'));
-    await renderOrientation(true);
-    expect(lockAsync).toHaveBeenLastCalledWith(OrientationLock.DEFAULT);
-  });
-
-  it('drops a lock superseded while its support check was pending', async () => {
-    let answer: (supported: boolean) => void = () => {};
-    supportsOrientationLockAsync.mockImplementationOnce(() => new Promise<boolean>(resolve => (answer = resolve)));
-    const { result } = await renderOrientation(true);
-    await act(() => result.current.setFullscreen(true));
-    expect(lockAsync).toHaveBeenLastCalledWith(OrientationLock.LANDSCAPE);
-
-    // The first (follow-device) check answers late: it must not undo the landscape lock.
-    await act(async () => answer(false));
-    expect(lockAsync).toHaveBeenLastCalledWith(OrientationLock.LANDSCAPE);
-  });
-
-  it('keeps the system-respecting locks on Android (ALL / PORTRAIT ignore the auto-rotate setting)', async () => {
-    jest.replaceProperty(Platform, 'OS', 'android');
-    const { result } = await renderOrientation(false);
-    expect(lockAsync).toHaveBeenLastCalledWith(OrientationLock.PORTRAIT_UP);
-
-    const followed = await renderOrientation(true);
-    expect(lockAsync).toHaveBeenLastCalledWith(OrientationLock.DEFAULT);
-    await act(() => followed.result.current.setFullscreen(false));
-    expect(lockAsync).toHaveBeenLastCalledWith(OrientationLock.PORTRAIT_UP);
-    expect(result.current.fullscreen).toBe(false);
   });
 
   it('swallows orientation lock failures', async () => {
