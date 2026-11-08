@@ -25,6 +25,8 @@ module.exports = {
     '^expo-notifications$': '<rootDir>/jest/mocks/expo-notifications.ts',
     '^expo-task-manager$': '<rootDir>/jest/mocks/expo-task-manager.ts',
     '^expo-background-task$': '<rootDir>/jest/mocks/expo-background-task.ts',
+    // Local native module (modules/fold-posture): a posture the tests set and broadcast.
+    '^@modules/fold-posture$': '<rootDir>/jest/mocks/fold-posture.ts',
   },
   // With `npm run link:shared`, @sinkplane/shared resolves (by realpath) into the sibling clone,
   // whose own node_modules is not this app's. Fall back to this app's node_modules so bare

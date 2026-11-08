@@ -1,11 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useEvent, useEventListener } from 'expo';
-import { useVideoPlayer, VideoView, type VideoSource } from 'expo-video';
+import { VideoView, type VideoPlayer as NativeVideoPlayer, type VideoSource } from 'expo-video';
 
 import { CONTROLS_HIDE_MS, HOLD_PLAYBACK_RATE, SEEK_STEP_SECONDS } from '@/components/player/constants';
-import { PlayerControls } from '@/components/player/PlayerControls';
+import { useSessionPlayer, type PlaybackMedia } from '@/components/player/PlaybackSession';
+import { PlayerControls, type PlayerControlsProps } from '@/components/player/PlayerControls';
 import { SpeedMenu } from '@/components/player/SpeedMenu';
+import type { TabletopLayout } from '@/hooks/use-fold-posture';
 import { usePlayerGestures, type SeekSide } from '@/hooks/use-player-gestures';
 import { useWatchProgress } from '@/hooks/use-watch-progress';
 import { useStorageState } from '@/shared';
@@ -32,6 +34,16 @@ export interface VideoPlayerProps {
   onError?: (message: string | undefined) => void;
   /** Replaces the error overlay's default Retry (reloading the original source). */
   onRetry?: () => void;
+  /**
+   * Plays through the app's playback session (see `PlaybackSession`), so the mini player can take
+   * over when the page closes, and reopening the same media resumes that player seamlessly.
+   */
+  media?: PlaybackMedia;
+  /**
+   * Foldable in tabletop posture: the video fills the screen above the hinge and the controls
+   * stay up on the screen below it (YouTube's "flex mode"). The player takes the whole screen.
+   */
+  tabletop?: TabletopLayout | null;
 }
 
 const GESTURE_LABELS = {
@@ -46,7 +58,7 @@ interface SeekFeedback {
   seconds: number;
 }
 
-function usePlaybackState(player: ReturnType<typeof useVideoPlayer>) {
+function usePlaybackState(player: NativeVideoPlayer) {
   const { isPlaying } = useEvent(player, 'playingChange', { isPlaying: player.playing });
   const time = useEvent(player, 'timeUpdate', {
     currentTime: player.currentTime,
@@ -69,7 +81,7 @@ function usePlaybackState(player: ReturnType<typeof useVideoPlayer>) {
  * The playback speed picked in the speed menu (persisted across videos), applied to the player
  * unless a press-and-hold boost is active. Live streams always play at 1×.
  */
-function usePlaybackRate(player: ReturnType<typeof useVideoPlayer>, live: boolean, holding: boolean) {
+function usePlaybackRate(player: NativeVideoPlayer, live: boolean, holding: boolean) {
   const [[, storedRate], setStoredRate] = useStorageState<number>('playbackSpeed');
   const rate = live ? 1 : (storedRate ?? 1);
 
@@ -82,10 +94,17 @@ function usePlaybackRate(player: ReturnType<typeof useVideoPlayer>, live: boolea
 
 /** Live streams autoplay without resuming a saved position or reporting watch progress. */
 function usePlaybackProgress(
-  player: ReturnType<typeof useVideoPlayer>,
+  player: NativeVideoPlayer,
+  isCurrent: () => boolean,
   { live, initialTime, onSaveProgress }: Pick<VideoPlayerProps, 'live' | 'initialTime' | 'onSaveProgress'>,
 ) {
-  useWatchProgress(player, live ? undefined : initialTime, live ? undefined : onSaveProgress);
+  useWatchProgress(player, live ? undefined : initialTime, live ? undefined : onSaveProgress, isCurrent);
+}
+
+function setUpPlayer(player: NativeVideoPlayer) {
+  player.timeUpdateEventInterval = 0.5;
+  player.staysActiveInBackground = true;
+  player.showNowPlayingNotification = true;
 }
 
 /** Controls stay up while paused/ended/scrubbing, and hide after a few idle seconds while playing. */
@@ -160,7 +179,7 @@ function PlaybackFeedback({ seek, holding, loading }: { seek: SeekFeedback | nul
  * overlay's Retry action: `onRetry`, or else reloading the original source.
  */
 function usePlaybackErrors(
-  player: ReturnType<typeof useVideoPlayer>,
+  player: NativeVideoPlayer,
   initialSource: VideoSource,
   { status, error }: ReturnType<typeof usePlaybackState>,
   { fullscreen, onFullscreenChange, onError, onRetry }: Pick<VideoPlayerProps, 'fullscreen' | 'onFullscreenChange' | 'onError' | 'onRetry'>,
@@ -221,15 +240,15 @@ export function VideoPlayer({
   live,
   onError,
   onRetry,
+  media,
+  tabletop,
 }: VideoPlayerProps) {
   const [initialSource] = useState(source);
-  const player = useVideoPlayer(initialSource, p => {
-    p.timeUpdateEventInterval = 0.5;
-    p.staysActiveInBackground = true;
-    p.showNowPlayingNotification = true;
-  });
+  // The resume position travels with the session, for a view that takes over a not-yet-started player.
+  const [sessionMedia] = useState(() => (media ? { ...media, resumeAt: live ? undefined : initialTime } : undefined));
+  const { player, isCurrent } = useSessionPlayer(initialSource, setUpPlayer, sessionMedia);
   const state = usePlaybackState(player);
-  usePlaybackProgress(player, { live, initialTime, onSaveProgress });
+  usePlaybackProgress(player, isCurrent, { live, initialTime, onSaveProgress });
 
   const [holding, setHolding] = useState(false);
   const [rate, setStoredRate] = usePlaybackRate(player, !!live, holding);
@@ -237,7 +256,8 @@ export function VideoPlayer({
   const [speedMenuOpen, setSpeedMenuOpen] = useState(false);
   const [inPictureInPicture, setInPictureInPicture] = useState(false);
   const seekFeedback = useSeekFeedback();
-  const controls = useControlsVisibility(!state.playing || scrubTime !== null || speedMenuOpen);
+  // Tabletop: the controls live on their own half of the screen, so they never hide.
+  const controls = useControlsVisibility(!state.playing || scrubTime !== null || speedMenuOpen || !!tabletop);
 
   const retry = usePlaybackErrors(player, initialSource, state, { fullscreen, onFullscreenChange, onError, onRetry });
 
@@ -277,60 +297,47 @@ export function VideoPlayer({
     controls.touch();
   };
 
-  const showControls = controls.visible && !holding && !inPictureInPicture;
+  const controlProps: PlayerControlsProps = {
+    title,
+    playing: state.playing,
+    ended: state.ended,
+    currentTime: scrubTime ?? state.currentTime,
+    duration,
+    bufferedPosition: state.bufferedPosition,
+    rate,
+    fullscreen,
+    live,
+    onTogglePlay: togglePlay,
+    onSkip: skip,
+    onSeek: seekTo,
+    onScrub: setScrubTime,
+    onOpenSpeedMenu: () => setSpeedMenuOpen(true),
+    onToggleFullscreen: () => {
+      onFullscreenChange(!fullscreen);
+      controls.touch();
+    },
+    onBack,
+  };
 
   return (
-    <View testID="video-player" style={fullscreen ? styles.fullscreen : styles.inline}>
-      <VideoView
-        testID="video-view"
+    <View testID="video-player" style={fullscreen || tabletop ? styles.fullscreen : styles.inline}>
+      <PlayerSurface
         player={player}
-        style={StyleSheet.absoluteFill}
-        contentFit="contain"
-        nativeControls={false}
-        allowsPictureInPicture
-        startsPictureInPictureAutomatically
-        onPictureInPictureStart={() => setInPictureInPicture(true)}
-        onPictureInPictureStop={() => setInPictureInPicture(false)}
+        live={live}
+        tabletop={tabletop}
+        gestures={gestures}
+        seek={seekFeedback.feedback}
+        holding={holding}
+        state={state}
+        onRetry={retry}
+        onPictureInPictureChange={setInPictureInPicture}
       />
 
-      <Pressable
-        testID="player-gesture-surface"
-        style={StyleSheet.absoluteFill}
-        delayLongPress={350}
-        onLayout={gestures.onLayout}
-        onPress={gestures.onPress}
-        onLongPress={gestures.onLongPress}
-        onPressOut={gestures.onPressOut}
-        accessibilityLabel={GESTURE_LABELS[live ? 'live' : 'onDemand']}
+      <ControlsLayer
+        tabletop={tabletop}
+        hidden={state.status === 'error' || inPictureInPicture || (!tabletop && (!controls.visible || holding))}
+        controlProps={controlProps}
       />
-
-      <PlaybackFeedback seek={seekFeedback.feedback} holding={holding} loading={state.status === 'loading'} />
-
-      {state.status === 'error' ? <PlaybackError message={state.error?.message} onRetry={retry} /> : null}
-
-      {showControls && state.status !== 'error' ? (
-        <PlayerControls
-          title={title}
-          playing={state.playing}
-          ended={state.ended}
-          currentTime={scrubTime ?? state.currentTime}
-          duration={duration}
-          bufferedPosition={state.bufferedPosition}
-          rate={rate}
-          fullscreen={fullscreen}
-          live={live}
-          onTogglePlay={togglePlay}
-          onSkip={skip}
-          onSeek={seekTo}
-          onScrub={setScrubTime}
-          onOpenSpeedMenu={() => setSpeedMenuOpen(true)}
-          onToggleFullscreen={() => {
-            onFullscreenChange(!fullscreen);
-            controls.touch();
-          }}
-          onBack={onBack}
-        />
-      ) : null}
 
       <SpeedMenu
         visible={speedMenuOpen}
@@ -345,6 +352,71 @@ export function VideoPlayer({
   );
 }
 
+interface PlayerSurfaceProps {
+  player: NativeVideoPlayer;
+  live?: boolean;
+  tabletop?: TabletopLayout | null;
+  gestures: ReturnType<typeof usePlayerGestures>;
+  seek: SeekFeedback | null;
+  holding: boolean;
+  state: ReturnType<typeof usePlaybackState>;
+  onRetry: () => void;
+  onPictureInPictureChange: (active: boolean) => void;
+}
+
+/** The video, the touch surface over it and the transient feedback; above the hinge in tabletop. */
+function PlayerSurface({ player, live, tabletop, gestures, seek, holding, state, onRetry, onPictureInPictureChange }: PlayerSurfaceProps) {
+  return (
+    <View testID="player-video-area" style={tabletop ? [styles.tabletopVideo, { height: tabletop.hingeTop }] : StyleSheet.absoluteFill}>
+      <VideoView
+        testID="video-view"
+        player={player}
+        style={StyleSheet.absoluteFill}
+        contentFit="contain"
+        nativeControls={false}
+        allowsPictureInPicture
+        startsPictureInPictureAutomatically
+        onPictureInPictureStart={() => onPictureInPictureChange(true)}
+        onPictureInPictureStop={() => onPictureInPictureChange(false)}
+      />
+
+      <Pressable
+        testID="player-gesture-surface"
+        style={StyleSheet.absoluteFill}
+        delayLongPress={350}
+        onLayout={gestures.onLayout}
+        onPress={gestures.onPress}
+        onLongPress={gestures.onLongPress}
+        onPressOut={gestures.onPressOut}
+        accessibilityLabel={GESTURE_LABELS[live ? 'live' : 'onDemand']}
+      />
+
+      <PlaybackFeedback seek={seek} holding={holding} loading={state.status === 'loading'} />
+
+      {state.status === 'error' ? <PlaybackError message={state.error?.message} onRetry={onRetry} /> : null}
+    </View>
+  );
+}
+
+/** The controls over the video, or — in tabletop — on their own panel below the hinge. */
+function ControlsLayer({
+  tabletop,
+  hidden,
+  controlProps,
+}: {
+  tabletop?: TabletopLayout | null;
+  hidden: boolean;
+  controlProps: PlayerControlsProps;
+}) {
+  if (hidden) return null;
+  if (!tabletop) return <PlayerControls {...controlProps} />;
+  return (
+    <View testID="player-tabletop-panel" style={[styles.tabletopPanel, { top: tabletop.hingeBottom }]}>
+      <PlayerControls {...controlProps} variant="panel" />
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   inline: {
     width: '100%',
@@ -355,6 +427,19 @@ const styles = StyleSheet.create({
   fullscreen: {
     flex: 1,
     backgroundColor: '#000',
+  },
+  tabletopVideo: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+  },
+  tabletopPanel: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: '#0d0d0d',
   },
   seekFeedback: {
     position: 'absolute',

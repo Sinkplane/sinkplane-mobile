@@ -21,6 +21,7 @@ type OrientationMock = typeof import('@test/mocks/expo-screen-orientation');
 type NotificationsMock = typeof import('@test/mocks/expo-notifications');
 type TaskManagerMock = typeof import('@test/mocks/expo-task-manager');
 type BackgroundTaskMock = typeof import('@test/mocks/expo-background-task');
+type FoldPostureMock = typeof import('@test/mocks/fold-posture');
 type SocketModule = typeof import('./mock-floatplane-socket');
 type ReactNative = typeof import('react-native');
 
@@ -42,6 +43,8 @@ export type Runtime = TestUtils & {
   /** expo-task-manager mock: defined/registered background tasks (`run` one like the OS would). */
   taskManager: TaskManagerMock['mockTaskManager'];
   backgroundTask: BackgroundTaskMock['mockBackgroundTask'];
+  /** The foldable hinge (`set(...)` a posture to fold / unfold the device). */
+  foldPosture: FoldPostureMock['mockFoldPosture'];
   /** Android hardware-back subscriptions captured while the app runs (press them to exit fullscreen). */
   backHandlers: Array<(event?: unknown) => boolean | null | undefined>;
 };
@@ -66,6 +69,7 @@ export function loadRuntime(): Runtime {
   const notificationsMock = jest.requireActual<NotificationsMock>('@test/mocks/expo-notifications');
   const taskManagerMock = jest.requireActual<TaskManagerMock>('@test/mocks/expo-task-manager');
   const backgroundTaskMock = jest.requireActual<BackgroundTaskMock>('@test/mocks/expo-background-task');
+  const foldPostureMock = jest.requireActual<FoldPostureMock>('@test/mocks/fold-posture');
 
   jest.spyOn(reactNative.BackHandler, 'addEventListener').mockImplementation((_event, handler) => {
     backHandlers.push(handler as () => boolean | null | undefined);
@@ -77,6 +81,7 @@ export function loadRuntime(): Runtime {
   notificationsMock.mockNotifications.reset();
   taskManagerMock.mockTaskManager.reset();
   backgroundTaskMock.mockBackgroundTask.reset();
+  foldPostureMock.mockFoldPosture.reset();
   secureStore.items.clear();
   nativeMocks.mockWebViewState.props = null;
   nativeMocks.mockWebViewState.mounts = 0;
@@ -95,6 +100,7 @@ export function loadRuntime(): Runtime {
     notifications: notificationsMock,
     taskManager: taskManagerMock.mockTaskManager,
     backgroundTask: backgroundTaskMock.mockBackgroundTask,
+    foldPosture: foldPostureMock.mockFoldPosture,
     backHandlers,
   } as Runtime;
   // RNTL reassigns `screen` on every render, so read it live. (A getter in the object literal

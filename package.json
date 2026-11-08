@@ -7,7 +7,7 @@
     "android": "expo run:android",
     "ios": "expo run:ios",
     "web": "expo start --web",
-    "lint": "expo lint src __tests__ jest",
+    "lint": "expo lint src __tests__ jest modules",
     "test": "npm run test:unit && npm run test:e2e",
     "test:unit": "jest -c jest.config.unit.js",
     "test:unit:watch": "jest -c jest.config.unit.js --watch",

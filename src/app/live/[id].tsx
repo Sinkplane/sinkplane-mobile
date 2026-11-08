@@ -1,13 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ScrollView, StyleSheet, View } from 'react-native';
-import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
+import { Stack, useLocalSearchParams } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { LiveDetails } from '@/components/live/LiveDetails';
+import { usePlaybackStore } from '@/components/player/PlaybackSession';
 import { PlayerPlaceholder } from '@/components/player/PlayerPlaceholder';
 import { VideoPlayer } from '@/components/player/VideoPlayer';
-import { useFullscreenOrientation } from '@/hooks/use-fullscreen-orientation';
+import { usePlayerPage } from '@/hooks/use-player-page';
 import { useLiveStreams, type CreatorLiveStream } from '@/hooks/use-live-streams';
 import { useColorScheme, useSession, useThemeColor } from '@/shared';
 import { buildVideoSource } from '@/utils/stream-source';
@@ -23,11 +24,15 @@ const STREAM_MISSING = /404|not found|-1100/i;
 
 /**
  * Reload bookkeeping for the live player. `attempt` keys the player: bumping it remounts it with
- * the latest delivery URL. A "not found" playback error marks the stream missing until the next
- * status check (the tab bar polls) or a manual retry.
+ * the latest delivery URL, after ending this stream's playback session so the remount gets a fresh
+ * native player (the session key is just the creator, which the mini player reopens on). A "not
+ * found" playback error marks the stream missing until the next status check (the tab bar polls) or
+ * a manual retry.
  */
-function useLiveReload(stream: CreatorLiveStream | undefined) {
+function useLiveReload(id: string, stream: CreatorLiveStream | undefined) {
+  const playback = usePlaybackStore();
   const [attempt, setAttempt] = useState(0);
+  const mounted = useRef(true);
   const [missingAt, setMissingAt] = useState<number | null>(null);
   const retryTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const checkedAt = stream?.checkedAt ?? 0;
@@ -37,7 +42,13 @@ function useLiveReload(stream: CreatorLiveStream | undefined) {
     if (retryTimer.current) clearTimeout(retryTimer.current);
     retryTimer.current = null;
   };
-  useEffect(() => clearRetry, []);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+      clearRetry();
+    };
+  }, []);
   const status = stream?.status;
   useEffect(() => {
     if (status !== 'live') clearRetry();
@@ -46,8 +57,14 @@ function useLiveReload(stream: CreatorLiveStream | undefined) {
   const reload = useCallback(() => {
     clearRetry();
     setMissingAt(null);
-    void refetch?.().finally(() => setAttempt(current => current + 1));
-  }, [refetch]);
+    void refetch?.().finally(() => {
+      // Left the page meanwhile (maybe minimized): the mini player keeps what it has.
+      if (!mounted.current) return;
+      const media = playback?.getSnapshot()?.media;
+      if (media?.kind === 'live' && media.id === id) playback?.close();
+      setAttempt(current => current + 1);
+    });
+  }, [refetch, playback, id]);
 
   const onPlaybackError = useCallback(
     (message: string | undefined) => {
@@ -75,7 +92,6 @@ function placeholderFor(stream: CreatorLiveStream | undefined, hasCreators: bool
 /** Live player page: a creator's livestream with the live player and the stream details below. */
 export default function LiveScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  const router = useRouter();
   const insets = useSafeAreaInsets();
   const backgroundColor = useThemeColor({}, 'background');
   const colorScheme = useColorScheme();
@@ -83,13 +99,13 @@ export default function LiveScreen() {
 
   const creator = creators?.find(candidate => candidate.id === id);
   const [polled] = useLiveStreams(token, creator ? [creator] : undefined);
-  const { attempt, missing, reload, onPlaybackError } = useLiveReload(polled);
+  const { attempt, missing, reload, onPlaybackError } = useLiveReload(id, polled);
   // A stream whose playlist 404s is shown as offline until the next status check.
   const stream: CreatorLiveStream | undefined = polled && missing ? { ...polled, status: 'offline', streamUrl: null } : polled;
 
   const placeholder = placeholderFor(stream, !!creators, reload);
   const playable = !placeholder;
-  const { fullscreen, setFullscreen } = useFullscreenOrientation(playable);
+  const { fullscreen, setFullscreen, tabletop, immersive, minimize } = usePlayerPage('live', id, playable);
 
   // The placeholder has no controls (no exit-fullscreen button), so a stream ending mid-watch
   // mustn't strand the viewer in fullscreen.
@@ -100,10 +116,10 @@ export default function LiveScreen() {
   return (
     <View
       testID="live-screen"
-      style={[styles.container, { backgroundColor, paddingTop: fullscreen ? 0 : insets.top }, fullscreen && styles.fullscreen]}
+      style={[styles.container, { backgroundColor, paddingTop: immersive ? 0 : insets.top }, immersive && styles.fullscreen]}
     >
-      <Stack.Screen options={{ gestureEnabled: !fullscreen }} />
-      <StatusBar hidden={fullscreen} style={fullscreen ? 'light' : undefined} />
+      <Stack.Screen options={{ gestureEnabled: !immersive }} />
+      <StatusBar hidden={immersive} style={immersive ? 'light' : undefined} />
       {placeholder ??
         (stream ? (
           <VideoPlayer
@@ -116,13 +132,23 @@ export default function LiveScreen() {
             })}
             title={stream.liveStream.title}
             fullscreen={fullscreen}
+            tabletop={tabletop}
             onFullscreenChange={setFullscreen}
-            onBack={() => router.back()}
+            onBack={minimize}
             onError={onPlaybackError}
+            // Keyed by creator: reopening from the mini player takes its player over. A reload ends the
+            // session first (see useLiveReload), so the remounted player starts fresh.
+            media={{
+              key: `live:${id}`,
+              kind: 'live',
+              id,
+              title: stream.liveStream.title,
+              subtitle: stream.creator.title,
+            }}
             onRetry={reload}
           />
         ) : null)}
-      {fullscreen || !stream ? null : (
+      {immersive || !stream ? null : (
         <ScrollView
           contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 24 }]}
           indicatorStyle={colorScheme === 'dark' ? 'white' : 'default'}

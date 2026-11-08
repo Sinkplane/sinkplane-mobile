@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useEventListener } from 'expo';
 import type { VideoPlayer } from 'expo-video';
 
@@ -8,14 +8,30 @@ export const PROGRESS_SAVE_INTERVAL = 15;
 const MIN_PROGRESS_DELTA = 2;
 
 /**
+ * Players whose resume (seek + autoplay) already ran. A player outlives its view (mini player), so
+ * a view taking over a started player must not seek or autoplay again, while one taking over a
+ * player that was still loading must finish the resume the previous view never got to.
+ */
+const startedPlayers = new WeakSet<VideoPlayer>();
+
+/**
  * Starts playback once the source is ready, resuming at `initialTime`, and reports the watch position
  * through `save` periodically while playing, on pause, and when the player unmounts (live streams
- * pass no `save`: they only need the autoplay).
+ * pass no `save`: they only need the autoplay). Taking over a player another view already started
+ * (the mini player, or its page reopened) skips the seek and autoplay and just keeps saving.
+ * `canAutoplay`: false while another playback owns the session (this page is covered by another
+ * player page); the resume then only seeks, leaving the player paused like any interrupted one.
  */
-export function useWatchProgress(player: VideoPlayer, initialTime: number | undefined, save: ((seconds: number) => void) | undefined) {
-  const lastSaved = useRef(initialTime ?? 0);
-  const position = useRef(initialTime ?? 0);
-  const resumed = useRef(false);
+export function useWatchProgress(
+  player: VideoPlayer,
+  initialTime: number | undefined,
+  save: ((seconds: number) => void) | undefined,
+  canAutoplay: () => boolean = () => true,
+) {
+  const [started] = useState(() => startedPlayers.has(player));
+  const lastSaved = useRef(started ? player.currentTime : (initialTime ?? 0));
+  const position = useRef(started ? player.currentTime : (initialTime ?? 0));
+  const resumed = useRef(started);
   /** Resume target until the player has actually arrived there. */
   const pendingSeek = useRef<number | null>(null);
   const saveRef = useRef(save);
@@ -33,11 +49,12 @@ export function useWatchProgress(player: VideoPlayer, initialTime: number | unde
   const resume = () => {
     if (resumed.current) return;
     resumed.current = true;
+    startedPlayers.add(player);
     if (initialTime && initialTime > 0) {
       pendingSeek.current = initialTime;
       player.currentTime = initialTime;
     }
-    player.play();
+    if (canAutoplay()) player.play();
   };
 
   /** False while the resume seek hasn't landed yet (the player still reports ~0 meanwhile). */
@@ -74,6 +91,6 @@ export function useWatchProgress(player: VideoPlayer, initialTime: number | unde
     if (!isPlaying && resumed.current && pendingSeek.current === null) saveIfMoved(position.current, MIN_PROGRESS_DELTA);
   });
 
-  // The native player is already released when this cleanup runs, so use the last reported time.
+  // The native player may already be released when this cleanup runs, so use the last reported time.
   useEffect(() => () => saveIfMoved(position.current, MIN_PROGRESS_DELTA), []); // eslint-disable-line react-hooks/exhaustive-deps
 }

@@ -1,7 +1,7 @@
 import { useCallback, useMemo } from 'react';
 import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Image } from 'expo-image';
-import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
+import { Stack, useLocalSearchParams } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -9,7 +9,7 @@ import { PlayerPlaceholder } from '@/components/player/PlayerPlaceholder';
 import { VideoPlayer } from '@/components/player/VideoPlayer';
 import { CommentItem } from '@/components/video-page/CommentItem';
 import { VideoDetails } from '@/components/video-page/VideoDetails';
-import { useFullscreenOrientation } from '@/hooks/use-fullscreen-orientation';
+import { usePlayerPage } from '@/hooks/use-player-page';
 import { usePostComments, type PostComment } from '@/hooks/use-post-comments';
 import { usePostReaction } from '@/hooks/use-post-reaction';
 import {
@@ -50,7 +50,6 @@ function CommentsFooter({ comments }: { comments: ReturnType<typeof usePostComme
 
 export default function VideoScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  const router = useRouter();
   const insets = useSafeAreaInsets();
   const backgroundColor = useThemeColor({}, 'background');
   const colorScheme = useColorScheme();
@@ -63,7 +62,7 @@ export default function VideoScreen() {
   const reaction = usePostReaction(token, post.data);
   const streamUrl = getStreamUrl(delivery.data);
 
-  const { fullscreen, setFullscreen } = useFullscreenOrientation(!!streamUrl);
+  const { fullscreen, setFullscreen, tabletop, immersive, minimize } = usePlayerPage('video', id, !!streamUrl);
 
   // The mutation also patches the cached post / list progress, so reopening the video resumes here.
   const { mutate: mutateProgress } = useUpdateVideoProgress(token ?? undefined);
@@ -94,9 +93,11 @@ export default function VideoScreen() {
         initialTime={post.data.progress ?? undefined}
         fallbackDuration={attachment?.duration}
         fullscreen={fullscreen}
+        tabletop={tabletop}
         onFullscreenChange={setFullscreen}
-        onBack={() => router.back()}
+        onBack={minimize}
         onSaveProgress={saveProgress}
+        media={{ key: `video:${id}`, kind: 'video', id, title: post.data.title, subtitle: post.data.channel?.title }}
       />
     );
   };
@@ -104,12 +105,12 @@ export default function VideoScreen() {
   return (
     <View
       testID="video-screen"
-      style={[styles.container, { backgroundColor, paddingTop: fullscreen ? 0 : insets.top }, fullscreen && styles.fullscreen]}
+      style={[styles.container, { backgroundColor, paddingTop: immersive ? 0 : insets.top }, immersive && styles.fullscreen]}
     >
-      <Stack.Screen options={{ gestureEnabled: !fullscreen }} />
-      <StatusBar hidden={fullscreen} style={fullscreen ? 'light' : undefined} />
+      <Stack.Screen options={{ gestureEnabled: !immersive }} />
+      <StatusBar hidden={immersive} style={immersive ? 'light' : undefined} />
       {renderPlayer()}
-      {fullscreen ? null : (
+      {immersive ? null : (
         <FlatList
           testID="comment-list"
           data={commentList}

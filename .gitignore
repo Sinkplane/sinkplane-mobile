@@ -3,6 +3,11 @@ node_modules/
 dist/
 ios/
 android/
+# Local Expo modules (modules/*) keep their native sources; only their Gradle output is generated.
+!/modules/*/android/
+!/modules/*/ios/
+/modules/*/android/build/
+/modules/*/ios/build/
 web-build/
 npm-debug.*
 yarn-debug.*

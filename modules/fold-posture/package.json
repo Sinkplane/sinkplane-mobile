@@ -1,0 +1,10 @@
+{
+  "name": "fold-posture",
+  "version": "0.1.0",
+  "description": "Foldable hinge posture (Jetpack WindowManager on Android, UIHingeInteraction on iOS 27.1+)",
+  "main": "index.ts",
+  "license": "MIT",
+  "author": "Sinkplane",
+  "homepage": "https://github.com/Sinkplane/mobile",
+  "private": true
+}

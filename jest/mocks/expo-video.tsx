@@ -1,7 +1,7 @@
 /**
  * In-memory stand-in for expo-video (mapped in jest.config.base.js).
  *
- * `useVideoPlayer` creates a `MockVideoPlayer`: a plain object with writable state
+ * `useVideoPlayer` / `createVideoPlayer` create a `MockVideoPlayer`: a plain object with writable state
  * (playing/status/currentTime/duration/playbackRate/…), jest.fn controls (play/pause/replay/seekBy)
  * and a small emitter compatible with `useEvent`/`useEventListener` from 'expo' — those hooks
  * subscribe with `addListener(eventName, cb)` and unsubscribe through the returned `{ remove }`.
@@ -40,6 +40,9 @@ export interface MockVideoPlayer {
   replay: jest.Mock;
   seekBy: jest.Mock;
   replaceAsync: jest.Mock;
+  /** Frees the native player; `released` records it. */
+  release: jest.Mock;
+  released: boolean;
   addListener: (eventName: string, listener: EventListener) => { remove: () => void };
   /** Deliver an event to every listener subscribed through `addListener`. */
   emit: (eventName: string, payload?: unknown) => void;
@@ -76,6 +79,10 @@ export function createMockVideoPlayer(
       player.currentTime = player.currentTime + seconds;
     }),
     replaceAsync: jest.fn(async () => undefined),
+    release: jest.fn(() => {
+      player.released = true;
+    }),
+    released: false,
     addListener: (eventName: string, listener: EventListener) => {
       const set = listeners.get(eventName) ?? new Set<EventListener>();
       set.add(listener);
@@ -127,9 +134,11 @@ export interface MockVideoViewProps extends ViewProps {
 
 /** Render-state the tests can inspect (the most recent `VideoView` mount's props). */
 export const mockVideoPlayerState = {
-  /** Every player `useVideoPlayer` created, oldest first. */
+  /** Every player `useVideoPlayer` / `createVideoPlayer` created, oldest first. */
   players: [] as MockVideoPlayer[],
   viewProps: null as MockVideoViewProps | null,
+  /** The latest props of each mounted `VideoView`, by testID (the page player vs the mini player). */
+  viewsByTestID: new Map<string, MockVideoViewProps>(),
   /** The most recently created player. */
   lastPlayer(): MockVideoPlayer {
     const player = this.players.at(-1);
@@ -142,6 +151,7 @@ export const mockVideoPlayerState = {
 export function resetMockVideoPlayerState(): void {
   mockVideoPlayerState.players.length = 0;
   mockVideoPlayerState.viewProps = null;
+  mockVideoPlayerState.viewsByTestID.clear();
 }
 
 /** The fake hook: one player per mount, kept stable across renders like the real one. */
@@ -154,9 +164,17 @@ export function useVideoPlayer(source: VideoSource | string | number | null, set
   return player;
 }
 
+/** The unmanaged factory (the app's playback session owns and releases these players). */
+export function createVideoPlayer(source: VideoSource | string | number | null): MockVideoPlayer {
+  const created = createMockVideoPlayer(source ?? null);
+  mockVideoPlayerState.players.push(created);
+  return created;
+}
+
 /** The fake view: a host View that forwards props (testID, PiP callbacks) for tests to drive. */
 export function VideoView(props: MockVideoViewProps) {
   mockVideoPlayerState.viewProps = props;
+  if (props.testID) mockVideoPlayerState.viewsByTestID.set(props.testID, props);
   const rest = { ...props } as Partial<MockVideoViewProps> & ViewProps;
   delete rest.player; // the real view passes a player id, not the object
   return <View {...rest} />;
