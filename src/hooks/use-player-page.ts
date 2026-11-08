@@ -8,8 +8,8 @@ import { useFullscreenOrientation } from '@/hooks/use-fullscreen-orientation';
 /**
  * Shared wiring for a player page (video / live):
  * - playback session: opening the page stops whatever other media the mini player was playing;
- *   `minimize` (the player's close arrow) hands this page's playback to the mini player and goes
- *   back to the list, like YouTube.
+ *   `minimize` (the player's close arrow) hands this page's playback to the mini player and returns
+ *   to the list, like YouTube.
  * - layout: rotation-driven `fullscreen` (see `useFullscreenOrientation`) and, on a foldable
  *   half-opened like a laptop, the `tabletop` split. Either one makes the page `immersive`: the
  *   player takes the whole screen. Both only apply once the stream is `playable`.
@@ -32,8 +32,9 @@ export function usePlayerPage(kind: PlaybackMedia['kind'], id: string | undefine
     immersive: fullscreen || !!tabletop,
     minimize: () => {
       store?.minimize();
-      // Opened from a notification / deep link there's nothing to go back to.
-      if (router.canGoBack()) router.back();
+      // Back to the list, past any other player page underneath (it would hide the mini player).
+      // Opened from a notification / deep link there may be nothing in the stack to return to.
+      if (router.canDismiss()) router.dismissAll();
       else router.replace('/');
     },
   };

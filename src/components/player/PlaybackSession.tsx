@@ -14,6 +14,8 @@ export interface PlaybackMedia {
   title?: string;
   /** Channel / creator name. */
   subtitle?: string;
+  /** Saved position (seconds) to resume from if the player hasn't started yet when a view takes it over. */
+  resumeAt?: number;
 }
 
 export interface PlaybackSession {
@@ -28,9 +30,14 @@ export interface PlaybackSession {
  * mini player). Players are created unmanaged (`createVideoPlayer`) and released here: when the
  * last view of a non-minimized player unmounts, when another playback replaces it, or on close.
  * Mutations made while rendering (`acquire`) don't notify; the mount effect (`attach`) does.
+ *
+ * A page can stay mounted under another one (a notification opens video B over video A). Its
+ * replaced session is kept as `suspended` (paused, not released) and becomes the session again once
+ * the page on top goes away, so A's close arrow still hands A to the mini player.
  */
 export class PlaybackStore {
   private session: PlaybackSession | null = null;
+  private suspended: PlaybackSession[] = [];
   private readonly attachments = new Map<VideoPlayer, number>();
   private readonly released = new WeakSet<VideoPlayer>();
   private readonly listeners = new Set<() => void>();
@@ -54,7 +61,7 @@ export class PlaybackStore {
     if (this.session?.media.key === media.key) return { player: this.session.player, reused: true };
     // Called while rendering: pausing can synchronously notify the replaced player's still-mounted
     // view, which must not update state mid-render, so retire it right after.
-    const replaced = this.session?.player;
+    const replaced = this.session;
     if (replaced) void Promise.resolve().then(() => this.retire(replaced));
     const player = createVideoPlayer(source);
     setup?.(player);
@@ -76,8 +83,11 @@ export class PlaybackStore {
     if (count > 0) return;
     if (this.session?.player === player) {
       if (this.session.minimized) return;
-      // Ended right away, so a later mount of the same media starts a fresh player.
-      this.setSession(null);
+      // Ended right away, so a later mount of the same media starts a fresh player. A page still
+      // showing an earlier session underneath takes over again.
+      this.setSession(this.resumeSuspended());
+    } else {
+      this.suspended = this.suspended.filter(entry => entry.player !== player);
     }
     // Released a tick later: an effect re-run (cleanup + setup) re-attaches the same view first.
     setTimeout(() => {
@@ -100,14 +110,27 @@ export class PlaybackStore {
   close() {
     const current = this.session;
     if (!current) return;
-    this.retire(current.player);
+    this.retire(current);
     this.setSession(null);
   }
 
-  /** Pause a player leaving the session; release it now unless a view still shows it (its detach will). */
-  private retire(player: VideoPlayer) {
+  /**
+   * Pause a session's player as it leaves the session; release it now unless a view still shows it
+   * (then it is suspended until that view takes over again or unmounts).
+   */
+  private retire(session: PlaybackSession) {
+    const { player } = session;
     player.pause();
     if ((this.attachments.get(player) ?? 0) <= 0) this.release(player);
+    else this.suspended = [...this.suspended.filter(entry => entry.player !== player), { ...session, minimized: false }];
+  }
+
+  /** The most recently suspended session whose page is still mounted, removed from the list. */
+  private resumeSuspended(): PlaybackSession | null {
+    const index = this.suspended.findLastIndex(candidate => (this.attachments.get(candidate.player) ?? 0) > 0);
+    if (index < 0) return null;
+    const [resumed] = this.suspended.splice(index, 1);
+    return resumed;
   }
 
   private release(player: VideoPlayer) {

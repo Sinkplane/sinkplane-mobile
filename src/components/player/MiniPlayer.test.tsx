@@ -1,11 +1,13 @@
 import type { ReactElement } from 'react';
 import type { GestureResponderEvent } from 'react-native';
+import type { VideoPlayer } from 'expo-video';
 import { act, fireEvent, render, screen, userEvent } from '@testing-library/react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import type { MockVideoPlayer } from '@test/mocks/expo-video';
 
 import { isPlayerRoute, MiniPlayer } from '@/components/player/MiniPlayer';
 import { PlaybackProvider, usePlaybackStore, type PlaybackMedia, type PlaybackStore } from '@/components/player/PlaybackSession';
+import { useWatchProgress } from '@/hooks/use-watch-progress';
 
 const mockPush = jest.fn();
 let mockPathname = '/';
@@ -40,12 +42,31 @@ const app = (child: ReactElement) => (
   </SafeAreaProvider>
 );
 
+/** The page's progress hook, mounted while its player plays on the page. */
+function PageProgress({ player }: { player: VideoPlayer }) {
+  useWatchProgress(player, undefined, undefined);
+  return null;
+}
+
 /** Render the overlay with `media` playing and handed to the mini player (the page's close arrow). */
 async function renderMinimized(media: PlaybackMedia = VIDEO) {
-  await render(app(<MiniPlayer />));
+  const utils = await render(app(<MiniPlayer />));
   const { player } = store.acquire(media, { uri: 'https://edge.floatplane.test/a.m3u8' });
   const mock = player as unknown as MockVideoPlayer;
+  // The page's progress hook started this player before the close arrow handed it to the tile, so
+  // the tile must neither seek nor autoplay (the not-yet-started case has its own test below).
   mock.status = 'readyToPlay';
+  await utils.rerender(
+    app(
+      <>
+        <PageProgress player={player} />
+        <MiniPlayer />
+      </>,
+    ),
+  );
+  // The page unmounts (its close arrow): only the tile remains.
+  await utils.rerender(app(<MiniPlayer />));
+  mock.play.mockClear();
   mock.playing = true;
   await act(async () => {
     store.attach(player);
@@ -175,6 +196,30 @@ describe('MiniPlayer', () => {
     expect(mockMutate).toHaveBeenCalledWith({ id: 'a', progress: 40 });
     expect(player.seeks).toEqual([40]); // only the test's own assignment
     expect(player.play).not.toHaveBeenCalled();
+  });
+
+  it('resumes a video that was still loading when minimized, at the position the page saved', async () => {
+    await render(app(<MiniPlayer />));
+    const { player } = store.acquire({ ...VIDEO, resumeAt: 37 }, { uri: 'https://edge.floatplane.test/a.m3u8' });
+    const mock = player as unknown as MockVideoPlayer;
+    mock.status = 'loading';
+    await act(async () => {
+      store.attach(player);
+      store.minimize();
+      store.detach(player);
+    });
+    expect(screen.getByTestId('mini-player')).toBeTruthy();
+    // The tile took over a player nobody started: nothing to seek or play yet.
+    expect(mock.play).not.toHaveBeenCalled();
+    expect(mock.seeks).toEqual([]);
+
+    // The stream becomes ready: the tile finishes the resume at the saved position and plays.
+    await act(async () => {
+      mock.setStatus('readyToPlay');
+    });
+    expect(mock.seeks).toEqual([37]);
+    expect(mock.play).toHaveBeenCalledTimes(1);
+    expect(mock.playing).toBe(true);
   });
 
   it('saves no progress for live streams or without a session token', async () => {

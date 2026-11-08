@@ -5,7 +5,13 @@ import { mockFoldPosture } from '@test/mocks/fold-posture';
 import { PlaybackProvider, usePlaybackSession, usePlaybackStore, type PlaybackStore } from '@/components/player/PlaybackSession';
 import { usePlayerPage } from '@/hooks/use-player-page';
 
-const mockRouter = { back: jest.fn(), replace: jest.fn(), canGoBack: jest.fn(() => true) };
+const mockRouter = {
+  back: jest.fn(),
+  replace: jest.fn(),
+  canGoBack: jest.fn(() => true),
+  canDismiss: jest.fn(() => true),
+  dismissAll: jest.fn(),
+};
 jest.mock('expo-router', () => ({ useRouter: () => mockRouter }));
 
 const wrapper = ({ children }: { children: ReactNode }) => <PlaybackProvider>{children}</PlaybackProvider>;
@@ -24,24 +30,31 @@ async function renderPage(kind: 'video' | 'live', id: string | undefined, playab
 
 describe('usePlayerPage', () => {
   beforeEach(() => {
+    jest.clearAllMocks();
     mockRouter.canGoBack.mockReturnValue(true);
+    mockRouter.canDismiss.mockReturnValue(true);
   });
 
-  it('minimize hands playback to the mini player and goes back', async () => {
+  it('minimize hands playback to the mini player and dismisses every screen back to the list', async () => {
     const { result } = await renderPage('video', 'a');
     const { player } = result.current.store.acquire({ key: 'video:a', kind: 'video', id: 'a' }, SOURCE);
     await act(async () => result.current.store.attach(player));
 
     await act(async () => result.current.page.minimize());
     expect(result.current.session?.minimized).toBe(true);
-    expect(mockRouter.back).toHaveBeenCalled();
+    // Not `back`: a player page underneath (video A under video B) must be dropped too, or it
+    // would cover the mini player.
+    expect(mockRouter.dismissAll).toHaveBeenCalledTimes(1);
+    expect(mockRouter.back).not.toHaveBeenCalled();
+    expect(mockRouter.replace).not.toHaveBeenCalled();
   });
 
-  it('goes to the feed when there is no screen to go back to (deep link)', async () => {
-    mockRouter.canGoBack.mockReturnValue(false);
+  it('goes to the feed when there is nothing in the stack to dismiss (deep link)', async () => {
+    mockRouter.canDismiss.mockReturnValue(false);
     const { result } = await renderPage('video', 'a');
     await act(async () => result.current.page.minimize());
     expect(mockRouter.replace).toHaveBeenCalledWith('/');
+    expect(mockRouter.dismissAll).not.toHaveBeenCalled();
     expect(mockRouter.back).not.toHaveBeenCalled();
   });
 

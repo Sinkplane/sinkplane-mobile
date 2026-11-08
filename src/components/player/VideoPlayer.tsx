@@ -92,16 +92,12 @@ function usePlaybackRate(player: NativeVideoPlayer, live: boolean, holding: bool
   return [rate, setStoredRate] as const;
 }
 
-/**
- * Live streams autoplay without resuming a saved position or reporting watch progress. A player
- * taken over from the mini player (`reused`) keeps its position and play state.
- */
+/** Live streams autoplay without resuming a saved position or reporting watch progress. */
 function usePlaybackProgress(
   player: NativeVideoPlayer,
-  reused: boolean,
   { live, initialTime, onSaveProgress }: Pick<VideoPlayerProps, 'live' | 'initialTime' | 'onSaveProgress'>,
 ) {
-  useWatchProgress(player, live || reused ? undefined : initialTime, live ? undefined : onSaveProgress, reused);
+  useWatchProgress(player, live ? undefined : initialTime, live ? undefined : onSaveProgress);
 }
 
 function setUpPlayer(player: NativeVideoPlayer) {
@@ -247,9 +243,11 @@ export function VideoPlayer({
   tabletop,
 }: VideoPlayerProps) {
   const [initialSource] = useState(source);
-  const { player, reused } = useSessionPlayer(initialSource, setUpPlayer, media);
+  // The resume position travels with the session, for a view that takes over a not-yet-started player.
+  const [sessionMedia] = useState(() => (media ? { ...media, resumeAt: live ? undefined : initialTime } : undefined));
+  const { player } = useSessionPlayer(initialSource, setUpPlayer, sessionMedia);
   const state = usePlaybackState(player);
-  usePlaybackProgress(player, reused, { live, initialTime, onSaveProgress });
+  usePlaybackProgress(player, { live, initialTime, onSaveProgress });
 
   const [holding, setHolding] = useState(false);
   const [rate, setStoredRate] = usePlaybackRate(player, !!live, holding);

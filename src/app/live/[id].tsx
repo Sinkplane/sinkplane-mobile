@@ -5,6 +5,7 @@ import { StatusBar } from 'expo-status-bar';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { LiveDetails } from '@/components/live/LiveDetails';
+import { usePlaybackStore } from '@/components/player/PlaybackSession';
 import { PlayerPlaceholder } from '@/components/player/PlayerPlaceholder';
 import { VideoPlayer } from '@/components/player/VideoPlayer';
 import { usePlayerPage } from '@/hooks/use-player-page';
@@ -23,11 +24,15 @@ const STREAM_MISSING = /404|not found|-1100/i;
 
 /**
  * Reload bookkeeping for the live player. `attempt` keys the player: bumping it remounts it with
- * the latest delivery URL. A "not found" playback error marks the stream missing until the next
- * status check (the tab bar polls) or a manual retry.
+ * the latest delivery URL, after ending this stream's playback session so the remount gets a fresh
+ * native player (the session key is just the creator, which the mini player reopens on). A "not
+ * found" playback error marks the stream missing until the next status check (the tab bar polls) or
+ * a manual retry.
  */
-function useLiveReload(stream: CreatorLiveStream | undefined) {
+function useLiveReload(id: string, stream: CreatorLiveStream | undefined) {
+  const playback = usePlaybackStore();
   const [attempt, setAttempt] = useState(0);
+  const mounted = useRef(true);
   const [missingAt, setMissingAt] = useState<number | null>(null);
   const retryTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const checkedAt = stream?.checkedAt ?? 0;
@@ -37,7 +42,13 @@ function useLiveReload(stream: CreatorLiveStream | undefined) {
     if (retryTimer.current) clearTimeout(retryTimer.current);
     retryTimer.current = null;
   };
-  useEffect(() => clearRetry, []);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+      clearRetry();
+    };
+  }, []);
   const status = stream?.status;
   useEffect(() => {
     if (status !== 'live') clearRetry();
@@ -46,8 +57,14 @@ function useLiveReload(stream: CreatorLiveStream | undefined) {
   const reload = useCallback(() => {
     clearRetry();
     setMissingAt(null);
-    void refetch?.().finally(() => setAttempt(current => current + 1));
-  }, [refetch]);
+    void refetch?.().finally(() => {
+      // Left the page meanwhile (maybe minimized): the mini player keeps what it has.
+      if (!mounted.current) return;
+      const media = playback?.getSnapshot()?.media;
+      if (media?.kind === 'live' && media.id === id) playback?.close();
+      setAttempt(current => current + 1);
+    });
+  }, [refetch, playback, id]);
 
   const onPlaybackError = useCallback(
     (message: string | undefined) => {
@@ -82,7 +99,7 @@ export default function LiveScreen() {
 
   const creator = creators?.find(candidate => candidate.id === id);
   const [polled] = useLiveStreams(token, creator ? [creator] : undefined);
-  const { attempt, missing, reload, onPlaybackError } = useLiveReload(polled);
+  const { attempt, missing, reload, onPlaybackError } = useLiveReload(id, polled);
   // A stream whose playlist 404s is shown as offline until the next status check.
   const stream: CreatorLiveStream | undefined = polled && missing ? { ...polled, status: 'offline', streamUrl: null } : polled;
 
@@ -119,10 +136,10 @@ export default function LiveScreen() {
             onFullscreenChange={setFullscreen}
             onBack={minimize}
             onError={onPlaybackError}
-            // Each reload attempt (fresh signed URL) is a new playback. Reopening from the mini player
-            // reuses its player only while the key still matches (no reload happened since).
+            // Keyed by creator: reopening from the mini player takes its player over. A reload ends the
+            // session first (see useLiveReload), so the remounted player starts fresh.
             media={{
-              key: `live:${id}:${attempt}:${stream.streamUrl}`,
+              key: `live:${id}`,
               kind: 'live',
               id,
               title: stream.liveStream.title,
