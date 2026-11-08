@@ -1,0 +1,30 @@
+diff --git a/node_modules/expo-video/ios/VideoPlayer.swift b/node_modules/expo-video/ios/VideoPlayer.swift
+--- a/node_modules/expo-video/ios/VideoPlayer.swift
++++ b/node_modules/expo-video/ios/VideoPlayer.swift
+@@ -69,7 +69,7 @@
+ 
+   var preservesPitch = true {
+     didSet {
+-      ref.currentItem?.audioTimePitchAlgorithm = preservesPitch ? .spectral : .varispeed
++      ref.currentItem?.audioTimePitchAlgorithm = preservesPitch ? .timeDomain : .varispeed
+     }
+   }
+ 
+@@ -225,7 +225,7 @@
+       contentKeyManager.addContentKeyRequest(videoSource: videoSource, asset: playerItem.urlAsset)
+     }
+ 
+-    playerItem.audioTimePitchAlgorithm = preservesPitch ? .spectral : .varispeed
++    playerItem.audioTimePitchAlgorithm = preservesPitch ? .timeDomain : .varispeed
+     playerItem.preferredForwardBufferDuration = bufferOptions.preferredForwardBufferDuration
+ 
+     // The current item has to be replaced from the main thread. When replacing from other queues
+@@ -262,7 +262,7 @@
+       self.contentKeyManager.addContentKeyRequest(videoSource: videoSource, asset: playerItem.urlAsset)
+     }
+ 
+-    playerItem.audioTimePitchAlgorithm = self.preservesPitch ? .spectral : .varispeed
++    playerItem.audioTimePitchAlgorithm = self.preservesPitch ? .timeDomain : .varispeed
+     playerItem.preferredForwardBufferDuration = self.bufferOptions.preferredForwardBufferDuration
+ 
+     // The current item has to be replaced from the main thread. When replacing from other queues
