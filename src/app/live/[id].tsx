@@ -11,6 +11,7 @@ import { VideoPlayer } from '@/components/player/VideoPlayer';
 import { usePlayerPage } from '@/hooks/use-player-page';
 import { useLiveStreams, type CreatorLiveStream } from '@/hooks/use-live-streams';
 import { useColorScheme, useSession, useThemeColor } from '@/shared';
+import { playerPageLayout } from '@/utils/player-page-layout';
 import { buildVideoSource } from '@/utils/stream-source';
 
 /** After a playback error the stream is reloaded (fresh signed URL) this much later (TV app parity). */
@@ -105,7 +106,8 @@ export default function LiveScreen() {
 
   const placeholder = placeholderFor(stream, !!creators, reload);
   const playable = !placeholder;
-  const { fullscreen, setFullscreen, tabletop, immersive, minimize } = usePlayerPage('live', id, playable);
+  const { fullscreen, setFullscreen, tabletop, immersive, sideBySide, minimize } = usePlayerPage('live', id, playable);
+  const layout = playerPageLayout({ immersive, sideBySide }, insets);
 
   // The placeholder has no controls (no exit-fullscreen button), so a stream ending mid-watch
   // mustn't strand the viewer in fullscreen.
@@ -116,40 +118,45 @@ export default function LiveScreen() {
   return (
     <View
       testID="live-screen"
-      style={[styles.container, { backgroundColor, paddingTop: immersive ? 0 : insets.top }, immersive && styles.fullscreen]}
+      // The page background first: immersive pages override it with black.
+      style={[{ backgroundColor }, layout.page]}
     >
       <Stack.Screen options={{ gestureEnabled: !immersive }} />
       <StatusBar hidden={immersive} style={immersive ? 'light' : undefined} />
-      {placeholder ??
-        (stream ? (
-          <VideoPlayer
-            key={attempt}
-            live
-            source={buildVideoSource(stream.streamUrl, token, {
-              title: stream.liveStream.title,
-              artist: stream.creator.title,
-              artwork: stream.liveStream.thumbnail?.path,
-            })}
-            title={stream.liveStream.title}
-            fullscreen={fullscreen}
-            tabletop={tabletop}
-            onFullscreenChange={setFullscreen}
-            onBack={minimize}
-            onError={onPlaybackError}
-            // Keyed by creator: reopening from the mini player takes its player over. A reload ends the
-            // session first (see useLiveReload), so the remounted player starts fresh.
-            media={{
-              key: `live:${id}`,
-              kind: 'live',
-              id,
-              title: stream.liveStream.title,
-              subtitle: stream.creator.title,
-            }}
-            onRetry={reload}
-          />
-        ) : null)}
+      {/* Large screens in landscape: the player on the left, the stream details beside it. */}
+      <View testID="player-column" style={layout.player}>
+        {placeholder ??
+          (stream ? (
+            <VideoPlayer
+              key={attempt}
+              live
+              source={buildVideoSource(stream.streamUrl, token, {
+                title: stream.liveStream.title,
+                artist: stream.creator.title,
+                artwork: stream.liveStream.thumbnail?.path,
+              })}
+              title={stream.liveStream.title}
+              fullscreen={fullscreen}
+              tabletop={tabletop}
+              onFullscreenChange={setFullscreen}
+              onBack={minimize}
+              onError={onPlaybackError}
+              // Keyed by creator: reopening from the mini player takes its player over. A reload ends the
+              // session first (see useLiveReload), so the remounted player starts fresh.
+              media={{
+                key: `live:${id}`,
+                kind: 'live',
+                id,
+                title: stream.liveStream.title,
+                subtitle: stream.creator.title,
+              }}
+              onRetry={reload}
+            />
+          ) : null)}
+      </View>
       {immersive || !stream ? null : (
         <ScrollView
+          style={layout.details}
           contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 24 }]}
           indicatorStyle={colorScheme === 'dark' ? 'white' : 'default'}
         >
@@ -161,12 +168,6 @@ export default function LiveScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  fullscreen: {
-    backgroundColor: '#000',
-  },
   content: {
     paddingHorizontal: 16,
   },

@@ -110,6 +110,10 @@ const styles = StyleSheet.create({
   content: {
     padding: 24,
     paddingBottom: 32,
+    // Keeps the cards and the button at a readable width on tablets.
+    width: '100%',
+    maxWidth: 720,
+    alignSelf: 'center',
   },
   profileRow: {
     flexDirection: 'row',

@@ -131,18 +131,29 @@ interface ListProps {
   data?: readonly { id: string }[];
   renderItem?: unknown;
   onEndReached?: (info: { distanceFromEnd: number }) => void;
+  numColumns?: number;
 }
 
 function listProps(testID: string): ListProps {
   let fiber = screen.getByTestId(testID).unstable_fiber;
+  let belowFlatList: ListProps | null = null;
   while (fiber) {
     const props = fiber.memoizedProps as ListProps | null;
-    // The FlatList itself (the VirtualizedList below it gets the same `data`, the host ScrollView none).
-    if (Array.isArray(props?.data) && 'renderItem' in props) return props;
+    if (Array.isArray(props?.data) && 'renderItem' in props) {
+      // The FlatList element itself. (The VirtualizedList below it gets the same `data` but not
+      // `numColumns` — FlatList destructures that prop out — so keep walking past it.)
+      if ('numColumns' in props) return props;
+      belowFlatList ??= props;
+    }
     fiber = fiber.return;
   }
+  // A FlatList that never passes numColumns: fall back to the VirtualizedList's props.
+  if (belowFlatList) return belowFlatList;
   throw new Error(`No FlatList found for testID "${testID}"`);
 }
+
+/** How many columns a tab list lays out (phones: 1; tablet grids: more — see useListGrid). */
+export const listNumColumns = (testID: string): number => listProps(testID).numColumns ?? 1;
 
 /** Ids of every item the list holds (rendered or virtualized away). */
 export const listItemIds = (testID: string): string[] => (listProps(testID).data ?? []).map(item => item.id);

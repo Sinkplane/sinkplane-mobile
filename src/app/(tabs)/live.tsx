@@ -4,6 +4,7 @@ import { useFocusEffect, useRouter } from 'expo-router';
 
 import { LiveStreamCard } from '@/components/live/LiveStreamCard';
 import { useLiveStreams, type CreatorLiveStream } from '@/hooks/use-live-streams';
+import { useListGrid } from '@/hooks/use-screen-layout';
 import { useTabScreenInsets } from '@/hooks/use-tab-screen-insets';
 import { useSession, useThemeColor } from '@/shared';
 
@@ -30,6 +31,7 @@ function EmptyState({ hasCreators }: { hasCreators: boolean }) {
 export default function Live() {
   const { token, creators, isLoading } = useSession();
   const insets = useTabScreenInsets();
+  const { listKey, columnWidth, ...grid } = useListGrid();
   const backgroundColor = useThemeColor({}, 'background');
   const textColor = useThemeColor({}, 'text');
 
@@ -62,14 +64,20 @@ export default function Live() {
   );
 
   const renderItem = useCallback(
-    ({ item }: { item: CreatorLiveStream }) => <LiveStreamCard stream={item} onPress={openStream} />,
-    [openStream],
+    ({ item }: { item: CreatorLiveStream }) => (
+      <View style={{ width: columnWidth }}>
+        <LiveStreamCard stream={item} onPress={openStream} />
+      </View>
+    ),
+    [openStream, columnWidth],
   );
 
   return (
     <View style={[styles.container, { backgroundColor, paddingTop: insets.top }]}>
       <FlatList
         testID="live-list"
+        key={listKey}
+        {...grid}
         style={styles.container}
         contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 24 }]}
         scrollIndicatorInsets={{ bottom: insets.bottom }}

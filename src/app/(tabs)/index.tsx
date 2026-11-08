@@ -7,6 +7,7 @@ import { SubscriptionPicker } from '@/components/videos/SubscriptionPicker';
 import { VideoListItem } from '@/components/videos/VideoListItem';
 import { VideoSearchBar } from '@/components/videos/VideoSearchBar';
 import { useDebouncedValue } from '@/hooks/use-debounced-value';
+import { useListGrid } from '@/hooks/use-screen-layout';
 import { useSubscriptionFeed } from '@/hooks/use-subscription-feed';
 import { useTabScreenInsets } from '@/hooks/use-tab-screen-insets';
 import { AssDass, useGetVideoProgress, useSession, useThemeColor, type Creator, type Video } from '@/shared';
@@ -22,6 +23,7 @@ export default function Videos() {
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchInput, setSearchInput] = useState('');
   const insets = useTabScreenInsets();
+  const { listKey, columnWidth, ...grid } = useListGrid();
 
   const backgroundColor = useThemeColor({}, 'background');
   const mutedColor = useThemeColor({}, 'icon');
@@ -55,8 +57,12 @@ export default function Videos() {
   const openVideo = useCallback((video: Video) => router.push({ pathname: '/video/[id]', params: { id: video.id } }), [router]);
 
   const renderItem = useCallback(
-    ({ item }: { item: Video }) => <VideoListItem video={item} progress={progressById.get(item.id)} onPress={openVideo} />,
-    [progressById, openVideo],
+    ({ item }: { item: Video }) => (
+      <View style={{ width: columnWidth }}>
+        <VideoListItem video={item} progress={progressById.get(item.id)} onPress={openVideo} />
+      </View>
+    ),
+    [progressById, openVideo, columnWidth],
   );
 
   // Switching subscription narrows the feed to that creator and makes it the session's active
@@ -113,6 +119,8 @@ export default function Videos() {
 
       <FlatList
         testID="videos-list"
+        key={listKey}
+        {...grid}
         style={styles.container}
         contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 24 }]}
         scrollIndicatorInsets={{ bottom: insets.bottom }}
@@ -205,17 +213,16 @@ function FeedControls({
 
       {selectedCreator && selectedCreator.channels.length > 1 ? (
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips}>
-          {[
-            { id: undefined, title: 'All' },
-            ...selectedCreator.channels.map(channel => ({ id: channel.id, title: channel.title })),
-          ].map(channel => (
-            <Chip
-              key={channel.id ?? 'all'}
-              label={channel.title}
-              selected={channel.id === channelId}
-              onPress={() => onChannelChange(channel.id)}
-            />
-          ))}
+          {[{ id: undefined, title: 'All' }, ...selectedCreator.channels.map(channel => ({ id: channel.id, title: channel.title }))].map(
+            channel => (
+              <Chip
+                key={channel.id ?? 'all'}
+                label={channel.title}
+                selected={channel.id === channelId}
+                onPress={() => onChannelChange(channel.id)}
+              />
+            ),
+          )}
         </ScrollView>
       ) : null}
     </View>

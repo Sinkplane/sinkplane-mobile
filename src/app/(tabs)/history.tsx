@@ -3,6 +3,7 @@ import { ActivityIndicator, FlatList, RefreshControl, StyleSheet, Text, View } f
 import { useFocusEffect, useRouter } from 'expo-router';
 
 import { VideoListItem } from '@/components/videos/VideoListItem';
+import { useListGrid } from '@/hooks/use-screen-layout';
 import { useTabScreenInsets } from '@/hooks/use-tab-screen-insets';
 import { useWatchHistory } from '@/hooks/use-watch-history';
 import { useSession, useThemeColor, type Video } from '@/shared';
@@ -10,6 +11,7 @@ import { useSession, useThemeColor, type Video } from '@/shared';
 export default function History() {
   const { token, tokenExpiration } = useSession();
   const insets = useTabScreenInsets();
+  const { listKey, columnWidth, ...grid } = useListGrid();
 
   const backgroundColor = useThemeColor({}, 'background');
   const textColor = useThemeColor({}, 'text');
@@ -36,14 +38,20 @@ export default function History() {
   const openVideo = useCallback((video: Video) => router.push({ pathname: '/video/[id]', params: { id: video.id } }), [router]);
 
   const renderItem = useCallback(
-    ({ item }: { item: Video }) => <VideoListItem video={item} progress={progressById.get(item.id)} onPress={openVideo} />,
-    [progressById, openVideo],
+    ({ item }: { item: Video }) => (
+      <View style={{ width: columnWidth }}>
+        <VideoListItem video={item} progress={progressById.get(item.id)} onPress={openVideo} />
+      </View>
+    ),
+    [progressById, openVideo, columnWidth],
   );
 
   return (
     <View style={[styles.container, { backgroundColor, paddingTop: insets.top }]}>
       <FlatList
         testID="history-list"
+        key={listKey}
+        {...grid}
         style={styles.container}
         contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 24 }]}
         scrollIndicatorInsets={{ bottom: insets.bottom }}

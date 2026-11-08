@@ -22,6 +22,7 @@ type NotificationsMock = typeof import('@test/mocks/expo-notifications');
 type TaskManagerMock = typeof import('@test/mocks/expo-task-manager');
 type BackgroundTaskMock = typeof import('@test/mocks/expo-background-task');
 type FoldPostureMock = typeof import('@test/mocks/fold-posture');
+type WindowSizeHelper = typeof import('@test/window-size');
 type SocketModule = typeof import('./mock-floatplane-socket');
 type ReactNative = typeof import('react-native');
 
@@ -47,6 +48,12 @@ export type Runtime = TestUtils & {
   foldPosture: FoldPostureMock['mockFoldPosture'];
   /** Android hardware-back subscriptions captured while the app runs (press them to exit fullscreen). */
   backHandlers: Array<(event?: unknown) => boolean | null | undefined>;
+  /**
+   * Resize the window (dp) every `useWindowDimensions` in the app under test reports — phone,
+   * tablet, rotation. Call before `renderApp` to boot at that size; inside `rt.act(...)` mid-test
+   * to rotate / fold / split the window under a mounted app.
+   */
+  setWindow: WindowSizeHelper['setTestWindow'];
 };
 
 export function loadRuntime(): Runtime {
@@ -70,6 +77,7 @@ export function loadRuntime(): Runtime {
   const taskManagerMock = jest.requireActual<TaskManagerMock>('@test/mocks/expo-task-manager');
   const backgroundTaskMock = jest.requireActual<BackgroundTaskMock>('@test/mocks/expo-background-task');
   const foldPostureMock = jest.requireActual<FoldPostureMock>('@test/mocks/fold-posture');
+  const windowSize = jest.requireActual<WindowSizeHelper>('@test/window-size');
 
   jest.spyOn(reactNative.BackHandler, 'addEventListener').mockImplementation((_event, handler) => {
     backHandlers.push(handler as () => boolean | null | undefined);
@@ -87,6 +95,9 @@ export function loadRuntime(): Runtime {
   nativeMocks.mockWebViewState.mounts = 0;
   videoMock.resetMockVideoPlayerState();
   backHandlers.length = 0;
+  // Every test starts on a phone window; `rt.setWindow(...)` resizes for tablet / rotation tests.
+  // (Must run after the module reset above so it drives the registry this test will render with.)
+  windowSize.resetTestWindow();
 
   const runtime = {
     ...utils,
@@ -101,6 +112,7 @@ export function loadRuntime(): Runtime {
     taskManager: taskManagerMock.mockTaskManager,
     backgroundTask: backgroundTaskMock.mockBackgroundTask,
     foldPosture: foldPostureMock.mockFoldPosture,
+    setWindow: windowSize.setTestWindow,
     backHandlers,
   } as Runtime;
   // RNTL reassigns `screen` on every render, so read it live. (A getter in the object literal
