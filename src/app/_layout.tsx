@@ -1,14 +1,15 @@
 import { useEffect } from 'react';
 import { Appearance, Platform, StyleSheet, View } from 'react-native';
-import { DarkTheme, DefaultTheme, Stack, ThemeProvider } from 'expo-router';
+import { DarkTheme, DefaultTheme, Stack, ThemeProvider, usePathname } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
-import { MiniPlayer } from '@/components/player/MiniPlayer';
+import { isPlayerRoute, MiniPlayer } from '@/components/player/MiniPlayer';
 import { PlaybackProvider } from '@/components/player/PlaybackSession';
-import { lockPortrait } from '@/hooks/use-fullscreen-orientation';
+import { lockAppOrientation } from '@/hooks/use-fullscreen-orientation';
 import { useNotificationSync } from '@/hooks/use-notification-sync';
+import { useScreenLayout } from '@/hooks/use-screen-layout';
 import { configureNotifications } from '@/notifications/local-notifications';
 import { SessionProvider, ThemeProvider as AppThemeProvider, useColorScheme, useSession, useTheme } from '@/shared';
 
@@ -43,9 +44,9 @@ function RootNavigation() {
 
   useEffect(() => {
     SplashScreen.hideAsync();
-    // app.json allows every orientation so the fullscreen player can rotate; everything else is portrait.
-    lockPortrait();
   }, []);
+
+  useAppOrientation();
 
   // Push the in-app override down to the native layer so system-drawn chrome
   // (native tab bar / Liquid Glass, keyboards, alerts, WebViews) matches it.
@@ -64,6 +65,20 @@ function RootNavigation() {
       </ThemeProvider>
     </QueryClientProvider>
   );
+}
+
+/**
+ * app.json allows every orientation so the fullscreen player can rotate. Phones are otherwise
+ * portrait-only; tablets rotate everywhere. Player pages manage the orientation themselves while
+ * they're showing (see useFullscreenOrientation), so a window resize under one (folding a foldable)
+ * doesn't override them.
+ */
+function useAppOrientation() {
+  const { large } = useScreenLayout();
+  const onPlayerPage = isPlayerRoute(usePathname());
+  useEffect(() => {
+    if (!onPlayerPage) lockAppOrientation(large);
+  }, [large, onPlayerPage]);
 }
 
 // Create a new component that can access the SessionProvider context.

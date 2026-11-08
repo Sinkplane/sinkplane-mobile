@@ -21,11 +21,21 @@ import {
   useUpdateVideoProgress,
   type VideoPost,
 } from '@/shared';
+import { playerPageLayout } from '@/utils/player-page-layout';
 import { buildVideoSource, getStreamUrl } from '@/utils/stream-source';
+
+function postImageUri(post: VideoPost) {
+  return post.pictureAttachments?.[0]?.thumbnail?.path ?? post.thumbnail?.path;
+}
+
+/** A loaded post with neither a video nor a picture: nothing to put in the player slot. */
+function isTextOnly(post: VideoPost | undefined) {
+  return !!post && !post.videoAttachments?.[0] && !postImageUri(post);
+}
 
 /** Media slot for posts without a video: picture posts show their image, text-only posts show nothing. */
 function PostImage({ post }: { post: VideoPost }) {
-  const uri = post.pictureAttachments?.[0]?.thumbnail?.path ?? post.thumbnail?.path;
+  const uri = postImageUri(post);
   if (!uri) return null;
   return (
     <View testID="post-image" style={styles.postImage}>
@@ -62,7 +72,9 @@ export default function VideoScreen() {
   const reaction = usePostReaction(token, post.data);
   const streamUrl = getStreamUrl(delivery.data);
 
-  const { fullscreen, setFullscreen, tabletop, immersive, minimize } = usePlayerPage('video', id, !!streamUrl);
+  const { fullscreen, setFullscreen, tabletop, immersive, sideBySide, minimize } = usePlayerPage('video', id, !!streamUrl);
+  // Text-only posts have no media to put beside the details: they stay stacked (full-width details).
+  const layout = playerPageLayout({ immersive, sideBySide: sideBySide && !isTextOnly(post.data) }, insets);
 
   // The mutation also patches the cached post / list progress, so reopening the video resumes here.
   const { mutate: mutateProgress } = useUpdateVideoProgress(token ?? undefined);
@@ -105,14 +117,19 @@ export default function VideoScreen() {
   return (
     <View
       testID="video-screen"
-      style={[styles.container, { backgroundColor, paddingTop: immersive ? 0 : insets.top }, immersive && styles.fullscreen]}
+      // The page background first: immersive pages override it with black.
+      style={[{ backgroundColor }, layout.page]}
     >
       <Stack.Screen options={{ gestureEnabled: !immersive }} />
       <StatusBar hidden={immersive} style={immersive ? 'light' : undefined} />
-      {renderPlayer()}
+      {/* Large screens in landscape: the player on the left, details and comments scrolling beside it. */}
+      <View testID="player-column" style={layout.player}>
+        {renderPlayer()}
+      </View>
       {immersive ? null : (
         <FlatList
           testID="comment-list"
+          style={layout.details}
           data={commentList}
           keyExtractor={(comment: PostComment) => comment.id}
           renderItem={({ item }) => <CommentItem comment={item} />}
@@ -131,12 +148,6 @@ export default function VideoScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  fullscreen: {
-    backgroundColor: '#000',
-  },
   postImage: {
     width: '100%',
     aspectRatio: 16 / 9,

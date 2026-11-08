@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { act, renderHook } from '@testing-library/react-native';
 import { mockFoldPosture } from '@test/mocks/fold-posture';
+import { PHONE_WINDOW, setTestWindow, TABLET_LANDSCAPE_WINDOW, TABLET_PORTRAIT_WINDOW } from '@test/window-size';
 
 import { PlaybackProvider, usePlaybackSession, usePlaybackStore, type PlaybackStore } from '@/components/player/PlaybackSession';
 import { usePlayerPage } from '@/hooks/use-player-page';
@@ -91,11 +92,37 @@ describe('usePlayerPage', () => {
     expect(result.current.page).toMatchObject({ fullscreen: false, tabletop: null, immersive: false });
 
     await rerender({ id: 'x', playable: true });
-    expect(result.current.page.tabletop).toEqual({ hingeTop: 667, hingeBottom: 667 });
+    expect(result.current.page.tabletop).toEqual({ hingeTop: 422, hingeBottom: 422 });
     expect(result.current.page.immersive).toBe(true);
 
     await act(async () => result.current.page.setFullscreen(true));
     await act(async () => mockFoldPosture.set({ state: 'flat' }));
     expect(result.current.page).toMatchObject({ fullscreen: true, tabletop: null, immersive: true });
+  });
+
+  it('goes side-by-side on a landscape tablet, but not portrait, fullscreen, or tabletop', async () => {
+    setTestWindow(TABLET_LANDSCAPE_WINDOW);
+    const { result, rerender } = await renderPage('video', 'a');
+    expect(result.current.page).toMatchObject({ fullscreen: false, immersive: false, sideBySide: true });
+
+    // A portrait tablet stacks player and details.
+    setTestWindow(TABLET_PORTRAIT_WINDOW);
+    await rerender({ id: 'a', playable: true });
+    expect(result.current.page.sideBySide).toBe(false);
+
+    // Back to landscape, fullscreen takes the whole screen instead of the split.
+    setTestWindow(TABLET_LANDSCAPE_WINDOW);
+    await rerender({ id: 'a', playable: true });
+    expect(result.current.page.sideBySide).toBe(true);
+    await act(async () => result.current.page.setFullscreen(true));
+    expect(result.current.page).toMatchObject({ fullscreen: true, immersive: true, sideBySide: false });
+
+    // A half-opened fold (portrait, iOS-style posture) is also immersive, not side-by-side.
+    setTestWindow(TABLET_PORTRAIT_WINDOW);
+    mockFoldPosture.set({ state: 'halfOpened' });
+    await act(async () => {});
+    expect(result.current.page).toMatchObject({ immersive: true, sideBySide: false });
+
+    setTestWindow(PHONE_WINDOW);
   });
 });

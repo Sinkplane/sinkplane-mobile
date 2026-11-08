@@ -1,5 +1,6 @@
 import { act, renderHook } from '@testing-library/react-native';
 import { mockFoldPosture } from '@test/mocks/fold-posture';
+import { PHONE_WINDOW, setTestWindow } from '@test/window-size';
 
 import { tabletopLayout, useFoldPosture, useTabletopLayout } from '@/hooks/use-fold-posture';
 
@@ -35,15 +36,17 @@ describe('tabletopLayout', () => {
 });
 
 describe('useFoldPosture / useTabletopLayout', () => {
+  afterEach(() => setTestWindow(PHONE_WINDOW));
+
   it('starts from the current posture and follows changes until unmount', async () => {
     mockFoldPosture.set({ state: 'flat' });
     const { result, unmount } = await renderHook(() => ({ posture: useFoldPosture(), tabletop: useTabletopLayout() }));
     expect(result.current.posture).toEqual({ state: 'flat' });
     expect(result.current.tabletop).toBeNull();
 
-    // The jest window is portrait (750×1334), so an iOS-style half-open posture is tabletop.
+    // The test window is portrait (390×844), so an iOS-style half-open posture is tabletop.
     await act(async () => mockFoldPosture.set({ state: 'halfOpened' }));
-    expect(result.current.tabletop).toEqual({ hingeTop: 667, hingeBottom: 667 });
+    expect(result.current.tabletop).toEqual({ hingeTop: 422, hingeBottom: 422 });
 
     await unmount();
     expect(mockFoldPosture.listenerCount()).toBe(0);
