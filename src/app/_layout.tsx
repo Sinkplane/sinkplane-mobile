@@ -1,10 +1,12 @@
 import { useEffect } from 'react';
-import { Appearance, Platform } from 'react-native';
+import { Appearance, Platform, StyleSheet, View } from 'react-native';
 import { DarkTheme, DefaultTheme, Stack, ThemeProvider } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
+import { MiniPlayer } from '@/components/player/MiniPlayer';
+import { PlaybackProvider } from '@/components/player/PlaybackSession';
 import { lockPortrait } from '@/hooks/use-fullscreen-orientation';
 import { useNotificationSync } from '@/hooks/use-notification-sync';
 import { configureNotifications } from '@/notifications/local-notifications';
@@ -71,17 +73,29 @@ function RootNavigator() {
 
   useNotificationSync(token, isLoading);
 
+  // The playback session outlives the player pages (mini player); signing out stops it.
   return (
-    <Stack screenOptions={{ headerShown: false }}>
-      <Stack.Protected guard={signedIn}>
-        <Stack.Screen name="(tabs)" />
-        <Stack.Screen name="video/[id]" />
-        <Stack.Screen name="live/[id]" />
-      </Stack.Protected>
-      <Stack.Protected guard={!signedIn}>
-        <Stack.Screen name="sign-in" />
-      </Stack.Protected>
-      <Stack.Screen name="+not-found" />
-    </Stack>
+    <PlaybackProvider active={signedIn}>
+      <View style={styles.root}>
+        <Stack screenOptions={{ headerShown: false }}>
+          <Stack.Protected guard={signedIn}>
+            <Stack.Screen name="(tabs)" />
+            <Stack.Screen name="video/[id]" />
+            <Stack.Screen name="live/[id]" />
+          </Stack.Protected>
+          <Stack.Protected guard={!signedIn}>
+            <Stack.Screen name="sign-in" />
+          </Stack.Protected>
+          <Stack.Screen name="+not-found" />
+        </Stack>
+        <MiniPlayer />
+      </View>
+    </PlaybackProvider>
   );
 }
+
+const styles = StyleSheet.create({
+  root: {
+    flex: 1,
+  },
+});

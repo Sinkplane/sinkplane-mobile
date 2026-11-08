@@ -5,12 +5,13 @@ import { createMockVideoPlayer, type MockVideoPlayer } from '@test/mocks/expo-vi
 import { PROGRESS_SAVE_INTERVAL, useWatchProgress } from '@/hooks/use-watch-progress';
 
 /** Render the hook against a fresh fake player (typed as the real one for the hook's signature). */
-async function renderProgress(initialTime?: number) {
+async function renderProgress(initialTime?: number, canAutoplay?: () => boolean) {
   const mock = createMockVideoPlayer();
   const save = jest.fn();
-  const utils = await renderHook(({ time }: { time?: number }) => useWatchProgress(mock as unknown as VideoPlayer, time, save), {
-    initialProps: { time: initialTime },
-  });
+  const utils = await renderHook(
+    ({ time }: { time?: number }) => useWatchProgress(mock as unknown as VideoPlayer, time, save, canAutoplay),
+    { initialProps: { time: initialTime } },
+  );
   return { mock, save, ...utils };
 }
 
@@ -54,6 +55,42 @@ describe('useWatchProgress', () => {
 
   it('seeks to the saved position before playing', async () => {
     const { mock } = await renderProgress(42);
+
+    await act(async () => {
+      mock.emit('statusChange', { status: 'readyToPlay' });
+    });
+
+    expect(mock.seeks).toEqual([42]);
+    expect(mock.play).toHaveBeenCalledTimes(1);
+  });
+
+  it('seeks to the saved position but stays paused while another playback owns the session (canAutoplay false)', async () => {
+    const { mock } = await renderProgress(42, () => false);
+
+    await act(async () => {
+      mock.emit('statusChange', { status: 'readyToPlay' });
+    });
+
+    expect(mock.seeks).toEqual([42]);
+    expect(mock.play).not.toHaveBeenCalled();
+    expect(mock.playing).toBe(false);
+
+    // A seek the stream dropped is still retried, so the position is right once playback returns.
+    await act(async () => {
+      emitTime(mock, 0);
+    });
+    expect(mock.seeks).toEqual([42, 42]);
+    expect(mock.play).not.toHaveBeenCalled();
+
+    // readyToPlay only resumes once: still no autoplay on a repeat event.
+    await act(async () => {
+      mock.emit('statusChange', { status: 'readyToPlay' });
+    });
+    expect(mock.play).not.toHaveBeenCalled();
+  });
+
+  it('still autoplays when canAutoplay allows it (the default)', async () => {
+    const { mock } = await renderProgress(42, () => true);
 
     await act(async () => {
       mock.emit('statusChange', { status: 'readyToPlay' });
@@ -222,5 +259,55 @@ describe('useWatchProgress', () => {
       mock.pause();
     });
     await expect(unmount()).resolves.toBeUndefined();
+  });
+
+  it('a view taking over a started player neither seeks nor autoplays again, and saves relative to its position', async () => {
+    const mock = createMockVideoPlayer();
+    const save = jest.fn();
+    // The video page started this player and saved some progress before the close arrow.
+    const page = await renderHook(() => useWatchProgress(mock as unknown as VideoPlayer, undefined, save));
+    await act(async () => {
+      mock.emit('statusChange', { status: 'readyToPlay' });
+      mock.currentTime = 200;
+      emitTime(mock, 200);
+    });
+    expect(mock.play).toHaveBeenCalledTimes(1);
+    expect(save).toHaveBeenCalledWith(200);
+    await page.unmount();
+
+    // The mini player takes the same player over (even with the post's saved progress handed to
+    // it): no seek to 30, no autoplay, and saving continues relative to 200.
+    await renderHook(() => useWatchProgress(mock as unknown as VideoPlayer, 30, save));
+    expect(mock.play).toHaveBeenCalledTimes(1);
+    expect(mock.seeks).toEqual([200]); // only the position the page reached
+
+    await act(async () => emitTime(mock, 210));
+    expect(save).toHaveBeenCalledTimes(1); // 10s past 200: below the 15s interval
+    await act(async () => emitTime(mock, 200 + PROGRESS_SAVE_INTERVAL));
+    expect(save).toHaveBeenCalledTimes(2);
+    expect(save).toHaveBeenLastCalledWith(200 + PROGRESS_SAVE_INTERVAL);
+  });
+
+  it('a view taking over a player that was still loading finishes the resume the page never got to', async () => {
+    const mock = createMockVideoPlayer();
+    const save = jest.fn();
+    // Minimized before the stream ever became ready: the page's resume (seek + autoplay) never ran.
+    const page = await renderHook(() => useWatchProgress(mock as unknown as VideoPlayer, 42, save));
+    expect(mock.play).not.toHaveBeenCalled();
+    expect(mock.seeks).toEqual([]);
+    await page.unmount();
+
+    // The tile takes over with the session's saved position and completes the resume once ready.
+    await renderHook(() => useWatchProgress(mock as unknown as VideoPlayer, 42, save));
+    await act(async () => {
+      mock.setStatus('readyToPlay');
+    });
+    expect(mock.seeks).toEqual([42]);
+    expect(mock.play).toHaveBeenCalledTimes(1);
+
+    // Having started, the player is marked: a third view taking it over skips seek and autoplay.
+    await renderHook(() => useWatchProgress(mock as unknown as VideoPlayer, 42, save));
+    expect(mock.seeks).toEqual([42]);
+    expect(mock.play).toHaveBeenCalledTimes(1);
   });
 });
