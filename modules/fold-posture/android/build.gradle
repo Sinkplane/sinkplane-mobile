@@ -1,0 +1,21 @@
+plugins {
+  id 'com.android.library'
+  id 'expo-module-gradle-plugin'
+}
+
+group = 'expo.modules.foldposture'
+version = '0.1.0'
+
+android {
+  namespace "expo.modules.foldposture"
+  defaultConfig {
+    versionCode 1
+    versionName "0.1.0"
+  }
+}
+
+dependencies {
+  // Folding features (hinge state, orientation, bounds) + the callback adapter for non-coroutine listeners.
+  implementation "androidx.window:window:1.4.0"
+  implementation "androidx.window:window-java:1.4.0"
+}

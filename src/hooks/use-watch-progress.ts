@@ -10,12 +10,18 @@ const MIN_PROGRESS_DELTA = 2;
 /**
  * Starts playback once the source is ready, resuming at `initialTime`, and reports the watch position
  * through `save` periodically while playing, on pause, and when the player unmounts (live streams
- * pass no `save`: they only need the autoplay).
+ * pass no `save`: they only need the autoplay). `started`: the player is already running (taken
+ * over from another view, e.g. the mini player), so don't seek or autoplay; just keep saving.
  */
-export function useWatchProgress(player: VideoPlayer, initialTime: number | undefined, save: ((seconds: number) => void) | undefined) {
-  const lastSaved = useRef(initialTime ?? 0);
-  const position = useRef(initialTime ?? 0);
-  const resumed = useRef(false);
+export function useWatchProgress(
+  player: VideoPlayer,
+  initialTime: number | undefined,
+  save: ((seconds: number) => void) | undefined,
+  started = false,
+) {
+  const lastSaved = useRef(started ? player.currentTime : (initialTime ?? 0));
+  const position = useRef(started ? player.currentTime : (initialTime ?? 0));
+  const resumed = useRef(started);
   /** Resume target until the player has actually arrived there. */
   const pendingSeek = useRef<number | null>(null);
   const saveRef = useRef(save);
@@ -74,6 +80,6 @@ export function useWatchProgress(player: VideoPlayer, initialTime: number | unde
     if (!isPlaying && resumed.current && pendingSeek.current === null) saveIfMoved(position.current, MIN_PROGRESS_DELTA);
   });
 
-  // The native player is already released when this cleanup runs, so use the last reported time.
+  // The native player may already be released when this cleanup runs, so use the last reported time.
   useEffect(() => () => saveIfMoved(position.current, MIN_PROGRESS_DELTA), []); // eslint-disable-line react-hooks/exhaustive-deps
 }

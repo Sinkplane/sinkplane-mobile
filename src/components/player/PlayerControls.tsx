@@ -25,6 +25,11 @@ export interface PlayerControlsProps {
   onOpenSpeedMenu: () => void;
   onToggleFullscreen: () => void;
   onBack?: () => void;
+  /**
+   * `overlay` (default): drawn over the video. `panel`: the tabletop half below a foldable's hinge —
+   * always the close arrow and the title, no fullscreen toggle (the posture decides the layout).
+   */
+  variant?: 'overlay' | 'panel';
 }
 
 type IconName = SymbolViewProps['name'];
@@ -80,17 +85,18 @@ function SpeedButton({ rate, onPress }: { rate: number; onPress: () => void }) {
   );
 }
 
-/** Back / close, the title (fullscreen only) and the speed button. */
-function TopRow({ title, fullscreen, live, rate, onOpenSpeedMenu, onToggleFullscreen, onBack }: PlayerControlsProps) {
+/** Back / close, the title (fullscreen / panel only) and the speed button. */
+function TopRow({ title, fullscreen, live, rate, variant, onOpenSpeedMenu, onToggleFullscreen, onBack }: PlayerControlsProps) {
+  const panel = variant === 'panel';
   return (
     <View style={styles.row} pointerEvents="box-none">
-      {fullscreen ? (
+      {fullscreen && !panel ? (
         <IconButton icon={ICONS.back} label="Back" onPress={onToggleFullscreen} />
       ) : onBack ? (
         <IconButton icon={ICONS.close} label="Close video" onPress={onBack} />
       ) : null}
-      <Text style={styles.title} numberOfLines={1}>
-        {fullscreen ? title : ''}
+      <Text style={styles.title} numberOfLines={panel ? 2 : 1}>
+        {fullscreen || panel ? title : ''}
       </Text>
       {live ? null : <SpeedButton rate={rate} onPress={onOpenSpeedMenu} />}
     </View>
@@ -121,7 +127,7 @@ function CenterRow({ playing, ended, live, onTogglePlay, onSkip }: PlayerControl
 
 /** Time (live: the LIVE badge), fullscreen toggle and the seek bar. */
 function BottomRow(props: PlayerControlsProps) {
-  const { live, fullscreen } = props;
+  const { live, fullscreen, variant } = props;
   return (
     <View pointerEvents="box-none">
       <View style={styles.row} pointerEvents="box-none">
@@ -134,12 +140,14 @@ function BottomRow(props: PlayerControlsProps) {
             {`${formatDuration(props.currentTime)} / ${formatDuration(props.duration)}`}
           </Text>
         )}
-        <IconButton
-          icon={fullscreen ? ICONS.exitFullscreen : ICONS.enterFullscreen}
-          label={fullscreen ? 'Exit fullscreen' : 'Enter fullscreen'}
-          size={20}
-          onPress={props.onToggleFullscreen}
-        />
+        {variant === 'panel' ? null : (
+          <IconButton
+            icon={fullscreen ? ICONS.exitFullscreen : ICONS.enterFullscreen}
+            label={fullscreen ? 'Exit fullscreen' : 'Enter fullscreen'}
+            size={20}
+            onPress={props.onToggleFullscreen}
+          />
+        )}
       </View>
       {live ? (
         <View style={styles.liveSpacer} />
@@ -163,15 +171,18 @@ function BottomRow(props: PlayerControlsProps) {
  */
 export function PlayerControls(props: PlayerControlsProps) {
   const insets = useSafeAreaInsets();
-  const edges = props.fullscreen
-    ? { paddingLeft: insets.left + 12, paddingRight: insets.right + 12, paddingTop: 12, paddingBottom: Math.max(insets.bottom, 12) }
-    : null;
+  const panel = props.variant === 'panel';
+  const edges =
+    props.fullscreen || panel
+      ? { paddingLeft: insets.left + 12, paddingRight: insets.right + 12, paddingTop: 12, paddingBottom: Math.max(insets.bottom, 12) }
+      : null;
 
+  // The panel reads top to bottom: title, seek bar, then the big buttons nearest the hand.
   return (
-    <View testID="player-controls" style={[styles.overlay, edges]} pointerEvents="box-none">
+    <View testID="player-controls" style={[panel ? styles.panel : styles.overlay, edges]} pointerEvents="box-none">
       <TopRow {...props} />
-      <CenterRow {...props} />
-      <BottomRow {...props} />
+      {panel ? <BottomRow {...props} /> : <CenterRow {...props} />}
+      {panel ? <CenterRow {...props} /> : <BottomRow {...props} />}
     </View>
   );
 }
@@ -183,6 +194,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingTop: 4,
     backgroundColor: 'rgba(0, 0, 0, 0.45)',
+  },
+  panel: {
+    ...StyleSheet.absoluteFill,
+    justifyContent: 'space-evenly',
   },
   row: {
     flexDirection: 'row',

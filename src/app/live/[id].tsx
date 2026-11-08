@@ -1,13 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ScrollView, StyleSheet, View } from 'react-native';
-import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
+import { Stack, useLocalSearchParams } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { LiveDetails } from '@/components/live/LiveDetails';
 import { PlayerPlaceholder } from '@/components/player/PlayerPlaceholder';
 import { VideoPlayer } from '@/components/player/VideoPlayer';
-import { useFullscreenOrientation } from '@/hooks/use-fullscreen-orientation';
+import { usePlayerPage } from '@/hooks/use-player-page';
 import { useLiveStreams, type CreatorLiveStream } from '@/hooks/use-live-streams';
 import { useColorScheme, useSession, useThemeColor } from '@/shared';
 import { buildVideoSource } from '@/utils/stream-source';
@@ -75,7 +75,6 @@ function placeholderFor(stream: CreatorLiveStream | undefined, hasCreators: bool
 /** Live player page: a creator's livestream with the live player and the stream details below. */
 export default function LiveScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  const router = useRouter();
   const insets = useSafeAreaInsets();
   const backgroundColor = useThemeColor({}, 'background');
   const colorScheme = useColorScheme();
@@ -89,7 +88,7 @@ export default function LiveScreen() {
 
   const placeholder = placeholderFor(stream, !!creators, reload);
   const playable = !placeholder;
-  const { fullscreen, setFullscreen } = useFullscreenOrientation(playable);
+  const { fullscreen, setFullscreen, tabletop, immersive, minimize } = usePlayerPage('live', id, playable);
 
   // The placeholder has no controls (no exit-fullscreen button), so a stream ending mid-watch
   // mustn't strand the viewer in fullscreen.
@@ -100,10 +99,10 @@ export default function LiveScreen() {
   return (
     <View
       testID="live-screen"
-      style={[styles.container, { backgroundColor, paddingTop: fullscreen ? 0 : insets.top }, fullscreen && styles.fullscreen]}
+      style={[styles.container, { backgroundColor, paddingTop: immersive ? 0 : insets.top }, immersive && styles.fullscreen]}
     >
-      <Stack.Screen options={{ gestureEnabled: !fullscreen }} />
-      <StatusBar hidden={fullscreen} style={fullscreen ? 'light' : undefined} />
+      <Stack.Screen options={{ gestureEnabled: !immersive }} />
+      <StatusBar hidden={immersive} style={immersive ? 'light' : undefined} />
       {placeholder ??
         (stream ? (
           <VideoPlayer
@@ -116,13 +115,22 @@ export default function LiveScreen() {
             })}
             title={stream.liveStream.title}
             fullscreen={fullscreen}
+            tabletop={tabletop}
             onFullscreenChange={setFullscreen}
-            onBack={() => router.back()}
+            onBack={minimize}
             onError={onPlaybackError}
+            // Each reload attempt (fresh signed URL) is a new playback; reopening from the mini player isn't.
+            media={{
+              key: `live:${id}:${attempt}:${stream.streamUrl}`,
+              kind: 'live',
+              id,
+              title: stream.liveStream.title,
+              subtitle: stream.creator.title,
+            }}
             onRetry={reload}
           />
         ) : null)}
-      {fullscreen || !stream ? null : (
+      {immersive || !stream ? null : (
         <ScrollView
           contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 24 }]}
           indicatorStyle={colorScheme === 'dark' ? 'white' : 'default'}
