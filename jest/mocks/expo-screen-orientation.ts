@@ -36,7 +36,15 @@ export const lockAsync = jest.fn(async (_orientationLock: OrientationLock): Prom
 export const unlockAsync = jest.fn(async (): Promise<void> => undefined);
 export const getOrientationAsync = jest.fn(async (): Promise<Orientation> => Orientation.PORTRAIT_UP);
 export const getOrientationLockAsync = jest.fn(async (): Promise<OrientationLock> => OrientationLock.DEFAULT);
-export const supportsOrientationLockAsync = jest.fn(async (): Promise<boolean> => true);
+/**
+ * Like a notched / Dynamic Island iPhone by default: no upside-down portrait, so ALL, PORTRAIT and
+ * PORTRAIT_DOWN are unsupported (the real module rejects those locks). Override per test for a
+ * device that can (`mockResolvedValue(true)`, e.g. the iPhone Duo).
+ */
+export const supportsOrientationLockAsync = jest.fn(
+  async (lock: OrientationLock): Promise<boolean> =>
+    lock !== OrientationLock.ALL && lock !== OrientationLock.PORTRAIT && lock !== OrientationLock.PORTRAIT_DOWN,
+);
 
 type OrientationChangeListener = (event: { orientationInfo: { orientation: Orientation } }) => void;
 const orientationListeners = new Set<OrientationChangeListener>();

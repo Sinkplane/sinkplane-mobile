@@ -223,4 +223,20 @@ describe('useWatchProgress', () => {
     });
     await expect(unmount()).resolves.toBeUndefined();
   });
+
+  it('takes over a running player (started): no seek or autoplay, saves relative to its position', async () => {
+    const mock = createMockVideoPlayer();
+    mock.status = 'readyToPlay';
+    mock.playing = true;
+    mock.currentTime = 200;
+    const save = jest.fn();
+    await renderHook(() => useWatchProgress(mock as unknown as VideoPlayer, 30, save, true));
+    expect(mock.play).not.toHaveBeenCalled();
+    expect(mock.seeks).toEqual([200]);
+
+    await act(async () => emitTime(mock, 210));
+    expect(save).not.toHaveBeenCalled();
+    await act(async () => emitTime(mock, 200 + PROGRESS_SAVE_INTERVAL));
+    expect(save).toHaveBeenCalledWith(200 + PROGRESS_SAVE_INTERVAL);
+  });
 });
