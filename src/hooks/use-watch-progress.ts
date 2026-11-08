@@ -19,8 +19,15 @@ const startedPlayers = new WeakSet<VideoPlayer>();
  * through `save` periodically while playing, on pause, and when the player unmounts (live streams
  * pass no `save`: they only need the autoplay). Taking over a player another view already started
  * (the mini player, or its page reopened) skips the seek and autoplay and just keeps saving.
+ * `canAutoplay`: false while another playback owns the session (this page is covered by another
+ * player page); the resume then only seeks, leaving the player paused like any interrupted one.
  */
-export function useWatchProgress(player: VideoPlayer, initialTime: number | undefined, save: ((seconds: number) => void) | undefined) {
+export function useWatchProgress(
+  player: VideoPlayer,
+  initialTime: number | undefined,
+  save: ((seconds: number) => void) | undefined,
+  canAutoplay: () => boolean = () => true,
+) {
   const [started] = useState(() => startedPlayers.has(player));
   const lastSaved = useRef(started ? player.currentTime : (initialTime ?? 0));
   const position = useRef(started ? player.currentTime : (initialTime ?? 0));
@@ -47,7 +54,7 @@ export function useWatchProgress(player: VideoPlayer, initialTime: number | unde
       pendingSeek.current = initialTime;
       player.currentTime = initialTime;
     }
-    player.play();
+    if (canAutoplay()) player.play();
   };
 
   /** False while the resume seek hasn't landed yet (the player still reports ~0 meanwhile). */

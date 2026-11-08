@@ -68,6 +68,23 @@ describe('usePlayerPage', () => {
     expect(result.current.session).toBeNull();
   });
 
+  it('a page closing without ever reaching a player returns the covered page its suspended session', async () => {
+    const { result, rerender } = await renderPage('video', 'a');
+    // The page underneath is playing: its player view is still attached.
+    const { player: a } = result.current.store.acquire({ key: 'video:a', kind: 'video', id: 'a' }, SOURCE);
+    await act(async () => result.current.store.attach(a));
+    expect(result.current.session?.player).toBe(a);
+
+    // This page opens on top for another video that never loads (no player for it): the page
+    // underneath suspends.
+    await rerender({ id: 'b', playable: true });
+    expect(result.current.session).toBeNull();
+
+    // Backing out before anything played: the covered page takes its session back.
+    await rerender({ id: undefined, playable: true });
+    expect(result.current.session).toMatchObject({ media: { key: 'video:a' }, player: a, minimized: false });
+  });
+
   it('reports fullscreen / tabletop layout, tabletop only once playable', async () => {
     mockFoldPosture.set({ state: 'halfOpened' });
     const { result, rerender } = await renderPage('live', 'x', false);

@@ -1,6 +1,8 @@
 package expo.modules.foldposture
 
 import android.app.Activity
+import android.os.Handler
+import android.os.Looper
 import androidx.core.content.ContextCompat
 import androidx.core.util.Consumer
 import androidx.window.java.layout.WindowInfoTrackerCallbackAdapter
@@ -25,7 +27,11 @@ class FoldPostureModule : Module() {
 
   // Written on Expo's module queue, read by the UI-thread blocks it schedules.
   @Volatile private var observing = false
-  private var latest: Map<String, Any?>? = null
+
+  // Written on the UI thread (consumer), read on Expo's module queue (getPosture).
+  @Volatile private var latest: Map<String, Any?>? = null
+
+  private val mainHandler = Handler(Looper.getMainLooper())
 
   private val consumer = Consumer<WindowLayoutInfo> { info ->
     val activity = trackedActivity.get() ?: return@Consumer
@@ -65,15 +71,15 @@ class FoldPostureModule : Module() {
   }
 
   /**
-   * Registration and removal both run on the UI thread, in the order they were requested, and a
+   * Registration and removal are both posted to the main looper, in the order they were requested, and a
    * queued registration re-checks `observing`: an unsubscribe that lands before the block runs
    * (stop() while `tracker` is still null) must not leave a listener behind.
    */
   private fun start() {
     val activity = appContext.currentActivity ?: return
-    activity.runOnUiThread {
-      if (!observing) return@runOnUiThread
-      if (tracker != null && trackedActivity.get() === activity) return@runOnUiThread
+    mainHandler.post {
+      if (!observing) return@post
+      if (tracker != null && trackedActivity.get() === activity) return@post
       removeListener()
       val adapter = WindowInfoTrackerCallbackAdapter(WindowInfoTracker.getOrCreate(activity))
       trackedActivity = WeakReference(activity)
@@ -83,8 +89,7 @@ class FoldPostureModule : Module() {
   }
 
   private fun stop() {
-    val activity = trackedActivity.get() ?: appContext.currentActivity
-    if (activity != null) activity.runOnUiThread { removeListener() } else removeListener()
+    mainHandler.post { removeListener() }
   }
 
   private fun removeListener() {

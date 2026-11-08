@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import type { VideoPlayer } from 'expo-video';
 import { act, renderHook } from '@testing-library/react-native';
-import { mockVideoPlayerState, type MockVideoPlayer } from '@test/mocks/expo-video';
+import { createMockVideoPlayer, mockVideoPlayerState, type MockVideoPlayer } from '@test/mocks/expo-video';
 
 import {
   PlaybackProvider,
@@ -244,6 +244,88 @@ describe('PlaybackStore', () => {
     store.claim('video', 'b'); // nothing to stop
   });
 
+  it('unclaim hands the covered page its suspended session back when the closing page never got a player', async () => {
+    const store = new PlaybackStore();
+    const { player: a } = store.acquire(video('a'), SOURCE);
+    store.attach(a);
+
+    // A page for another video opens on top (its claim) but never reaches a player: A suspends.
+    store.claim('video', 'b');
+    expect(store.getSnapshot()).toBeNull();
+    expect(mock(a).pause).toHaveBeenCalledTimes(1);
+    expect(mock(a).release).not.toHaveBeenCalled();
+
+    // …and closes again (its claim cleanup): A's still-mounted page takes its session back.
+    const listener = jest.fn();
+    store.subscribe(listener);
+    store.unclaim();
+    expect(store.getSnapshot()).toMatchObject({ media: video('a'), player: a, minimized: false });
+    expect(listener).toHaveBeenCalledTimes(1);
+    await tick();
+    expect(mock(a).release).not.toHaveBeenCalled();
+  });
+
+  it('unclaim restores the most recent still-attached suspended session', async () => {
+    const store = new PlaybackStore();
+    const { player: a } = store.acquire(video('a'), SOURCE);
+    store.attach(a);
+    const { player: b } = store.acquire(video('b'), SOURCE);
+    store.attach(b);
+    await flushMicrotasks();
+
+    // C's page claims on top of both but never gets a player, then closes: B (the newest page
+    // still mounted) returns, while A keeps waiting underneath it.
+    store.claim('video', 'c');
+    store.unclaim();
+    expect(store.getSnapshot()).toMatchObject({ media: video('b'), player: b, minimized: false });
+    await tick();
+    expect(mock(a).release).not.toHaveBeenCalled();
+
+    // When B's page closes in turn, A is next.
+    store.detach(b);
+    expect(store.getSnapshot()).toMatchObject({ media: video('a'), player: a, minimized: false });
+  });
+
+  it('unclaim is a no-op while a session exists (a minimized tile keeps its player)', async () => {
+    const store = new PlaybackStore();
+    const { player } = store.acquire(video('a'), SOURCE);
+    store.attach(player);
+    store.minimize();
+    store.detach(player);
+    const listener = jest.fn();
+    store.subscribe(listener);
+
+    store.unclaim();
+    expect(store.getSnapshot()).toMatchObject({ media: video('a'), player, minimized: true });
+    expect(listener).not.toHaveBeenCalled();
+  });
+
+  it('unclaim with no session and nothing suspended leaves it null', () => {
+    const store = new PlaybackStore();
+    store.unclaim();
+    expect(store.getSnapshot()).toBeNull();
+  });
+
+  it('isCurrent is true only for the session player, never a suspended or a retired one', async () => {
+    const store = new PlaybackStore();
+    expect(store.isCurrent(createMockVideoPlayer() as unknown as VideoPlayer)).toBe(false); // no session
+
+    const { player: a } = store.acquire(video('a'), SOURCE);
+    store.attach(a);
+    expect(store.isCurrent(a)).toBe(true);
+
+    // Replaced while still on screen (its page is mounted underneath): suspended, not current.
+    const { player: b } = store.acquire(video('b'), SOURCE);
+    await flushMicrotasks();
+    store.attach(b);
+    expect(store.isCurrent(a)).toBe(false);
+    expect(store.isCurrent(b)).toBe(true);
+
+    // Once the session ends, nobody is current.
+    store.close();
+    expect(store.isCurrent(b)).toBe(false);
+  });
+
   it('close stops and drops the session; releasing twice is guarded', async () => {
     const store = new PlaybackStore();
     store.close(); // nothing playing
@@ -367,5 +449,19 @@ describe('PlaybackProvider + hooks', () => {
     });
     expect(result.current.acquired.reused).toBe(false);
     expect(result.current.session).toBeNull();
+  });
+
+  it('useSessionPlayer tells its view whether its player is the session’s', async () => {
+    const { result } = await renderHook(() => ({ acquired: useSessionPlayer(SOURCE, jest.fn(), video('a')), store: usePlaybackStore() }), {
+      wrapper,
+    });
+    const { player } = result.current.acquired;
+    expect(result.current.acquired.isCurrent()).toBe(true);
+
+    // Another page's playback replaces the session: this view's player is suspended, not current.
+    await act(async () => result.current.store?.acquire(video('b'), SOURCE));
+    await flushMicrotasks();
+    expect(result.current.acquired.isCurrent()).toBe(false);
+    expect(mock(player).pause).toHaveBeenCalled();
   });
 });

@@ -95,9 +95,10 @@ function usePlaybackRate(player: NativeVideoPlayer, live: boolean, holding: bool
 /** Live streams autoplay without resuming a saved position or reporting watch progress. */
 function usePlaybackProgress(
   player: NativeVideoPlayer,
+  isCurrent: () => boolean,
   { live, initialTime, onSaveProgress }: Pick<VideoPlayerProps, 'live' | 'initialTime' | 'onSaveProgress'>,
 ) {
-  useWatchProgress(player, live ? undefined : initialTime, live ? undefined : onSaveProgress);
+  useWatchProgress(player, live ? undefined : initialTime, live ? undefined : onSaveProgress, isCurrent);
 }
 
 function setUpPlayer(player: NativeVideoPlayer) {
@@ -245,9 +246,9 @@ export function VideoPlayer({
   const [initialSource] = useState(source);
   // The resume position travels with the session, for a view that takes over a not-yet-started player.
   const [sessionMedia] = useState(() => (media ? { ...media, resumeAt: live ? undefined : initialTime } : undefined));
-  const { player } = useSessionPlayer(initialSource, setUpPlayer, sessionMedia);
+  const { player, isCurrent } = useSessionPlayer(initialSource, setUpPlayer, sessionMedia);
   const state = usePlaybackState(player);
-  usePlaybackProgress(player, { live, initialTime, onSaveProgress });
+  usePlaybackProgress(player, isCurrent, { live, initialTime, onSaveProgress });
 
   const [holding, setHolding] = useState(false);
   const [rate, setStoredRate] = usePlaybackRate(player, !!live, holding);

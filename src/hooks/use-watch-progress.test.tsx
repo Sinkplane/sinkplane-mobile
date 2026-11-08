@@ -5,12 +5,13 @@ import { createMockVideoPlayer, type MockVideoPlayer } from '@test/mocks/expo-vi
 import { PROGRESS_SAVE_INTERVAL, useWatchProgress } from '@/hooks/use-watch-progress';
 
 /** Render the hook against a fresh fake player (typed as the real one for the hook's signature). */
-async function renderProgress(initialTime?: number) {
+async function renderProgress(initialTime?: number, canAutoplay?: () => boolean) {
   const mock = createMockVideoPlayer();
   const save = jest.fn();
-  const utils = await renderHook(({ time }: { time?: number }) => useWatchProgress(mock as unknown as VideoPlayer, time, save), {
-    initialProps: { time: initialTime },
-  });
+  const utils = await renderHook(
+    ({ time }: { time?: number }) => useWatchProgress(mock as unknown as VideoPlayer, time, save, canAutoplay),
+    { initialProps: { time: initialTime } },
+  );
   return { mock, save, ...utils };
 }
 
@@ -54,6 +55,42 @@ describe('useWatchProgress', () => {
 
   it('seeks to the saved position before playing', async () => {
     const { mock } = await renderProgress(42);
+
+    await act(async () => {
+      mock.emit('statusChange', { status: 'readyToPlay' });
+    });
+
+    expect(mock.seeks).toEqual([42]);
+    expect(mock.play).toHaveBeenCalledTimes(1);
+  });
+
+  it('seeks to the saved position but stays paused while another playback owns the session (canAutoplay false)', async () => {
+    const { mock } = await renderProgress(42, () => false);
+
+    await act(async () => {
+      mock.emit('statusChange', { status: 'readyToPlay' });
+    });
+
+    expect(mock.seeks).toEqual([42]);
+    expect(mock.play).not.toHaveBeenCalled();
+    expect(mock.playing).toBe(false);
+
+    // A seek the stream dropped is still retried, so the position is right once playback returns.
+    await act(async () => {
+      emitTime(mock, 0);
+    });
+    expect(mock.seeks).toEqual([42, 42]);
+    expect(mock.play).not.toHaveBeenCalled();
+
+    // readyToPlay only resumes once: still no autoplay on a repeat event.
+    await act(async () => {
+      mock.emit('statusChange', { status: 'readyToPlay' });
+    });
+    expect(mock.play).not.toHaveBeenCalled();
+  });
+
+  it('still autoplays when canAutoplay allows it (the default)', async () => {
+    const { mock } = await renderProgress(42, () => true);
 
     await act(async () => {
       mock.emit('statusChange', { status: 'readyToPlay' });
