@@ -1,3 +1,4 @@
+import { PermissionStatus } from 'expo';
 import { Platform } from 'react-native';
 import * as Notifications from 'expo-notifications';
 
@@ -15,8 +16,8 @@ export const NEW_POSTS_CHANNEL_ID = 'new-posts';
 export type PermissionState = 'granted' | 'denied' | 'undetermined';
 
 /** In-app route a notification opens, or null. */
-export const notificationRoute = (notification: Pick<AppNotification, 'postId'>) =>
-  notification.postId ? `/video/${notification.postId}` : null;
+export const notificationRoute = ({ postId }: Pick<AppNotification, 'postId'>): string | null =>
+  postId === null || postId === '' ? null : `/video/${postId}`;
 
 /**
  * Show notifications while the app is in the foreground too (by default iOS/Android hide them),
@@ -24,12 +25,13 @@ export const notificationRoute = (notification: Pick<AppNotification, 'postId'>)
  */
 export async function configureNotifications(): Promise<void> {
   Notifications.setNotificationHandler({
-    handleNotification: async () => ({
-      shouldShowBanner: true,
-      shouldShowList: true,
-      shouldPlaySound: true,
-      shouldSetBadge: false,
-    }),
+    handleNotification: () =>
+      Promise.resolve({
+        shouldShowBanner: true,
+        shouldShowList: true,
+        shouldPlaySound: true,
+        shouldSetBadge: false,
+      }),
   });
   if (Platform.OS === 'android') {
     await Notifications.setNotificationChannelAsync(NEW_POSTS_CHANNEL_ID, {
@@ -42,9 +44,13 @@ export async function configureNotifications(): Promise<void> {
 
 function toPermissionState(status: Notifications.NotificationPermissionsStatus): PermissionState {
   const provisional = status.ios?.status === Notifications.IosAuthorizationStatus.PROVISIONAL;
-  if (status.granted || provisional) return 'granted';
+  if (status.granted || provisional) {
+    return 'granted';
+  }
   // `canAskAgain: false` means the OS won't show the prompt again (user said no / turned it off).
-  return status.status === 'undetermined' && status.canAskAgain !== false ? 'undetermined' : 'denied';
+  return status.status === PermissionStatus.UNDETERMINED && status.canAskAgain
+    ? 'undetermined'
+    : 'denied';
 }
 
 export async function getPermissionState(): Promise<PermissionState> {
@@ -54,9 +60,15 @@ export async function getPermissionState(): Promise<PermissionState> {
 /** Ask for permission when the OS still allows prompting; resolves to the resulting state. */
 export async function requestPermission(): Promise<PermissionState> {
   const current = await getPermissionState();
-  if (current !== 'undetermined') return current;
+  if (current !== 'undetermined') {
+    return current;
+  }
   return toPermissionState(await Notifications.requestPermissionsAsync());
 }
+
+/** Groups a creator's notifications into one thread (iOS). */
+const threadOf = (creatorId: string | null): { threadIdentifier?: string } =>
+  creatorId === null || creatorId === '' ? {} : { threadIdentifier: creatorId };
 
 /** Present a notification now (no de-duplication; see notifyOnce). */
 export async function presentNotification(notification: AppNotification): Promise<void> {
@@ -67,7 +79,7 @@ export async function presentNotification(notification: AppNotification): Promis
       title: notification.title,
       body: notification.body,
       data: { url, postId: notification.postId, creatorId: notification.creatorId },
-      ...(notification.creatorId ? { threadIdentifier: notification.creatorId } : {}),
+      ...threadOf(notification.creatorId),
     },
     trigger: Platform.OS === 'android' ? { channelId: NEW_POSTS_CHANNEL_ID } : null,
   });

@@ -8,21 +8,39 @@ interface PlayerPageMode {
   sideBySide: boolean;
 }
 
+interface PlayerPageStyles {
+  page: StyleProp<ViewStyle>;
+  player: ViewStyle | undefined;
+  details: ViewStyle | undefined;
+}
+
 /**
  * Styles for the three parts of a player page (video / live): the page itself, the column holding
  * the player, and the scrolling details. Stacked by default; a row on wide screens; just the
  * player when immersive.
  */
-export function playerPageLayout({ immersive, sideBySide }: PlayerPageMode, insets: EdgeInsets) {
+export function playerPageLayout(
+  { immersive, sideBySide }: PlayerPageMode,
+  insets: EdgeInsets,
+): PlayerPageStyles {
   const page: StyleProp<ViewStyle> = [
     styles.page,
     { paddingTop: immersive ? 0 : insets.top },
     immersive && styles.immersivePage,
     sideBySide && [styles.sideBySidePage, { paddingLeft: insets.left, paddingRight: insets.right }],
   ];
-  const player = sideBySide ? styles.playerColumn : immersive ? styles.immersivePlayer : undefined;
-  const details = sideBySide ? styles.detailsColumn : undefined;
-  return { page, player, details };
+  return {
+    page,
+    player: playerStyle({ immersive, sideBySide }),
+    details: sideBySide ? styles.detailsColumn : undefined,
+  };
+}
+
+function playerStyle({ immersive, sideBySide }: PlayerPageMode): ViewStyle | undefined {
+  if (sideBySide) {
+    return styles.playerColumn;
+  }
+  return immersive ? styles.immersivePlayer : undefined;
 }
 
 const styles = StyleSheet.create({

@@ -1,5 +1,7 @@
 import { BROWSER_USER_AGENT } from '@/shared';
 
+import { isJsonObject, numberField, type JsonObject } from './json-fields';
+
 /**
  * Floatplane's real-time "sync" socket — the channel floatplane.com uses for new-post notifications.
  *
@@ -36,7 +38,7 @@ export interface SocketLike {
   close(code?: number, reason?: string): void;
 }
 
-export type CreateSocket = (url: string, headers: Record<string, string>) => SocketLike;
+type CreateSocket = (url: string, headers: Record<string, string>) => SocketLike;
 
 export interface FloatplaneSocketOptions {
   token: string;
@@ -50,45 +52,81 @@ export interface FloatplaneSocketOptions {
 }
 
 /** React Native's WebSocket takes extra headers as a third argument (the DOM typings don't know it). */
-type NativeWebSocket = new (url: string, protocols: null, options: { headers: Record<string, string> }) => SocketLike;
+type NativeWebSocket = new (
+  url: string,
+  protocols: null,
+  options: { headers: Record<string, string> },
+) => SocketLike;
 
-const defaultCreateSocket: CreateSocket = (url, headers) => new (WebSocket as unknown as NativeWebSocket)(url, null, { headers });
-
-/** Engine.IO handshake payload. */
-interface OpenPacket {
-  pingInterval?: number;
-  pingTimeout?: number;
-}
-
-interface AckResponse {
-  statusCode?: number;
-  body?: { message?: string };
-}
-
-interface SyncEvent {
-  event?: unknown;
-  data?: unknown;
-}
+const defaultCreateSocket: CreateSocket = (url, headers) =>
+  new (WebSocket as unknown as NativeWebSocket)(url, null, { headers });
 
 const CONNECT_ACK_ID = 1;
 const DEFAULT_PING_INTERVAL = 25_000;
 const DEFAULT_PING_TIMEOUT = 60_000;
+/** Reconnect delays double after every failed attempt. */
+const BACKOFF_FACTOR = 2;
 
-/** Split `42<ack>[…]` / `43<ack>[…]` into the ack id (if any) and the JSON args array. */
-function parseSocketIoPayload(rest: string): { ackId: number | null; args: unknown[] } | null {
-  const match = /^(\d*)(\[.*)$/s.exec(rest);
-  if (!match) return null;
+const HTTP_OK = 200;
+const HTTP_UNAUTHORIZED = 401;
+const HTTP_FORBIDDEN = 403;
+
+/** Engine.IO ping packet (EIO3: the client pings, the server answers `3`). */
+const PING_PACKET = '2';
+
+const FLOATPLANE_ORIGIN = 'https://www.floatplane.com';
+// HTTP header names are PascalCase, which the naming convention rejects as plain object keys.
+const ORIGIN_HEADER = 'Origin';
+
+/** Socket.IO packet types this client acts on (the first digit after Engine.IO's `4`). */
+const SOCKET_IO_CONNECT = '0';
+const SOCKET_IO_DISCONNECT = '1';
+const SOCKET_IO_EVENT = '2';
+const SOCKET_IO_ACK = '3';
+
+interface SocketIoPayload {
+  ackId: number | null;
+  args: unknown[];
+}
+
+/** A JSON array frame, or null when it is malformed or not an array. */
+function parseJsonArray(json: string): unknown[] | null {
   try {
-    const args = JSON.parse(match[2]) as unknown;
-    if (!Array.isArray(args)) return null;
-    return { ackId: match[1] ? Number(match[1]) : null, args };
+    const parsed: unknown = JSON.parse(json);
+    return Array.isArray(parsed) ? parsed : null;
   } catch {
     return null;
   }
 }
 
+/** Split `42<ack>[…]` / `43<ack>[…]` into the ack id (if any) and the JSON args array. */
+function parseSocketIoPayload(rest: string): SocketIoPayload | null {
+  const match = /^(\d*)(\[.*)$/s.exec(rest);
+  if (!match) {
+    return null;
+  }
+  const [, ackDigits = '', json = ''] = match;
+  const args = parseJsonArray(json);
+  return args ? { ackId: ackDigits === '' ? null : Number(ackDigits), args } : null;
+}
+
+/** A JSON object frame, or an empty object when it is malformed or not an object. */
+function parseJsonObject(json: string): JsonObject {
+  try {
+    const parsed: unknown = JSON.parse(json);
+    return isJsonObject(parsed) ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+/** The `statusCode` of a `tk/connect` ack. */
+const ackStatus = (response: unknown): number | undefined =>
+  isJsonObject(response) ? numberField(response, 'statusCode') : undefined;
+
 export class FloatplaneSocket {
-  private readonly options: Required<Omit<FloatplaneSocketOptions, 'onStateChange'>> & Pick<FloatplaneSocketOptions, 'onStateChange'>;
+  private readonly options: Required<Omit<FloatplaneSocketOptions, 'onStateChange'>> &
+    Pick<FloatplaneSocketOptions, 'onStateChange'>;
   private socket: SocketLike | null = null;
   private state: SocketState = 'disconnected';
   private pingTimer: ReturnType<typeof setInterval> | null = null;
@@ -113,19 +151,21 @@ export class FloatplaneSocket {
 
   /** Open the connection (no-op while one is open or after close()). */
   connect(): void {
-    if (this.state === 'closed' || this.socket) return;
+    if (this.state === 'closed' || this.socket) {
+      return;
+    }
     this.clearReconnect();
     this.setState('connecting');
 
     const socket = this.options.createSocket(SOCKET_URL, {
       // floatplane.com sits behind Cloudflare bot management (see shared apiClient).
       'User-Agent': BROWSER_USER_AGENT,
-      Origin: 'https://www.floatplane.com',
+      [ORIGIN_HEADER]: FLOATPLANE_ORIGIN,
     });
     this.socket = socket;
     this.lastMessageAt = Date.now();
 
-    socket.onmessage = event => {
+    socket.onmessage = (event) => {
       if (this.socket === socket) this.handleMessage(String(event.data));
     };
     socket.onclose = () => {
@@ -166,17 +206,15 @@ export class FloatplaneSocket {
     }
   }
 
+  /** Engine.IO handshake: `{ sid, pingInterval, pingTimeout }` (defaults when malformed). */
   private handleOpen(json: string): void {
-    let packet: OpenPacket = {};
-    try {
-      packet = JSON.parse(json) as OpenPacket;
-    } catch {
-      // Keep the defaults.
-    }
-    this.pingInterval = packet.pingInterval ?? DEFAULT_PING_INTERVAL;
-    this.pingTimeout = packet.pingTimeout ?? DEFAULT_PING_TIMEOUT;
+    const packet = parseJsonObject(json);
+    this.pingInterval = numberField(packet, 'pingInterval') ?? DEFAULT_PING_INTERVAL;
+    this.pingTimeout = numberField(packet, 'pingTimeout') ?? DEFAULT_PING_TIMEOUT;
     this.stopPing();
-    this.pingTimer = setInterval(() => this.ping(), this.pingInterval);
+    this.pingTimer = setInterval(() => {
+      this.ping();
+    }, this.pingInterval);
   }
 
   private ping(): void {
@@ -185,40 +223,60 @@ export class FloatplaneSocket {
       this.handleDrop();
       return;
     }
-    this.send('2');
+    this.send(PING_PACKET);
   }
 
   private handleSocketIo(packet: string): void {
     const type = packet.charAt(0);
-    const rest = packet.slice(1);
-    if (type === '0') {
-      // Connected to the namespace → authenticate the sync session.
-      const request = { method: 'post', headers: {}, data: { token: this.options.token }, url: SOCKET_CONNECT_PATH };
-      this.send(`42${CONNECT_ACK_ID}${JSON.stringify(['post', request])}`);
+    if (type === SOCKET_IO_CONNECT) {
+      this.authenticate();
       return;
     }
-    if (type === '1') {
+    if (type === SOCKET_IO_DISCONNECT) {
       this.handleDrop();
       return;
     }
-    const payload = parseSocketIoPayload(rest);
-    if (!payload) return;
-    if (type === '3' && payload.ackId === CONNECT_ACK_ID) {
-      this.handleConnectAck(payload.args[0] as AckResponse | undefined);
-    } else if (type === '2' && payload.args[0] === 'syncEvent') {
-      const sync = payload.args[1] as SyncEvent | undefined;
-      if (sync && typeof sync.event === 'string') this.options.onSyncEvent(sync.event, sync.data);
+    const payload = parseSocketIoPayload(packet.slice(1));
+    if (payload) {
+      this.handleSocketIoPayload(type, payload);
     }
   }
 
-  private handleConnectAck(response: AckResponse | undefined): void {
-    if (response?.statusCode === 200) {
+  /** Connected to the namespace → authenticate the sync session. */
+  private authenticate(): void {
+    const request = {
+      method: 'post',
+      headers: {},
+      data: { token: this.options.token },
+      url: SOCKET_CONNECT_PATH,
+    };
+    this.send(`42${String(CONNECT_ACK_ID)}${JSON.stringify(['post', request])}`);
+  }
+
+  private handleSocketIoPayload(type: string, { ackId, args }: SocketIoPayload): void {
+    if (type === SOCKET_IO_ACK && ackId === CONNECT_ACK_ID) {
+      this.handleConnectAck(args[0]);
+    } else if (type === SOCKET_IO_EVENT && args[0] === 'syncEvent') {
+      this.handleSyncEvent(args[1]);
+    }
+  }
+
+  /** `{ event, data }`: forwarded when it names an event. */
+  private handleSyncEvent(sync: unknown): void {
+    if (isJsonObject(sync) && typeof sync['event'] === 'string') {
+      this.options.onSyncEvent(sync['event'], sync['data']);
+    }
+  }
+
+  private handleConnectAck(response: unknown): void {
+    const status = ackStatus(response);
+    if (status === HTTP_OK) {
       this.reconnectAttempt = 0;
       this.setState('connected');
       return;
     }
     // 401/403: the token is no good on the socket. Retrying won't fix it.
-    if (response?.statusCode === 401 || response?.statusCode === 403) {
+    if (status === HTTP_UNAUTHORIZED || status === HTTP_FORBIDDEN) {
       this.teardownSocket();
       this.setState('unauthorized');
       return;
@@ -228,11 +286,16 @@ export class FloatplaneSocket {
 
   /** The connection went away: tear it down and schedule a reconnect with backoff. */
   private handleDrop(): void {
-    if (this.state === 'closed' || this.state === 'unauthorized') return;
+    if (this.state === 'closed' || this.state === 'unauthorized') {
+      return;
+    }
     this.teardownSocket();
     this.setState('disconnected');
     const { reconnectDelayMs, maxReconnectDelayMs } = this.options;
-    const delay = Math.min(reconnectDelayMs * 2 ** this.reconnectAttempt, maxReconnectDelayMs);
+    const delay = Math.min(
+      reconnectDelayMs * BACKOFF_FACTOR ** this.reconnectAttempt,
+      maxReconnectDelayMs,
+    );
     this.reconnectAttempt += 1;
     this.clearReconnect();
     this.reconnectTimer = setTimeout(() => {
@@ -253,7 +316,9 @@ export class FloatplaneSocket {
     this.stopPing();
     const socket = this.socket;
     this.socket = null;
-    if (!socket) return;
+    if (!socket) {
+      return;
+    }
     socket.onopen = null;
     socket.onmessage = null;
     socket.onerror = null;
@@ -266,17 +331,23 @@ export class FloatplaneSocket {
   }
 
   private stopPing(): void {
-    if (this.pingTimer) clearInterval(this.pingTimer);
+    if (this.pingTimer !== null) {
+      clearInterval(this.pingTimer);
+    }
     this.pingTimer = null;
   }
 
   private clearReconnect(): void {
-    if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
+    if (this.reconnectTimer !== null) {
+      clearTimeout(this.reconnectTimer);
+    }
     this.reconnectTimer = null;
   }
 
   private setState(state: SocketState): void {
-    if (this.state === state) return;
+    if (this.state === state) {
+      return;
+    }
     this.state = state;
     this.options.onStateChange?.(state);
   }

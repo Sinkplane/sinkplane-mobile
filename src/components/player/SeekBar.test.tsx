@@ -1,13 +1,29 @@
-import { StyleSheet } from 'react-native';
+import { StyleSheet, type ViewProps } from 'react-native';
 import { fireEvent, render, screen } from '@testing-library/react-native';
 
 import { SeekBar } from '@/components/player/SeekBar';
 
-const widthOf = (testID: string) => StyleSheet.flatten(screen.getByTestId(testID).props.style).width;
+/** The responder probes the tests call directly (RN passes them an event the bar ignores). */
+interface ResponderProbes {
+  onStartShouldSetResponder: () => boolean;
+  onMoveShouldSetResponder: () => boolean;
+}
+
+const viewProps = (testID: string) => screen.getByTestId(testID).props as ViewProps;
+const widthOf = (testID: string) => StyleSheet.flatten(viewProps(testID).style)?.width;
 
 /** Lay the bar out at `width` px so locationX → time math can run. */
 async function renderSeekbar(props: Partial<Parameters<typeof SeekBar>[0]> = {}) {
-  await render(<SeekBar currentTime={30} duration={100} bufferedPosition={60} onSeek={jest.fn()} onScrub={jest.fn()} {...props} />);
+  await render(
+    <SeekBar
+      currentTime={30}
+      duration={100}
+      bufferedPosition={60}
+      onSeek={jest.fn()}
+      onScrub={jest.fn()}
+      {...props}
+    />,
+  );
   await fireEvent.layout(screen.getByTestId('player-seek-bar'), { width: 200, height: 28 });
 }
 
@@ -76,8 +92,9 @@ describe('SeekBar', () => {
     await render(<SeekBar currentTime={30} duration={0} onSeek={onSeek} onScrub={onScrub} />);
     const empty = screen.getByTestId('player-seek-bar');
     await fireEvent.layout(empty, { width: 200, height: 28 });
-    expect(empty.props.onStartShouldSetResponder()).toBe(false);
-    expect(empty.props.onMoveShouldSetResponder()).toBe(false);
+    const probes = empty.props as ResponderProbes;
+    expect(probes.onStartShouldSetResponder()).toBe(false);
+    expect(probes.onMoveShouldSetResponder()).toBe(false);
     expect(widthOf('player-seek-progress')).toBe('0%'); // duration 0 → no fill
   });
 

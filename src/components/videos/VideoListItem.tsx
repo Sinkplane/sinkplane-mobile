@@ -1,61 +1,130 @@
-import { memo } from 'react';
+import { memo, type ReactElement } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Image } from 'expo-image';
 
+import { WIDESCREEN_ASPECT_RATIO } from '@/components/aspect-ratio';
+import { imagePath, type ApiImage } from '@/components/image-path';
 import { useThemeColor, type Video } from '@/shared';
 import { formatCount, formatDuration, formatRelativeDate } from '@/utils/format-video';
 
 interface VideoListItemProps {
-  video: Video;
+  readonly video: Video;
   /** Watched position in seconds. */
-  progress?: number;
-  onPress?: (video: Video) => void;
+  readonly progress?: number | undefined;
+  readonly onPress?: ((video: Video) => void) | undefined;
 }
 
-export const VideoListItem = memo(function VideoListItem({ video, progress, onPress }: VideoListItemProps) {
+/** The embedded channel as the API may send it: some payloads omit it, or its icon. */
+type ListChannel = { readonly title?: string; readonly icon?: ApiImage | null } | null | undefined;
+
+const FULL_PERCENT = 100;
+const THUMBNAIL_TRANSITION_MS = 150;
+const PLACEHOLDER_COLORS = { light: '#e6e8ea', dark: '#26292b' };
+
+/** How much of the video was watched, 0-100. */
+function progressPercentOf(progress: number | undefined, duration: number): number {
+  if (progress === undefined || progress === 0 || duration === 0) {
+    return 0;
+  }
+  return Math.min((progress / duration) * FULL_PERCENT, FULL_PERCENT);
+}
+
+function metaLine(video: Video, channel: ListChannel): string {
+  const parts = [
+    channel?.title,
+    `${formatCount(video.likes)} likes`,
+    formatRelativeDate(video.releaseDate),
+  ];
+  return parts.filter((part) => part !== undefined && part !== '').join(' · ');
+}
+
+function channelIconPath(channel: ListChannel): string | undefined {
+  return imagePath(channel?.icon);
+}
+
+interface ThumbnailProps {
+  readonly video: Video;
+  readonly progress: number | undefined;
+  readonly placeholderColor: string;
+}
+
+function ListThumbnail({ video, progress, placeholderColor }: ThumbnailProps): ReactElement {
+  const duration = video.metadata.videoDuration;
+  const progressPercent = progressPercentOf(progress, duration);
+  const thumbnail: ApiImage | null | undefined = video.thumbnail;
+  return (
+    <View style={[styles.thumbnail, { backgroundColor: placeholderColor }]}>
+      <Image
+        source={imagePath(thumbnail) ?? null}
+        style={StyleSheet.absoluteFill}
+        contentFit="cover"
+        transition={THUMBNAIL_TRANSITION_MS}
+        recyclingKey={video.id}
+      />
+      {duration > 0 ? (
+        <View style={styles.durationBadge}>
+          <Text style={styles.durationText}>{formatDuration(duration)}</Text>
+        </View>
+      ) : null}
+      {progressPercent > 0 ? (
+        <View style={styles.progressTrack}>
+          <View
+            testID={`video-progress-${video.id}`}
+            style={[styles.progressBar, { width: `${String(progressPercent)}%` }]}
+          />
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
+function ListDetails({ video, placeholderColor }: Omit<ThumbnailProps, 'progress'>): ReactElement {
   const textColor = useThemeColor({}, 'text');
   const mutedColor = useThemeColor({}, 'icon');
-  const placeholderColor = useThemeColor({ light: '#e6e8ea', dark: '#26292b' }, 'background');
+  const iconPath = channelIconPath(video.channel);
+  return (
+    <View style={styles.details}>
+      {iconPath === undefined ? null : (
+        <Image
+          source={iconPath}
+          style={[styles.channelIcon, { backgroundColor: placeholderColor }]}
+        />
+      )}
+      <View style={styles.textColumn}>
+        <Text style={[styles.title, { color: textColor }]} numberOfLines={2}>
+          {video.title}
+        </Text>
+        <Text style={[styles.meta, { color: mutedColor }]} numberOfLines={1}>
+          {metaLine(video, video.channel)}
+        </Text>
+      </View>
+    </View>
+  );
+}
 
-  const duration = video.metadata.videoDuration;
-  const progressPercent = progress && duration ? Math.min((progress / duration) * 100, 100) : 0;
-  const meta = [video.channel?.title, `${formatCount(video.likes)} likes`, formatRelativeDate(video.releaseDate)].filter(Boolean);
+export const VideoListItem = memo(function VideoListItem({
+  video,
+  progress,
+  onPress,
+}: VideoListItemProps) {
+  const placeholderColor = useThemeColor(PLACEHOLDER_COLORS, 'background');
+  const press =
+    onPress === undefined
+      ? undefined
+      : () => {
+          onPress(video);
+        };
 
   return (
     <Pressable
       testID={`video-list-item-${video.id}`}
-      onPress={onPress ? () => onPress(video) : undefined}
+      onPress={press}
       style={({ pressed }) => [styles.container, pressed && styles.pressed]}
       accessibilityRole="button"
       accessibilityLabel={video.title}
     >
-      <View style={[styles.thumbnail, { backgroundColor: placeholderColor }]}>
-        <Image source={video.thumbnail?.path} style={StyleSheet.absoluteFill} contentFit="cover" transition={150} recyclingKey={video.id} />
-        {duration > 0 ? (
-          <View style={styles.durationBadge}>
-            <Text style={styles.durationText}>{formatDuration(duration)}</Text>
-          </View>
-        ) : null}
-        {progressPercent > 0 ? (
-          <View style={styles.progressTrack}>
-            <View testID={`video-progress-${video.id}`} style={[styles.progressBar, { width: `${progressPercent}%` }]} />
-          </View>
-        ) : null}
-      </View>
-
-      <View style={styles.details}>
-        {video.channel?.icon?.path ? (
-          <Image source={video.channel.icon.path} style={[styles.channelIcon, { backgroundColor: placeholderColor }]} />
-        ) : null}
-        <View style={styles.textColumn}>
-          <Text style={[styles.title, { color: textColor }]} numberOfLines={2}>
-            {video.title}
-          </Text>
-          <Text style={[styles.meta, { color: mutedColor }]} numberOfLines={1}>
-            {meta.join(' · ')}
-          </Text>
-        </View>
-      </View>
+      <ListThumbnail video={video} progress={progress} placeholderColor={placeholderColor} />
+      <ListDetails video={video} placeholderColor={placeholderColor} />
     </Pressable>
   );
 });
@@ -69,7 +138,7 @@ const styles = StyleSheet.create({
   },
   thumbnail: {
     width: '100%',
-    aspectRatio: 16 / 9,
+    aspectRatio: WIDESCREEN_ASPECT_RATIO,
     borderRadius: 12,
     overflow: 'hidden',
   },

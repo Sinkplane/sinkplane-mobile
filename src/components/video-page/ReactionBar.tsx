@@ -1,3 +1,4 @@
+import type { ReactElement } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { SymbolView, type SymbolViewProps } from 'expo-symbols';
 
@@ -6,14 +7,17 @@ import { useThemeColor } from '@/shared';
 import { formatCount } from '@/utils/format-video';
 
 interface ReactionBarProps {
-  reaction: Reaction;
-  likes: number;
-  dislikes: number;
-  disabled?: boolean;
-  onToggle: (kind: 'like' | 'dislike') => void;
+  readonly reaction: Reaction;
+  readonly likes: number;
+  readonly dislikes: number;
+  readonly disabled?: boolean | undefined;
+  readonly onToggle: (kind: 'like' | 'dislike') => void;
 }
 
-const ICONS: Record<'like' | 'dislike', { on: SymbolViewProps['name']; off: SymbolViewProps['name'] }> = {
+const ICONS: Record<
+  'like' | 'dislike',
+  { on: SymbolViewProps['name']; off: SymbolViewProps['name'] }
+> = {
   like: {
     on: { ios: 'hand.thumbsup.fill', android: 'thumb_up', web: 'thumb_up' },
     off: { ios: 'hand.thumbsup', android: 'thumb_up', web: 'thumb_up' },
@@ -25,7 +29,13 @@ const ICONS: Record<'like' | 'dislike', { on: SymbolViewProps['name']; off: Symb
 };
 
 /** Like / dislike pill; the active reaction is highlighted and pressing it again removes it. */
-export function ReactionBar({ reaction, likes, dislikes, disabled, onToggle }: ReactionBarProps) {
+export function ReactionBar({
+  reaction,
+  likes,
+  dislikes,
+  disabled,
+  onToggle,
+}: ReactionBarProps): ReactElement {
   const textColor = useThemeColor({}, 'text');
   const tint = useThemeColor({}, 'tint');
   const pillColor = useThemeColor({ light: '#eceef0', dark: '#26292b' }, 'background');
@@ -36,11 +46,13 @@ export function ReactionBar({ reaction, likes, dislikes, disabled, onToggle }: R
     return (
       <Pressable
         testID={`reaction-${kind}`}
-        onPress={() => onToggle(kind)}
+        onPress={() => {
+          onToggle(kind);
+        }}
         disabled={disabled}
         style={({ pressed }) => [styles.button, pressed && styles.pressed]}
         accessibilityRole="button"
-        accessibilityLabel={`${kind === 'like' ? 'Like' : 'Dislike'}, ${count}`}
+        accessibilityLabel={`${kind === 'like' ? 'Like' : 'Dislike'}, ${String(count)}`}
         accessibilityState={{ selected: active, disabled }}
       >
         <SymbolView name={active ? ICONS[kind].on : ICONS[kind].off} size={18} tintColor={color} />

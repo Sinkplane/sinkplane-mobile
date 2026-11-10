@@ -1,0 +1,24 @@
+# Gate config. Agents must ask a human before editing any file matching these globs.
+eslint.config.mjs
+tsconfig*.json
+.prettierrc
+.prettierignore
+.dependency-cruiser.cjs
+stryker.config.*
+jest.config*.js
+knip.*
+scripts/crap.mts
+scripts/mutate.sh
+scripts/qa.sh
+Makefile
+package.json
+pnpm-workspace.yaml
+.npmrc
+.nvmrc
+.gates-protected
+AGENTS.md
+.cursor/**
+.claude/**
+.githooks/**
+scripts/agent-hooks/**
+.github/**

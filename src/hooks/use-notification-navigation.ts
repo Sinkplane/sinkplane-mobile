@@ -4,9 +4,11 @@ import * as Notifications from 'expo-notifications';
 
 /** The post a tapped notification points at (set by local-notifications.presentNotification). */
 function postIdOf(response: Notifications.NotificationResponse): string | null {
-  if (response.actionIdentifier !== Notifications.DEFAULT_ACTION_IDENTIFIER) return null;
-  const postId = response.notification.request.content.data?.postId;
-  return typeof postId === 'string' && postId ? postId : null;
+  if (response.actionIdentifier !== Notifications.DEFAULT_ACTION_IDENTIFIER) {
+    return null;
+  }
+  const postId = response.notification.request.content.data?.['postId'];
+  return typeof postId === 'string' && postId !== '' ? postId : null;
 }
 
 /**
@@ -17,21 +19,32 @@ function postIdOf(response: Notifications.NotificationResponse): string | null {
  * happens to the launch tap on a cold start otherwise.
  */
 export function useNotificationNavigation(): void {
-  const navigationReady = !!useRootNavigationState()?.key;
+  // Typed as always present, but undefined until the root navigator mounts.
+  const rootState = useRootNavigationState() as
+    ReturnType<typeof useRootNavigationState> | undefined;
+  const navigationReady = (rootState?.key ?? '') !== '';
 
   useEffect(() => {
-    if (!navigationReady) return undefined;
+    if (!navigationReady) {
+      return undefined;
+    }
 
     const open = (response: Notifications.NotificationResponse) => {
       Notifications.clearLastNotificationResponse();
       const postId = postIdOf(response);
-      if (postId) router.push({ pathname: '/video/[id]', params: { id: postId } });
+      if (postId !== null) {
+        router.push({ pathname: '/video/[id]', params: { id: postId } });
+      }
     };
 
     const launchResponse = Notifications.getLastNotificationResponse();
-    if (launchResponse) open(launchResponse);
+    if (launchResponse) {
+      open(launchResponse);
+    }
 
     const subscription = Notifications.addNotificationResponseReceivedListener(open);
-    return () => subscription.remove();
+    return () => {
+      subscription.remove();
+    };
   }, [navigationReady]);
 }

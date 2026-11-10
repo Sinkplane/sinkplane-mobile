@@ -1,9 +1,10 @@
+import type { ReactElement } from 'react';
 import { Link } from 'expo-router';
 import { StyleSheet, Text, View } from 'react-native';
 
 import { useThemeColor } from '@/shared';
 
-export default function NotFound() {
+export default function NotFound(): ReactElement {
   const backgroundColor = useThemeColor({}, 'background');
   const textColor = useThemeColor({}, 'text');
 

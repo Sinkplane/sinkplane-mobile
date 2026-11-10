@@ -1,14 +1,13 @@
-import { useCallback, useRef, useState } from 'react';
-import { ActivityIndicator, FlatList, RefreshControl, StyleSheet, Text, View } from 'react-native';
+import { useCallback, useEffect, useRef, useState, type ReactElement } from 'react';
+import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
 
 import { LiveStreamCard } from '@/components/live/LiveStreamCard';
+import { TabList, TabScreen } from '@/components/tab-screen/TabList';
 import { useLiveStreams, type CreatorLiveStream } from '@/hooks/use-live-streams';
-import { useListGrid } from '@/hooks/use-screen-layout';
-import { useTabScreenInsets } from '@/hooks/use-tab-screen-insets';
 import { useSession, useThemeColor } from '@/shared';
 
-function EmptyState({ hasCreators }: { hasCreators: boolean }) {
+function EmptyState({ hasCreators }: Readonly<{ hasCreators: boolean }>): ReactElement {
   const textColor = useThemeColor({}, 'text');
   const mutedColor = useThemeColor({}, 'icon');
   return (
@@ -17,9 +16,62 @@ function EmptyState({ hasCreators }: { hasCreators: boolean }) {
         {hasCreators ? 'No live streams' : 'You are not subscribed to any creators'}
       </Text>
       <Text style={[styles.message, { color: mutedColor }]}>
-        {hasCreators ? 'None of your creators stream live on Floatplane.' : 'Subscribe to a creator to watch their live streams.'}
+        {hasCreators
+          ? 'None of your creators stream live on Floatplane.'
+          : 'Subscribe to a creator to watch their live streams.'}
       </Text>
     </View>
+  );
+}
+
+/**
+ * Re-checks every stream: on pull-to-refresh (with its own spinner state rather than the queries'
+ * isFetching, which the tab bar's background polls share) and whenever the tab is shown again
+ * (tabs stay mounted; the first check is the queries' own).
+ */
+function useStreamRefresh(streams: CreatorLiveStream[]) {
+  const streamsRef = useRef(streams);
+  useEffect(() => {
+    streamsRef.current = streams;
+  }, [streams]);
+
+  const refetchAll = useCallback(
+    () => Promise.all(streamsRef.current.map((stream) => stream.refetch())),
+    [],
+  );
+
+  const [refreshing, setRefreshing] = useState(false);
+  const pullToRefresh = useCallback(() => {
+    setRefreshing(true);
+    void refetchAll().finally(() => {
+      setRefreshing(false);
+    });
+  }, [refetchAll]);
+
+  const focusedBefore = useRef(false);
+  useFocusEffect(
+    useCallback(() => {
+      if (focusedBefore.current) {
+        void refetchAll();
+      }
+      focusedBefore.current = true;
+    }, [refetchAll]),
+  );
+
+  return { refreshing, pullToRefresh };
+}
+
+function useStreamCell() {
+  const router = useRouter();
+  const openStream = useCallback(
+    (stream: CreatorLiveStream) => {
+      router.push({ pathname: '/live/[id]', params: { id: stream.creator.id } });
+    },
+    [router],
+  );
+  return useCallback(
+    (stream: CreatorLiveStream) => <LiveStreamCard stream={stream} onPress={openStream} />,
+    [openStream],
   );
 }
 
@@ -28,65 +80,24 @@ function EmptyState({ hasCreators }: { hasCreators: boolean }) {
  * first. The tab bar polls the status (see `(tabs)/_layout.tsx`); this re-checks whenever the tab is
  * shown again or pulled to refresh. Tapping a live stream opens the live player.
  */
-export default function Live() {
+export default function Live(): ReactElement {
   const { token, creators, isLoading } = useSession();
-  const insets = useTabScreenInsets();
-  const { listKey, columnWidth, ...grid } = useListGrid();
-  const backgroundColor = useThemeColor({}, 'background');
   const textColor = useThemeColor({}, 'text');
-
   const streams = useLiveStreams(token, creators);
-  const streamsRef = useRef(streams);
-  streamsRef.current = streams;
-
-  const refetchAll = useCallback(() => Promise.all(streamsRef.current.map(stream => stream.refetch())), []);
-
-  // Local state rather than the queries' isFetching: the tab bar's background polls share them.
-  const [refreshing, setRefreshing] = useState(false);
-  const pullToRefresh = useCallback(() => {
-    setRefreshing(true);
-    void refetchAll().finally(() => setRefreshing(false));
-  }, [refetchAll]);
-
-  // Tabs stay mounted, so re-check when the tab is shown again (the first check is the queries' own).
-  const focusedBefore = useRef(false);
-  useFocusEffect(
-    useCallback(() => {
-      if (focusedBefore.current) void refetchAll();
-      focusedBefore.current = true;
-    }, [refetchAll]),
-  );
-
-  const router = useRouter();
-  const openStream = useCallback(
-    (stream: CreatorLiveStream) => router.push({ pathname: '/live/[id]', params: { id: stream.creator.id } }),
-    [router],
-  );
-
-  const renderItem = useCallback(
-    ({ item }: { item: CreatorLiveStream }) => (
-      <View style={{ width: columnWidth }}>
-        <LiveStreamCard stream={item} onPress={openStream} />
-      </View>
-    ),
-    [openStream, columnWidth],
-  );
+  const { refreshing, pullToRefresh } = useStreamRefresh(streams);
+  const renderCell = useStreamCell();
 
   return (
-    <View style={[styles.container, { backgroundColor, paddingTop: insets.top }]}>
-      <FlatList
+    <TabScreen>
+      <TabList
         testID="live-list"
-        key={listKey}
-        {...grid}
-        style={styles.container}
-        contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 24 }]}
-        scrollIndicatorInsets={{ bottom: insets.bottom }}
         data={streams}
-        keyExtractor={stream => stream.id}
-        renderItem={renderItem}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={pullToRefresh} />}
-        ListHeaderComponent={<Text style={[styles.title, { color: textColor }]}>Live</Text>}
-        ListEmptyComponent={
+        keyOf={(stream) => stream.id}
+        renderCell={renderCell}
+        refreshing={refreshing}
+        onRefresh={pullToRefresh}
+        header={<Text style={[styles.title, { color: textColor }]}>Live</Text>}
+        empty={
           isLoading || !creators ? (
             <ActivityIndicator testID="live-loading" style={styles.status} size="large" />
           ) : (
@@ -94,18 +105,11 @@ export default function Live() {
           )
         }
       />
-    </View>
+    </TabScreen>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  content: {
-    paddingHorizontal: 16,
-    paddingTop: 12,
-  },
   title: {
     fontSize: 28,
     fontWeight: '700',

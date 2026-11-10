@@ -30,7 +30,11 @@ export const TABLET_PORTRAIT_WINDOW = Object.freeze({ width: 1024, height: 1366 
 /** iPad Pro 12.9" / ~12" Android tablet, landscape. */
 export const TABLET_LANDSCAPE_WINDOW = Object.freeze({ width: 1366, height: 1024 });
 
-const metrics = (size: { width: number; height: number }): DisplayMetrics => ({ ...size, scale: 2, fontScale: 1 });
+const metrics = (size: { width: number; height: number }): DisplayMetrics => ({
+  ...size,
+  scale: 2,
+  fontScale: 1,
+});
 
 /** Point `useWindowDimensions` at `size` and notify every subscriber (a rotation, fold, or resize). */
 export function setTestWindow(size: { width: number; height: number }): void {

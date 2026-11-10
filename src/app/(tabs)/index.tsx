@@ -1,85 +1,31 @@
-import { useCallback, useMemo, useState } from 'react';
-import { ActivityIndicator, FlatList, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { useRouter } from 'expo-router';
-import { SymbolView } from 'expo-symbols';
+import { useCallback, useMemo, useState, type ReactElement } from 'react';
+import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 
-import { SubscriptionPicker } from '@/components/videos/SubscriptionPicker';
+import { TabList, TabScreen } from '@/components/tab-screen/TabList';
+import { FeedControls } from '@/components/videos/FeedControls';
+import { useOpenVideo } from '@/components/videos/use-open-video';
 import { VideoListItem } from '@/components/videos/VideoListItem';
-import { VideoSearchBar } from '@/components/videos/VideoSearchBar';
 import { useDebouncedValue } from '@/hooks/use-debounced-value';
-import { useListGrid } from '@/hooks/use-screen-layout';
-import { useSubscriptionFeed } from '@/hooks/use-subscription-feed';
-import { useTabScreenInsets } from '@/hooks/use-tab-screen-insets';
-import { AssDass, useGetVideoProgress, useSession, useThemeColor, type Creator, type Video } from '@/shared';
+import { useSubscriptionFeed, type SubscriptionFeedParams } from '@/hooks/use-subscription-feed';
+import {
+  AssDass,
+  useGetVideoProgress,
+  useSession,
+  useThemeColor,
+  type Creator,
+  type Video,
+} from '@/shared';
 
 const PAGE_SIZE = 20;
 const SEARCH_DEBOUNCE_MS = 300;
 
-export default function Videos() {
-  const { token, creators, subscriptions, setSubscription, setCreator } = useSession();
-  const [selectedCreatorId, setSelectedCreatorId] = useState<string>();
-  const [selectedChannelId, setSelectedChannelId] = useState<string>();
-  const [sort, setSort] = useState(AssDass.DESC);
+/** The search toggle + field state; the query is debounced, trimmed, and undefined when empty. */
+function useFeedSearch() {
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchInput, setSearchInput] = useState('');
-  const insets = useTabScreenInsets();
-  const { listKey, columnWidth, ...grid } = useListGrid();
-
-  const backgroundColor = useThemeColor({}, 'background');
-  const mutedColor = useThemeColor({}, 'icon');
-
   const debouncedInput = useDebouncedValue(searchInput, SEARCH_DEBOUNCE_MS);
-  const search = debouncedInput.trim() || undefined;
-
-  // "All Subscriptions" (undefined) or one creator; fall back to all when the selection
-  // no longer belongs to a subscribed creator.
-  const selectedCreator = creators?.find(creator => creator.id === selectedCreatorId);
-  const channelId = selectedCreator?.channels.some(channel => channel.id === selectedChannelId) ? selectedChannelId : undefined;
-  const creatorIds = useMemo(
-    () => (selectedCreator ? [selectedCreator.id] : (creators ?? []).map(creator => creator.id)),
-    [selectedCreator, creators],
-  );
-
-  const { videos, isLoading, error, refetch, isRefetching, fetchNextPage, hasNextPage, isFetchingNextPage } = useSubscriptionFeed(
-    token ?? undefined,
-    { creatorIds, channel: channelId, limit: PAGE_SIZE, search, sort },
-  );
-
-  const videoIds = useMemo(() => videos.map(video => video.id), [videos]);
-  const { data: progressData } = useGetVideoProgress(token ?? undefined, videoIds);
-  const progressById = useMemo(() => new Map(progressData?.map(progress => [progress.id, progress.progress])), [progressData]);
-
-  const loadMore = useCallback(() => {
-    if (hasNextPage && !isFetchingNextPage) fetchNextPage();
-  }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
-
-  const router = useRouter();
-  const openVideo = useCallback((video: Video) => router.push({ pathname: '/video/[id]', params: { id: video.id } }), [router]);
-
-  const renderItem = useCallback(
-    ({ item }: { item: Video }) => (
-      <View style={{ width: columnWidth }}>
-        <VideoListItem video={item} progress={progressById.get(item.id)} onPress={openVideo} />
-      </View>
-    ),
-    [progressById, openVideo, columnWidth],
-  );
-
-  // Switching subscription narrows the feed to that creator and makes it the session's active
-  // subscription; picking "All Subscriptions" only widens the feed again.
-  const handleSelectCreator = useCallback(
-    (creatorId: string | undefined) => {
-      setSelectedCreatorId(creatorId);
-      setSelectedChannelId(undefined);
-      const creator = creatorId ? creators?.find(candidate => candidate.id === creatorId) : undefined;
-      if (creator) {
-        const subscription = subscriptions?.find(candidate => candidate.creator === creator.id);
-        setCreator(creator);
-        if (subscription) setSubscription(subscription);
-      }
-    },
-    [creators, subscriptions, setCreator, setSubscription],
-  );
+  const trimmed = debouncedInput.trim();
+  const search = trimmed === '' ? undefined : trimmed;
 
   const toggleSearch = useCallback(() => {
     if (searchOpen) {
@@ -89,6 +35,163 @@ export default function Videos() {
       setSearchOpen(true);
     }
   }, [searchOpen]);
+
+  return { search, searchOpen, searchInput, setSearchInput, toggleSearch };
+}
+
+function channelOf(
+  creator: Creator | undefined,
+  channelId: string | undefined,
+): string | undefined {
+  return creator?.channels.some((channel) => channel.id === channelId) === true
+    ? channelId
+    : undefined;
+}
+
+/**
+ * Which creator (or "All Subscriptions") and channel the feed shows. Switching subscription narrows
+ * the feed to that creator and makes it the session's active subscription; picking "All
+ * Subscriptions" only widens the feed again.
+ */
+function useFeedSelection() {
+  const { creators, subscriptions, setSubscription, setCreator } = useSession();
+  const [selectedCreatorId, setSelectedCreatorId] = useState<string>();
+  const [selectedChannelId, setSelectedChannelId] = useState<string>();
+
+  // Fall back to all when the selection no longer belongs to a subscribed creator.
+  const selectedCreator = creators?.find((creator) => creator.id === selectedCreatorId);
+  const channelId = channelOf(selectedCreator, selectedChannelId);
+  const creatorIds = useMemo(
+    () => (selectedCreator ? [selectedCreator.id] : (creators ?? []).map((creator) => creator.id)),
+    [selectedCreator, creators],
+  );
+
+  const selectCreator = useCallback(
+    (creatorId: string | undefined) => {
+      setSelectedCreatorId(creatorId);
+      setSelectedChannelId(undefined);
+      const creator = creators?.find((candidate) => candidate.id === creatorId);
+      if (creatorId === undefined || creator === undefined) {
+        return;
+      }
+      setCreator(creator);
+      const subscription = subscriptions?.find((candidate) => candidate.creator === creator.id);
+      if (subscription) {
+        setSubscription(subscription);
+      }
+    },
+    [creators, subscriptions, setCreator, setSubscription],
+  );
+
+  return {
+    selectedCreatorId,
+    selectedCreator,
+    channelId,
+    creatorIds,
+    selectCreator,
+    setSelectedChannelId,
+  };
+}
+
+function feedParams(
+  base: Pick<SubscriptionFeedParams, 'creatorIds' | 'sort'>,
+  channel: string | undefined,
+  search: string | undefined,
+): SubscriptionFeedParams {
+  return {
+    ...base,
+    limit: PAGE_SIZE,
+    ...(channel === undefined ? {} : { channel }),
+    ...(search === undefined ? {} : { search }),
+  };
+}
+
+/** Saved watch progress (seconds) of the listed videos, by video id. */
+function useProgressById(token: string | undefined, videos: Video[]): Map<string, number> {
+  const videoIds = useMemo(() => videos.map((video) => video.id), [videos]);
+  const { data: progressData } = useGetVideoProgress(token, videoIds);
+  return useMemo(
+    () => new Map(progressData?.map((progress) => [progress.id, progress.progress])),
+    [progressData],
+  );
+}
+
+function emptyFeedMessage(error: Error | null, search: string | undefined): string {
+  if (error !== null) {
+    return `Error loading videos: ${error.message}`;
+  }
+  return search === undefined ? 'No videos found.' : `No videos found for “${search}”.`;
+}
+
+function FeedEmpty({
+  isLoading,
+  error,
+  search,
+}: Readonly<{
+  isLoading: boolean;
+  error: Error | null;
+  search: string | undefined;
+}>): ReactElement {
+  const mutedColor = useThemeColor({}, 'icon');
+  if (isLoading) {
+    return <ActivityIndicator style={styles.status} size="large" />;
+  }
+  return (
+    <Text style={[styles.message, styles.status, { color: mutedColor }]}>
+      {emptyFeedMessage(error, search)}
+    </Text>
+  );
+}
+
+function useVideoCell(token: string | undefined, videos: Video[]) {
+  const progressById = useProgressById(token, videos);
+  const openVideo = useOpenVideo();
+  return useCallback(
+    (video: Video) => (
+      <VideoListItem video={video} progress={progressById.get(video.id)} onPress={openVideo} />
+    ),
+    [progressById, openVideo],
+  );
+}
+
+function VideoFeed({
+  token,
+  creatorIds,
+  channelId,
+  search,
+  sort,
+}: Readonly<{
+  token: string | undefined;
+  creatorIds: string[];
+  channelId: string | undefined;
+  search: string | undefined;
+  sort: AssDass;
+}>): ReactElement {
+  const feed = useSubscriptionFeed(token, feedParams({ creatorIds, sort }, channelId, search));
+  const renderCell = useVideoCell(token, feed.videos);
+  const { refetch } = feed;
+  const onRefresh = useCallback(() => void refetch(), [refetch]);
+
+  return (
+    <TabList
+      testID="videos-list"
+      data={feed.videos}
+      keyOf={(video) => video.id}
+      renderCell={renderCell}
+      refreshing={feed.isRefetching && !feed.isFetchingNextPage}
+      onRefresh={onRefresh}
+      paging={feed}
+      empty={<FeedEmpty isLoading={feed.isLoading} error={feed.error} search={search} />}
+    />
+  );
+}
+
+export default function Videos(): ReactElement {
+  const { token, creators } = useSession();
+  const [sort, setSort] = useState(AssDass.DESC);
+  const searchState = useFeedSearch();
+  const selection = useFeedSelection();
+  const backgroundColor = useThemeColor({}, 'background');
 
   // The session provider is still loading subscriptions/creators. (It signs out when there are
   // none, so a signed-in user always ends up with creators.)
@@ -101,148 +204,29 @@ export default function Videos() {
   }
 
   return (
-    <View style={[styles.container, { backgroundColor, paddingTop: insets.top }]}>
+    <TabScreen>
       <FeedControls
         creators={creators}
-        selectedCreator={selectedCreator}
-        selectedCreatorId={selectedCreatorId}
-        channelId={channelId}
+        selectedCreator={selection.selectedCreator}
+        selectedCreatorId={selection.selectedCreatorId}
+        channelId={selection.channelId}
         sort={sort}
-        searchOpen={searchOpen}
-        searchInput={searchInput}
-        onSelectCreator={handleSelectCreator}
-        onChannelChange={setSelectedChannelId}
+        searchOpen={searchState.searchOpen}
+        searchInput={searchState.searchInput}
+        onSelectCreator={selection.selectCreator}
+        onChannelChange={selection.setSelectedChannelId}
         onSortChange={setSort}
-        onSearchToggle={toggleSearch}
-        onSearchInputChange={setSearchInput}
+        onSearchToggle={searchState.toggleSearch}
+        onSearchInputChange={searchState.setSearchInput}
       />
-
-      <FlatList
-        testID="videos-list"
-        key={listKey}
-        {...grid}
-        style={styles.container}
-        contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 24 }]}
-        scrollIndicatorInsets={{ bottom: insets.bottom }}
-        data={videos}
-        keyExtractor={video => video.id}
-        renderItem={renderItem}
-        onEndReached={loadMore}
-        onEndReachedThreshold={1.5}
-        refreshControl={<RefreshControl refreshing={isRefetching && !isFetchingNextPage} onRefresh={() => void refetch()} />}
-        ListEmptyComponent={
-          isLoading ? (
-            <ActivityIndicator style={styles.status} size="large" />
-          ) : (
-            <Text style={[styles.message, styles.status, { color: mutedColor }]}>
-              {error ? `Error loading videos: ${error.message}` : search ? `No videos found for “${search}”.` : 'No videos found.'}
-            </Text>
-          )
-        }
-        ListFooterComponent={isFetchingNextPage ? <ActivityIndicator style={styles.footer} /> : undefined}
+      <VideoFeed
+        token={token ?? undefined}
+        creatorIds={selection.creatorIds}
+        channelId={selection.channelId}
+        search={searchState.search}
+        sort={sort}
       />
-    </View>
-  );
-}
-
-/**
- * Everything that steers the feed, pinned above the list: the subscription picker, the
- * search button + expandable field, the newest/oldest toggle, and (for a single creator)
- * its channel chips.
- */
-function FeedControls({
-  creators,
-  selectedCreator,
-  selectedCreatorId,
-  channelId,
-  sort,
-  searchOpen,
-  searchInput,
-  onSelectCreator,
-  onChannelChange,
-  onSortChange,
-  onSearchToggle,
-  onSearchInputChange,
-}: {
-  creators: Creator[];
-  selectedCreator: Creator | undefined;
-  selectedCreatorId: string | undefined;
-  channelId: string | undefined;
-  sort: AssDass;
-  searchOpen: boolean;
-  searchInput: string;
-  onSelectCreator: (creatorId: string | undefined) => void;
-  onChannelChange: (id: string | undefined) => void;
-  onSortChange: (next: AssDass) => void;
-  onSearchToggle: () => void;
-  onSearchInputChange: (text: string) => void;
-}) {
-  const mutedColor = useThemeColor({}, 'icon');
-  const newest = sort === AssDass.DESC;
-  const searchIcon = searchOpen
-    ? ({ ios: 'xmark', android: 'close', web: 'close' } as const)
-    : ({ ios: 'magnifyingglass', android: 'search', web: 'search' } as const);
-
-  return (
-    <View>
-      <View style={styles.toolbar}>
-        <SubscriptionPicker creators={creators} selectedCreatorId={selectedCreatorId} onSelect={onSelectCreator} />
-        <Pressable
-          testID="video-search-toggle"
-          onPress={onSearchToggle}
-          style={({ pressed }) => [styles.toolButton, pressed && styles.pressed]}
-          accessibilityRole="button"
-          accessibilityLabel={searchOpen ? 'Close search' : 'Search videos'}
-          hitSlop={8}
-        >
-          <SymbolView name={searchIcon} size={18} tintColor={mutedColor} />
-        </Pressable>
-        <Pressable
-          onPress={() => onSortChange(newest ? AssDass.ASC : AssDass.DESC)}
-          style={({ pressed }) => [styles.toolButton, styles.sortButton, pressed && styles.pressed]}
-          accessibilityRole="button"
-          accessibilityLabel={`Sorted by ${newest ? 'newest' : 'oldest'} first. Tap to change.`}
-          hitSlop={8}
-        >
-          <SymbolView name={{ ios: 'arrow.up.arrow.down', android: 'swap_vert', web: 'swap_vert' }} size={16} tintColor={mutedColor} />
-          <Text style={[styles.sortText, { color: mutedColor }]}>{newest ? 'Newest' : 'Oldest'}</Text>
-        </Pressable>
-      </View>
-
-      {searchOpen ? <VideoSearchBar value={searchInput} onChangeText={onSearchInputChange} onClose={onSearchToggle} /> : null}
-
-      {selectedCreator && selectedCreator.channels.length > 1 ? (
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips}>
-          {[{ id: undefined, title: 'All' }, ...selectedCreator.channels.map(channel => ({ id: channel.id, title: channel.title }))].map(
-            channel => (
-              <Chip
-                key={channel.id ?? 'all'}
-                label={channel.title}
-                selected={channel.id === channelId}
-                onPress={() => onChannelChange(channel.id)}
-              />
-            ),
-          )}
-        </ScrollView>
-      ) : null}
-    </View>
-  );
-}
-
-function Chip({ label, selected, onPress }: { label: string; selected: boolean; onPress: () => void }) {
-  const textColor = useThemeColor({}, 'text');
-  const backgroundColor = useThemeColor({}, 'background');
-  const idleColor = useThemeColor({ light: '#f2f2f2', dark: '#222' }, 'background');
-
-  return (
-    <Pressable
-      onPress={onPress}
-      accessibilityRole="button"
-      accessibilityState={{ selected }}
-      style={({ pressed }) => [styles.chip, { backgroundColor: selected ? textColor : idleColor }, pressed && styles.pressed]}
-    >
-      <Text style={[styles.chipText, { color: selected ? backgroundColor : textColor }]}>{label}</Text>
-    </Pressable>
+    </TabScreen>
   );
 }
 
@@ -255,55 +239,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     padding: 24,
   },
-  toolbar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 16,
-    paddingTop: 8,
-  },
-  toolButton: {
-    padding: 8,
-  },
-  sortButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  sortText: {
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  chips: {
-    gap: 8,
-    paddingHorizontal: 16,
-    paddingTop: 12,
-    paddingBottom: 4,
-  },
-  chip: {
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 18,
-  },
-  chipText: {
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  content: {
-    paddingHorizontal: 16,
-    paddingTop: 12,
-  },
-  pressed: {
-    opacity: 0.7,
-  },
   status: {
     marginTop: 48,
   },
   message: {
     fontSize: 15,
     textAlign: 'center',
-  },
-  footer: {
-    marginVertical: 16,
   },
 });

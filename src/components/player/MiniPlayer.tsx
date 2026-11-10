@@ -1,39 +1,29 @@
-import { useEffect, useMemo, useState } from 'react';
-import {
-  Animated,
-  PanResponder,
-  Platform,
-  Pressable,
-  StyleSheet,
-  useWindowDimensions,
-  View,
-  type GestureResponderHandlers,
-} from 'react-native';
+import { Animated, Platform, Pressable, StyleSheet, useWindowDimensions, View } from 'react-native';
 import { useEvent } from 'expo';
 import { usePathname, useRouter } from 'expo-router';
 import { SymbolView, type SymbolViewProps } from 'expo-symbols';
-import { VideoView } from 'expo-video';
+import { VideoView, type VideoPlayer } from 'expo-video';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { usePlaybackSession, usePlaybackStore, type PlaybackSession } from '@/components/player/PlaybackSession';
+import {
+  usePlaybackSession,
+  usePlaybackStore,
+  type PlaybackMedia,
+  type PlaybackSession,
+} from '@/components/player/PlaybackSession';
+import { useCornerDrag } from '@/components/player/use-corner-drag';
 import { useWatchProgress } from '@/hooks/use-watch-progress';
 import { useSession, useUpdateVideoProgress } from '@/shared';
-import {
-  cornerOffset,
-  DEFAULT_CORNER,
-  MINI_PLAYER_MARGIN,
-  miniPlayerSize,
-  nearestCorner,
-  type Corner,
-  type Edges,
-  type Size,
-} from '@/utils/mini-player-layout';
+import { MINI_PLAYER_MARGIN, miniPlayerSize, type Edges } from '@/utils/mini-player-layout';
+
+const IOS_TAB_BAR_CLEARANCE = 64;
+const ANDROID_TAB_BAR_CLEARANCE = 80;
 
 /** Room for the tab bar under the tile's bottom corners (the overlay sits above the tab navigator). */
-const TAB_BAR_CLEARANCE = Platform.OS === 'ios' ? 64 : 80;
+const TAB_BAR_CLEARANCE = Platform.OS === 'ios' ? IOS_TAB_BAR_CLEARANCE : ANDROID_TAB_BAR_CLEARANCE;
 
-/** Movement before a touch on the tile counts as a drag rather than a tap. */
-const DRAG_SLOP = 8;
+const BUTTON_HIT_SLOP = 6;
+const BUTTON_ICON_SIZE = 18;
 
 const ICONS = {
   play: { ios: 'play.fill', android: 'play_arrow', web: 'play_arrow' },
@@ -42,92 +32,98 @@ const ICONS = {
 } satisfies Record<string, SymbolViewProps['name']>;
 
 /** The page routes that show the player themselves (the mini player hides there). */
-export function isPlayerRoute(pathname: string) {
+export function isPlayerRoute(pathname: string): boolean {
   return pathname.startsWith('/video/') || pathname.startsWith('/live/');
-}
-
-/**
- * Drag the tile anywhere; on release it springs into the corner it was dropped (or flung) towards.
- * Taps on the tile's buttons still go through: the responder only captures once the touch moves.
- */
-export function useCornerDrag(window: Size, tile: Size, edges: Edges) {
-  const [corner, setCorner] = useState<Corner>(DEFAULT_CORNER);
-  const offset = cornerOffset(corner, window, tile, edges);
-  const [position] = useState(() => new Animated.ValueXY(offset));
-
-  const springTo = (target: { x: number; y: number }) => {
-    Animated.spring(position, { toValue: target, useNativeDriver: false, bounciness: 4 }).start();
-  };
-
-  // Follows corner changes and window resizes (unfolding a foldable, split screen).
-  useEffect(() => {
-    springTo(offset);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [offset.x, offset.y]);
-
-  const handlers: GestureResponderHandlers = useMemo(() => {
-    const release = (dx: number, dy: number, vx: number, vy: number) => {
-      const next = nearestCorner({ x: offset.x + dx, y: offset.y + dy }, { x: vx, y: vy }, window, tile);
-      springTo(cornerOffset(next, window, tile, edges));
-      setCorner(next);
-    };
-    return PanResponder.create({
-      onMoveShouldSetPanResponderCapture: (_event, { dx, dy }) => Math.abs(dx) > DRAG_SLOP || Math.abs(dy) > DRAG_SLOP,
-      onPanResponderMove: (_event, { dx, dy }) => position.setValue({ x: offset.x + dx, y: offset.y + dy }),
-      onPanResponderRelease: (_event, { dx, dy, vx, vy }) => release(dx, dy, vx, vy),
-      onPanResponderTerminate: (_event, { dx, dy, vx, vy }) => release(dx, dy, vx, vy),
-    }).panHandlers;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [offset.x, offset.y, window.width, window.height, tile.width, tile.height, edges.top, edges.bottom, edges.left, edges.right]);
-
-  return { corner, position, handlers };
 }
 
 /** Keeps saving watch progress while a video plays in the mini player (live streams have none). */
 function useMiniPlayerProgress({ media, player }: PlaybackSession) {
   const { token } = useSession();
   const { mutate } = useUpdateVideoProgress(token ?? undefined);
-  const save = media.kind === 'video' && token ? (seconds: number) => mutate({ id: media.id, progress: seconds }) : undefined;
+  const save =
+    media.kind === 'video' && token !== undefined && token !== null && token !== ''
+      ? (seconds: number) => {
+          mutate({ id: media.id, progress: seconds });
+        }
+      : undefined;
   // A player minimized while still loading resumes here; a started one just keeps saving.
-  useWatchProgress(player, media.resumeAt, save);
+  useWatchProgress(player, { initialTime: media.resumeAt, save });
 }
 
-function MiniButton({ icon, label, onPress }: { icon: SymbolViewProps['name']; label: string; onPress: () => void }) {
-  return (
-    <Pressable
-      onPress={onPress}
-      hitSlop={6}
-      style={({ pressed }) => [styles.button, pressed && styles.pressed]}
-      accessibilityRole="button"
-      accessibilityLabel={label}
-    >
-      <SymbolView name={icon} size={18} tintColor="#fff" />
-    </Pressable>
-  );
-}
-
-function MiniPlayerTile({ session }: { session: PlaybackSession }) {
-  const { media, player } = session;
-  const store = usePlaybackStore();
-  const router = useRouter();
+/** Distances the tile keeps from the window edges: safe area, tab bar and a margin. */
+function useTileEdges(): Edges {
   const insets = useSafeAreaInsets();
-  const window = useWindowDimensions();
-  const { isPlaying } = useEvent(player, 'playingChange', { isPlaying: player.playing });
-  useMiniPlayerProgress(session);
-
-  const tile = miniPlayerSize(window.width);
-  const edges: Edges = {
+  return {
     top: insets.top + MINI_PLAYER_MARGIN,
     bottom: insets.bottom + TAB_BAR_CLEARANCE + MINI_PLAYER_MARGIN,
     left: insets.left + MINI_PLAYER_MARGIN,
     right: insets.right + MINI_PLAYER_MARGIN,
   };
-  const drag = useCornerDrag(window, tile, edges);
+}
 
-  const expand = () => {
-    if (media.kind === 'live') router.push({ pathname: '/live/[id]', params: { id: media.id } });
-    else router.push({ pathname: '/video/[id]', params: { id: media.id } });
+/** Reopens the media's player page. */
+function useExpand(media: PlaybackMedia): () => void {
+  const router = useRouter();
+  return () => {
+    if (media.kind === 'live') {
+      router.push({ pathname: '/live/[id]', params: { id: media.id } });
+    } else {
+      router.push({ pathname: '/video/[id]', params: { id: media.id } });
+    }
   };
+}
+
+function MiniButton({
+  icon,
+  label,
+  onPress,
+}: Readonly<{
+  icon: SymbolViewProps['name'];
+  label: string;
+  onPress: () => void;
+}>) {
+  return (
+    <Pressable
+      onPress={onPress}
+      hitSlop={BUTTON_HIT_SLOP}
+      style={({ pressed }) => [styles.button, pressed && styles.pressed]}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+    >
+      <SymbolView name={icon} size={BUTTON_ICON_SIZE} tintColor="#fff" />
+    </Pressable>
+  );
+}
+
+/** Play/pause and close, over the tile's top corners. */
+function MiniButtons({ player }: Readonly<{ player: VideoPlayer }>) {
+  const store = usePlaybackStore();
+  const { isPlaying } = useEvent(player, 'playingChange', { isPlaying: player.playing });
+  return (
+    <View style={styles.buttons} pointerEvents="box-none">
+      <MiniButton
+        icon={isPlaying ? ICONS.pause : ICONS.play}
+        label={isPlaying ? 'Pause' : 'Play'}
+        onPress={() => {
+          if (isPlaying) {
+            player.pause();
+          } else {
+            player.play();
+          }
+        }}
+      />
+      <MiniButton icon={ICONS.close} label="Close mini player" onPress={() => store?.close()} />
+    </View>
+  );
+}
+
+function MiniPlayerTile({ session }: Readonly<{ session: PlaybackSession }>) {
+  const { media, player } = session;
+  const window = useWindowDimensions();
+  useMiniPlayerProgress(session);
+  const tile = miniPlayerSize(window.width);
+  const drag = useCornerDrag({ window, tile, edges: useTileEdges() });
+  const expand = useExpand(media);
 
   return (
     <Animated.View
@@ -152,14 +148,7 @@ function MiniPlayerTile({ session }: { session: PlaybackSession }) {
         accessibilityRole="button"
         accessibilityLabel={`Open ${media.title ?? 'video'}`}
       />
-      <View style={styles.buttons} pointerEvents="box-none">
-        <MiniButton
-          icon={isPlaying ? ICONS.pause : ICONS.play}
-          label={isPlaying ? 'Pause' : 'Play'}
-          onPress={() => (isPlaying ? player.pause() : player.play())}
-        />
-        <MiniButton icon={ICONS.close} label="Close mini player" onPress={() => store?.close()} />
-      </View>
+      <MiniButtons player={player} />
     </Animated.View>
   );
 }
@@ -169,10 +158,12 @@ function MiniPlayerTile({ session }: { session: PlaybackSession }) {
  * draggable tile (top-right by default) over the rest of the app. Tap it to reopen the page (same
  * player, no reload); ✕ stops playback. Hidden on the player pages themselves.
  */
-export function MiniPlayer() {
+export function MiniPlayer(): React.JSX.Element | null {
   const session = usePlaybackSession();
   const pathname = usePathname();
-  if (!session?.minimized || isPlayerRoute(pathname)) return null;
+  if (session?.minimized !== true || isPlayerRoute(pathname)) {
+    return null;
+  }
   return <MiniPlayerTile key={session.media.key} session={session} />;
 }
 

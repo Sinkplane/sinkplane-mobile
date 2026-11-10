@@ -1,51 +1,92 @@
 name: CI
 
+# Every job below is a required status check on main (see README "Quality gates" for the ruleset).
 on:
   pull_request:
+    branches: [main]
+  push:
     branches: [main]
 
 permissions:
   contents: read
-  # Lets GITHUB_TOKEN read @sinkplane/shared from GitHub Packages (see the auth step).
+  # Lets GITHUB_TOKEN read @sinkplane/shared from GitHub Packages (see .github/actions/setup).
   packages: read
 
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number }}
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
-  lint-typecheck-test:
-    name: lint-typecheck-test
+  static:
+    name: format, lint, typecheck, arch
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-      - name: Install Node
-        uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup
         with:
-          node-version: 22
-          cache: npm
-      # @sinkplane/shared is a private GitHub Packages package. Either:
-      #  - add a PACKAGES_AUTH_TOKEN repo secret (PAT with read:packages on the Sinkplane org), or
-      #  - grant this repo read access in the package's settings ("Manage Actions access"),
-      #    in which case the built-in GITHUB_TOKEN is used.
-      - name: Configure GitHub Packages auth
-        run: echo "//npm.pkg.github.com/:_authToken=${PACKAGES_AUTH_TOKEN}" >> ~/.npmrc
-        env:
-          PACKAGES_AUTH_TOKEN: ${{ secrets.PACKAGES_AUTH_TOKEN || secrets.GITHUB_TOKEN }}
-      - name: Install dependencies
-        run: npm ci
-      - name: Lint
-        run: npm run lint
+          packages-token: ${{ secrets.PACKAGES_AUTH_TOKEN || secrets.GITHUB_TOKEN }}
+      - name: Format (prettier --check)
+        run: make fmt-check
+      - name: Lint (eslint --max-warnings=0, knip)
+        run: make lint
       - name: Typecheck
-        run: npx tsc --noEmit
-      - name: Test (unit + E2E, coverage thresholds enforced)
-        run: npm run test:ci
+        run: make typecheck
+      - name: Architecture (dependency-cruiser)
+        run: make arch
+
+  test:
+    name: tests, coverage, crap
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup
+        with:
+          packages-token: ${{ secrets.PACKAGES_AUTH_TOKEN || secrets.GITHUB_TOKEN }}
+      - name: Unit + E2E with coverage thresholds
+        run: make coverage
+      - name: CRAP (per-function complexity x coverage)
+        run: make crap
       - name: Upload coverage reports
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: coverage
           path: coverage/
+          if-no-files-found: ignore
+
+  bundle:
+    name: bundle (iOS + Android)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup
+        with:
+          packages-token: ${{ secrets.PACKAGES_AUTH_TOKEN || secrets.GITHUB_TOKEN }}
+      - name: Metro export
+        run: make build
+
+  mutation:
+    name: mutation (changed files)
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: ./.github/actions/setup
+        with:
+          packages-token: ${{ secrets.PACKAGES_AUTH_TOKEN || secrets.GITHUB_TOKEN }}
+      # PRs mutate only src files changed vs the base branch; pushes to main have nothing to diff.
+      - name: Stryker
+        if: github.event_name == 'pull_request'
+        run: make mutate SCOPE=changed BASE=origin/${{ github.base_ref }}
+      - name: Upload mutation report
+        if: always() && github.event_name == 'pull_request'
+        uses: actions/upload-artifact@v7
+        with:
+          name: mutation-report
+          path: reports/mutation/
           if-no-files-found: ignore

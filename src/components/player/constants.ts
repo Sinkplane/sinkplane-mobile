@@ -1,5 +1,12 @@
+const SLOWEST_SPEED = 0.5;
+const FASTEST_SPEED = 2;
+const SPEED_STEP = 0.25;
+
 /** Speeds offered in the speed menu (same as the TV app; AVPlayer only guarantees audio up to 2×). */
-export const PLAYBACK_SPEEDS = [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2] as const;
+export const PLAYBACK_SPEEDS: readonly number[] = Array.from(
+  { length: (FASTEST_SPEED - SLOWEST_SPEED) / SPEED_STEP + 1 },
+  (_, index) => SLOWEST_SPEED + index * SPEED_STEP,
+);
 
 /** Speed while the video is pressed and held. */
 export const HOLD_PLAYBACK_RATE = 2;

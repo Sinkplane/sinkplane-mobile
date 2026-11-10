@@ -1,3 +1,4 @@
+import type * as React from 'react';
 import { Platform } from 'react-native';
 import { render } from '@testing-library/react-native';
 
@@ -16,17 +17,17 @@ interface WebViewProps {
 const mockWebView = { props: null as WebViewProps | null, mounts: 0 };
 
 jest.mock('react-native-webview', () => {
-  const { useEffect } = jest.requireActual<typeof import('react')>('react');
-  return {
-    WebView: (props: WebViewProps) => {
-      mockWebView.props = props;
-      // Count real mounts so remounts (reloadKey) are observable.
-      useEffect(() => {
-        mockWebView.mounts += 1;
-      }, []);
-      return null;
-    },
+  const { useEffect } = jest.requireActual<typeof React>('react');
+  const WebView = (props: WebViewProps) => {
+    mockWebView.props = props;
+    // Count real mounts so remounts (reloadKey) are observable.
+    useEffect(() => {
+      mockWebView.mounts += 1;
+    }, []);
+    return null;
   };
+  // Computed key: the module's export is PascalCase, which object-literal naming rules reject.
+  return { ['WebView']: WebView };
 });
 
 const webView = () => {
@@ -34,7 +35,9 @@ const webView = () => {
   return mockWebView.props;
 };
 
-const send = (message: unknown) => webView().onMessage({ nativeEvent: { data: JSON.stringify(message) } });
+const send = (message: unknown) => {
+  webView().onMessage({ nativeEvent: { data: JSON.stringify(message) } });
+};
 
 describe('TurnstileWidget', () => {
   beforeEach(() => {
@@ -64,7 +67,7 @@ describe('TurnstileWidget', () => {
   });
 
   it('forwards load, token, expire and error messages from the page', async () => {
-    const onEvent = jest.fn();
+    const onEvent = jest.fn((_event: TurnstileEvent) => undefined);
     await render(<TurnstileWidget siteKey="key" theme="light" onEvent={onEvent} />);
 
     const events: TurnstileEvent[] = [
@@ -79,7 +82,7 @@ describe('TurnstileWidget', () => {
   });
 
   it('ignores non-JSON messages', async () => {
-    const onEvent = jest.fn();
+    const onEvent = jest.fn((_event: TurnstileEvent) => undefined);
     await render(<TurnstileWidget siteKey="key" theme="light" onEvent={onEvent} />);
 
     webView().onMessage({ nativeEvent: { data: 'not json' } });
@@ -87,7 +90,7 @@ describe('TurnstileWidget', () => {
   });
 
   it('reports WebView load, render and HTTP failures as error events', async () => {
-    const onEvent = jest.fn();
+    const onEvent = jest.fn((_event: TurnstileEvent) => undefined);
     await render(<TurnstileWidget siteKey="key" theme="light" onEvent={onEvent} />);
 
     webView().onError({ nativeEvent: { description: 'net::ERR_INTERNET_DISCONNECTED' } });
@@ -104,7 +107,9 @@ describe('TurnstileWidget', () => {
   it('always delivers to the latest onEvent handler without remounting', async () => {
     const first = jest.fn();
     const second = jest.fn();
-    const { rerender } = await render(<TurnstileWidget siteKey="key" theme="light" onEvent={first} />);
+    const { rerender } = await render(
+      <TurnstileWidget siteKey="key" theme="light" onEvent={first} />,
+    );
     await rerender(<TurnstileWidget siteKey="key" theme="light" onEvent={second} />);
 
     send({ type: 'load' });
@@ -115,10 +120,14 @@ describe('TurnstileWidget', () => {
   });
 
   it('remounts a fresh challenge when reloadKey changes', async () => {
-    const { rerender } = await render(<TurnstileWidget siteKey="key" theme="light" onEvent={jest.fn()} />);
+    const { rerender } = await render(
+      <TurnstileWidget siteKey="key" theme="light" onEvent={jest.fn()} />,
+    );
     expect(mockWebView.mounts).toBe(1);
 
-    await rerender(<TurnstileWidget siteKey="key" theme="light" onEvent={jest.fn()} reloadKey={1} />);
+    await rerender(
+      <TurnstileWidget siteKey="key" theme="light" onEvent={jest.fn()} reloadKey={1} />,
+    );
     expect(mockWebView.mounts).toBe(2);
   });
 });

@@ -7,19 +7,34 @@
  */
 import type * as Real from 'expo-notifications';
 
-type PermissionStatus = Pick<Real.NotificationPermissionsStatus, 'granted' | 'status' | 'canAskAgain'> & {
-  ios?: { status: number };
-};
+type PermissionState = 'granted' | 'denied' | 'undetermined';
 
-const permission = (status: 'granted' | 'denied' | 'undetermined', canAskAgain = status === 'undetermined'): PermissionStatus => ({
+/** The fields of `NotificationPermissionsStatus` the app reads (`status` as its string values). */
+interface PermissionStatus {
+  granted: boolean;
+  status: PermissionState;
+  canAskAgain: boolean;
+  ios?: { status: number };
+}
+
+const permission = (
+  status: PermissionState,
+  canAskAgain = status === 'undetermined',
+): PermissionStatus => ({
   granted: status === 'granted',
-  status: status as PermissionStatus['status'],
+  status,
   canAskAgain,
 });
 
 export const DEFAULT_ACTION_IDENTIFIER = 'expo.modules.notifications.actions.DEFAULT';
 export const AndroidImportance = { DEFAULT: 3, HIGH: 4, MAX: 5 } as const;
-export const IosAuthorizationStatus = { NOT_DETERMINED: 0, DENIED: 1, AUTHORIZED: 2, PROVISIONAL: 3, EPHEMERAL: 4 } as const;
+export const IosAuthorizationStatus = {
+  NOT_DETERMINED: 0,
+  DENIED: 1,
+  AUTHORIZED: 2,
+  PROVISIONAL: 3,
+  EPHEMERAL: 4,
+} as const;
 
 type ResponseListener = (response: Real.NotificationResponse) => void;
 
@@ -33,11 +48,11 @@ export const mockNotifications = {
   lastResponse: null as Real.NotificationResponse | null,
   responseListeners: new Set<ResponseListener>(),
 
-  setPermission(status: 'granted' | 'denied' | 'undetermined', canAskAgain?: boolean) {
+  setPermission(status: PermissionState, canAskAgain?: boolean): void {
     this.permission = permission(status, canAskAgain);
   },
 
-  reset() {
+  reset(): void {
     this.permission = permission('undetermined');
     this.promptAnswer = 'granted';
     this.presented = [];
@@ -49,7 +64,10 @@ export const mockNotifications = {
 };
 
 /** A response for a presented notification (or arbitrary data). */
-export function makeResponse(data: Record<string, unknown>, actionIdentifier = DEFAULT_ACTION_IDENTIFIER): Real.NotificationResponse {
+export function makeResponse(
+  data: Record<string, unknown>,
+  actionIdentifier = DEFAULT_ACTION_IDENTIFIER,
+): Real.NotificationResponse {
   return {
     actionIdentifier,
     notification: { date: 0, request: { identifier: 'n', content: { data }, trigger: null } },
@@ -60,30 +78,34 @@ export function makeResponse(data: Record<string, unknown>, actionIdentifier = D
 export function tapNotification(data: Record<string, unknown>, actionIdentifier?: string): void {
   const response = makeResponse(data, actionIdentifier);
   mockNotifications.lastResponse = response;
-  mockNotifications.responseListeners.forEach(listener => listener(response));
+  mockNotifications.responseListeners.forEach((listener) => {
+    listener(response);
+  });
 }
 
-export const getPermissionsAsync = jest.fn(async () => mockNotifications.permission);
+export const getPermissionsAsync = jest.fn(() => Promise.resolve(mockNotifications.permission));
 
-export const requestPermissionsAsync = jest.fn(async () => {
+export const requestPermissionsAsync = jest.fn(() => {
   if (mockNotifications.permission.status === 'undetermined') {
     mockNotifications.setPermission(mockNotifications.promptAnswer, false);
   }
-  return mockNotifications.permission;
+  return Promise.resolve(mockNotifications.permission);
 });
 
 export const setNotificationHandler = jest.fn((handler: Real.NotificationHandler | null) => {
   mockNotifications.handler = handler;
 });
 
-export const setNotificationChannelAsync = jest.fn(async (id: string, channel: unknown) => {
+export const setNotificationChannelAsync = jest.fn((id: string, channel: unknown) => {
   mockNotifications.channels.set(id, channel);
-  return null;
+  return Promise.resolve(null);
 });
 
-export const scheduleNotificationAsync = jest.fn(async (request: Real.NotificationRequestInput) => {
+export const scheduleNotificationAsync = jest.fn((request: Real.NotificationRequestInput) => {
   mockNotifications.presented.push(request);
-  return request.identifier ?? `notification-${mockNotifications.presented.length}`;
+  return Promise.resolve(
+    request.identifier ?? `notification-${String(mockNotifications.presented.length)}`,
+  );
 });
 
 export const getLastNotificationResponse = jest.fn(() => mockNotifications.lastResponse);

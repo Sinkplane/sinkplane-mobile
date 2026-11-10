@@ -1,9 +1,11 @@
-import { StyleSheet } from 'react-native';
+import { StyleSheet, type StyleProp, type ViewStyle } from 'react-native';
 import { render, screen } from '@testing-library/react-native';
 
 import { LIVE_RED, LiveStatusPill } from '@/components/live/LiveStatusPill';
 
-const backgroundOf = (testID: string) => StyleSheet.flatten(screen.getByTestId(testID).props.style).backgroundColor;
+const backgroundOf = (testID: string) =>
+  StyleSheet.flatten(screen.getByTestId(testID).props['style'] as StyleProp<ViewStyle>)
+    ?.backgroundColor;
 
 describe('LiveStatusPill', () => {
   it('is a red LIVE chip while live', async () => {

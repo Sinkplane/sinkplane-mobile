@@ -20,12 +20,22 @@ export interface Edges {
   right: number;
 }
 
+/** Everything a tile's position depends on besides its corner. */
+export interface TileFrame {
+  window: Size;
+  tile: Size;
+  edges: Edges;
+}
+
 export const DEFAULT_CORNER: Corner = 'top-right';
 
 /** Gap between the tile and the safe area / tab bar. */
 export const MINI_PLAYER_MARGIN = 12;
 
 const WIDTH_FRACTION = 0.46;
+const ASPECT_WIDTH = 16;
+const ASPECT_HEIGHT = 9;
+const HALF = 2;
 const MAX_WIDTH = 280;
 
 /** How far ahead a fling is projected when picking the corner it lands in (ms of travel). */
@@ -34,11 +44,11 @@ const FLING_PROJECTION_MS = 150;
 /** About half the screen width on phones, capped on tablets / unfolded foldables. */
 export function miniPlayerSize(windowWidth: number): Size {
   const width = Math.round(Math.min(windowWidth * WIDTH_FRACTION, MAX_WIDTH));
-  return { width, height: Math.round((width * 9) / 16) };
+  return { width, height: Math.round((width * ASPECT_HEIGHT) / ASPECT_WIDTH) };
 }
 
 /** Top-left position of the tile parked in `corner`. */
-export function cornerOffset(corner: Corner, window: Size, tile: Size, edges: Edges): Point {
+export function cornerOffset(corner: Corner, { window, tile, edges }: TileFrame): Point {
   const left = corner.endsWith('left');
   const top = corner.startsWith('top');
   return {
@@ -51,10 +61,14 @@ export function cornerOffset(corner: Corner, window: Size, tile: Size, edges: Ed
  * The corner a tile released at `position` (its top-left) should snap to: the quadrant its centre
  * lands in, after projecting a fling's velocity (px/ms, as PanResponder reports it) a little ahead.
  */
-export function nearestCorner(position: Point, velocity: Point, window: Size, tile: Size): Corner {
-  const centerX = position.x + tile.width / 2 + velocity.x * FLING_PROJECTION_MS;
-  const centerY = position.y + tile.height / 2 + velocity.y * FLING_PROJECTION_MS;
-  const vertical = centerY < window.height / 2 ? 'top' : 'bottom';
-  const horizontal = centerX < window.width / 2 ? 'left' : 'right';
+export function nearestCorner(
+  position: Point,
+  velocity: Point,
+  { window, tile }: Pick<TileFrame, 'window' | 'tile'>,
+): Corner {
+  const centerX = position.x + tile.width / HALF + velocity.x * FLING_PROJECTION_MS;
+  const centerY = position.y + tile.height / HALF + velocity.y * FLING_PROJECTION_MS;
+  const vertical = centerY < window.height / HALF ? 'top' : 'bottom';
+  const horizontal = centerX < window.width / HALF ? 'left' : 'right';
   return `${vertical}-${horizontal}`;
 }

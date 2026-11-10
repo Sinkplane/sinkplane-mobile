@@ -15,17 +15,23 @@ describe('E2E smoke', () => {
     rt.seedSession();
     await rt.renderApp();
 
-    await rt.until(() => expect(rt.inTab('index').getByText('Main Channel Video 01')).toBeTruthy());
+    await rt.until(() => {
+      expect(rt.inTab('index').getByText('Main Channel Video 01')).toBeTruthy();
+    });
     expect(rt.inTab('index').getByText('All Subscriptions')).toBeTruthy();
     expect(rt.selectedTab()).toBe('index');
 
     await rt.selectTab('settings');
-    await rt.until(() => expect(rt.selectedTab()).toBe('settings'));
+    await rt.until(() => {
+      expect(rt.selectedTab()).toBe('settings');
+    });
     expect(rt.inTab('settings').getByText('Test User')).toBeTruthy();
   });
 
   it('boots signed-out on the sign-in screen', async () => {
     await rt.renderApp();
-    await rt.until(() => expect(rt.screen.getByText('Sign in to Floatplane')).toBeTruthy());
+    await rt.until(() => {
+      expect(rt.screen.getByText('Sign in to Floatplane')).toBeTruthy();
+    });
   });
 });

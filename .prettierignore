@@ -1,0 +1,14 @@
+pnpm-lock.yaml
+coverage/
+dist/
+reports/
+.stryker-tmp/
+.expo/
+ios/
+android/
+modules/*/android/
+modules/*/ios/
+patches/
+.cursor/
+.claude/
+CLAUDE.md

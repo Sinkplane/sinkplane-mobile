@@ -1,3 +1,4 @@
+import type { ReactElement } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
 import type { LiveStatus } from '@/hooks/use-live-streams';
@@ -13,13 +14,16 @@ const LABELS: Record<LiveStatus, string> = {
 };
 
 /** A small status chip: a red "● LIVE" while broadcasting, a muted one otherwise. */
-export function LiveStatusPill({ status }: { status: LiveStatus }) {
+export function LiveStatusPill({ status }: Readonly<{ status: LiveStatus }>): ReactElement {
   const mutedBackground = useThemeColor({ light: '#e6e8ea', dark: '#2c2f31' }, 'background');
   const mutedColor = useThemeColor({}, 'icon');
   const live = status === 'live';
 
   return (
-    <View testID={`live-status-${status}`} style={[styles.pill, { backgroundColor: live ? LIVE_RED : mutedBackground }]}>
+    <View
+      testID={`live-status-${status}`}
+      style={[styles.pill, { backgroundColor: live ? LIVE_RED : mutedBackground }]}
+    >
       {live ? <View style={styles.dot} /> : null}
       <Text style={[styles.label, { color: live ? '#fff' : mutedColor }]}>{LABELS[status]}</Text>
     </View>

@@ -1,18 +1,21 @@
+import type { ReactElement } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { Image } from 'expo-image';
 
 import { LiveStatusPill } from '@/components/live/LiveStatusPill';
 import type { CreatorLiveStream } from '@/hooks/use-live-streams';
 import { useThemeColor } from '@/shared';
-import { liveStreamCopy } from '@/utils/live-stream-copy';
+import { liveStreamCopy } from '@/components/live/live-stream-copy';
+import { imagePath } from '@/components/image-path';
 
 /** Status, stream title, creator and description shown below the live player. */
-export function LiveDetails({ stream }: { stream: CreatorLiveStream }) {
+export function LiveDetails({ stream }: Readonly<{ stream: CreatorLiveStream }>): ReactElement {
   const textColor = useThemeColor({}, 'text');
   const mutedColor = useThemeColor({}, 'icon');
   const placeholderColor = useThemeColor({ light: '#e6e8ea', dark: '#26292b' }, 'background');
   const { creator } = stream;
   const copy = liveStreamCopy(stream);
+  const iconPath = imagePath(creator.icon);
 
   return (
     <View style={styles.container}>
@@ -23,18 +26,20 @@ export function LiveDetails({ stream }: { stream: CreatorLiveStream }) {
 
       <View style={styles.creatorRow}>
         <View style={[styles.creatorIcon, { backgroundColor: placeholderColor }]}>
-          {creator.icon?.path ? <Image source={creator.icon.path} style={StyleSheet.absoluteFill} /> : null}
+          {iconPath === undefined ? null : (
+            <Image source={iconPath} style={StyleSheet.absoluteFill} />
+          )}
         </View>
         <Text style={[styles.creatorName, { color: textColor }]} numberOfLines={1}>
           {creator.title}
         </Text>
       </View>
 
-      {copy.description ? (
+      {copy.description === '' ? null : (
         <Text testID="live-description" style={[styles.description, { color: mutedColor }]}>
           {copy.description}
         </Text>
-      ) : null}
+      )}
     </View>
   );
 }

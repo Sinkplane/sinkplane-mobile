@@ -4,7 +4,12 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 
 import { NotificationSettings } from '@/components/settings/NotificationSettings';
-import { getNotificationsEnabled, loadSeenState, saveSeenState, setNotificationsEnabled } from '@/notifications/notification-store';
+import {
+  getNotificationsEnabled,
+  loadSeenState,
+  saveSeenState,
+  setNotificationsEnabled,
+} from '@/notifications/notification-store';
 import { mockNotifications, requestPermissionsAsync } from '@test/mocks/expo-notifications';
 
 // ---------------------------------------------------------------------------
@@ -22,26 +27,51 @@ let updateFails: boolean;
 let updates: unknown[];
 
 const respond = (status: number, body: unknown) =>
-  ({ ok: status === 200, status, json: async () => body, text: async () => JSON.stringify(body) }) as Response;
+  ({
+    ok: status === 200,
+    status,
+    json: () => Promise.resolve(body),
+    text: () => Promise.resolve(JSON.stringify(body)),
+  }) as Response;
 
-const fetchMock = jest.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-  const path = new URL(String(input)).pathname;
+function urlOf(input: RequestInfo | URL): string {
+  if (input instanceof URL) {
+    return input.href;
+  }
+  return typeof input === 'string' ? input : input.url;
+}
+
+function listResponse(): Response {
+  if (listFailures > 0) {
+    listFailures -= 1;
+    return respond(500, 'down');
+  }
+  return respond(200, entries);
+}
+
+function updateResponse(init?: RequestInit): Response {
+  const body = typeof init?.body === 'string' ? init.body : '';
+  const update = JSON.parse(body) as {
+    creator: string;
+    property: 'contentFirebase' | 'contentEmail';
+    newValue: boolean;
+  };
+  updates.push(update);
+  if (updateFails) return respond(500, 'nope');
+  const entry = entries.find((e) => e.creator.id === update.creator);
+  if (entry) entry.userNotificationSetting[update.property] = update.newValue;
+  return respond(200, {});
+}
+
+const fetchMock = jest.fn((input: RequestInfo | URL, init?: RequestInit) => {
+  const path = new URL(urlOf(input)).pathname;
   if (path === '/api/v3/user/notification/list') {
-    if (listFailures > 0) {
-      listFailures -= 1;
-      return respond(500, 'down');
-    }
-    return respond(200, entries);
+    return Promise.resolve(listResponse());
   }
   if (path === '/api/v3/user/notification/update') {
-    const update = JSON.parse(String(init?.body)) as { creator: string; property: 'contentFirebase' | 'contentEmail'; newValue: boolean };
-    updates.push(update);
-    if (updateFails) return respond(500, 'nope');
-    const entry = entries.find(e => e.creator.id === update.creator);
-    if (entry) entry.userNotificationSetting[update.property] = update.newValue;
-    return respond(200, {});
+    return Promise.resolve(updateResponse(init));
   }
-  return respond(404, 'no mock');
+  return Promise.resolve(respond(404, 'no mock'));
 });
 
 let appStateListeners: ((state: AppStateStatus) => void)[];
@@ -53,7 +83,10 @@ beforeEach(() => {
       creator: { id: 'c1', title: 'LTT', icon: { path: 'https://pbs/ltt.jpg' } },
       userNotificationSetting: { contentFirebase: true, contentEmail: false },
     },
-    { creator: { id: 'c2', title: 'GN', icon: null }, userNotificationSetting: { contentFirebase: false, contentEmail: true } },
+    {
+      creator: { id: 'c2', title: 'GN', icon: null },
+      userNotificationSetting: { contentFirebase: false, contentEmail: true },
+    },
   ];
   listFailures = 0;
   updateFails = false;
@@ -61,16 +94,23 @@ beforeEach(() => {
   globalThis.fetch = fetchMock as typeof fetch;
   appStateListeners = [];
   jest.spyOn(AppState, 'addEventListener').mockImplementation((_type, listener) => {
-    appStateListeners.push(listener as (state: AppStateStatus) => void);
-    return { remove: () => undefined } as ReturnType<typeof AppState.addEventListener>;
+    appStateListeners.push(listener);
+    return { remove: () => undefined };
   });
   // gcTime: Infinity — no garbage-collection timers left running after a test unmounts.
-  queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: Infinity }, mutations: { gcTime: Infinity } } });
+  queryClient = new QueryClient({
+    defaultOptions: {
+      queries: { retry: false, gcTime: Infinity },
+      mutations: { gcTime: Infinity },
+    },
+  });
 });
 
-afterEach(() => queryClient.clear());
+afterEach(() => {
+  queryClient.clear();
+});
 
-function Providers({ children }: { children: ReactNode }) {
+function Providers({ children }: Readonly<{ children: ReactNode }>) {
   return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>;
 }
 
@@ -84,33 +124,51 @@ async function renderSettings(token: string | null = 'tok') {
 
 const mainSwitch = () => screen.getByTestId('notifications-switch');
 
+function emitAppState(state: AppStateStatus) {
+  for (const listener of appStateListeners) {
+    listener(state);
+  }
+}
+
 async function renderEnabled() {
   mockNotifications.setPermission('granted');
   await setNotificationsEnabled(true);
   await renderSettings();
-  await waitFor(() => expect(screen.getByLabelText('Notifications for LTT')).toBeTruthy());
+  await waitFor(() => {
+    expect(screen.getByLabelText('Notifications for LTT')).toBeTruthy();
+  });
 }
 
 describe('main switch', () => {
   it('is off until enabled, and asks for permission when turned on', async () => {
     await renderSettings();
-    await waitFor(() => expect(mainSwitch().props.disabled).toBe(false));
-    expect(mainSwitch().props.value).toBe(false);
+    await waitFor(() => {
+      expect(mainSwitch().props['disabled']).toBe(false);
+    });
+    expect(mainSwitch().props['value']).toBe(false);
 
     await fireEvent(mainSwitch(), 'valueChange', true);
-    await waitFor(() => expect(mainSwitch().props.value).toBe(true));
+    await waitFor(() => {
+      expect(mainSwitch().props['value']).toBe(true);
+    });
     expect(requestPermissionsAsync).toHaveBeenCalled();
     expect(await getNotificationsEnabled()).toBe(true);
-    await waitFor(() => expect(screen.getByLabelText('Notifications for LTT')).toBeTruthy());
+    await waitFor(() => {
+      expect(screen.getByLabelText('Notifications for LTT')).toBeTruthy();
+    });
   });
 
   it('restarts the "new since" clock when turned on, keeping what was shown', async () => {
     await saveSeenState({ since: 1, checkedAt: 2, pending: { c1: 1 }, ids: ['post:a'] });
     await renderSettings();
-    await waitFor(() => expect(mainSwitch().props.disabled).toBe(false));
+    await waitFor(() => {
+      expect(mainSwitch().props['disabled']).toBe(false);
+    });
     const before = Date.now();
     await fireEvent(mainSwitch(), 'valueChange', true);
-    await waitFor(() => expect(mainSwitch().props.value).toBe(true));
+    await waitFor(() => {
+      expect(mainSwitch().props['value']).toBe(true);
+    });
     const state = await loadSeenState();
     expect(state).toMatchObject({ pending: {}, ids: ['post:a'] });
     expect(state?.since).toBeGreaterThanOrEqual(before);
@@ -120,7 +178,9 @@ describe('main switch', () => {
   it('turns off and hides the creator list', async () => {
     await renderEnabled();
     await fireEvent(mainSwitch(), 'valueChange', false);
-    await waitFor(() => expect(mainSwitch().props.value).toBe(false));
+    await waitFor(() => {
+      expect(mainSwitch().props['value']).toBe(false);
+    });
     expect(screen.queryByLabelText('Notifications for LTT')).toBeNull();
     expect(await getNotificationsEnabled()).toBe(false);
   });
@@ -128,11 +188,17 @@ describe('main switch', () => {
   it('stays off and links to system settings when permission is refused', async () => {
     mockNotifications.promptAnswer = 'denied';
     await renderSettings();
-    await waitFor(() => expect(mainSwitch().props.disabled).toBe(false));
+    await waitFor(() => {
+      expect(mainSwitch().props['disabled']).toBe(false);
+    });
 
     await fireEvent(mainSwitch(), 'valueChange', true);
-    await waitFor(() => expect(screen.getByText('Notifications are turned off for Sinkplane in system settings.')).toBeTruthy());
-    expect(mainSwitch().props.value).toBe(false);
+    await waitFor(() => {
+      expect(
+        screen.getByText('Notifications are turned off for Sinkplane in system settings.'),
+      ).toBeTruthy();
+    });
+    expect(mainSwitch().props['value']).toBe(false);
 
     const openSettings = jest.spyOn(Linking, 'openSettings').mockResolvedValue(undefined);
     await fireEvent.press(screen.getByText('Open Settings'));
@@ -142,34 +208,46 @@ describe('main switch', () => {
   it('swallows a failing permission request', async () => {
     requestPermissionsAsync.mockRejectedValueOnce(new Error('no UI'));
     await renderSettings();
-    await waitFor(() => expect(mainSwitch().props.disabled).toBe(false));
+    await waitFor(() => {
+      expect(mainSwitch().props['disabled']).toBe(false);
+    });
     await fireEvent(mainSwitch(), 'valueChange', true);
-    await waitFor(() => expect(mainSwitch().props.disabled).toBe(false));
-    expect(mainSwitch().props.value).toBe(false);
+    await waitFor(() => {
+      expect(mainSwitch().props['disabled']).toBe(false);
+    });
+    expect(mainSwitch().props['value']).toBe(false);
   });
 
   it('re-reads the permission when the app returns to the foreground', async () => {
     mockNotifications.setPermission('denied');
     await setNotificationsEnabled(true);
     await renderSettings();
-    await waitFor(() => expect(screen.getByText('Open Settings')).toBeTruthy());
+    await waitFor(() => {
+      expect(screen.getByText('Open Settings')).toBeTruthy();
+    });
 
     // The user allowed notifications in system settings and came back.
     mockNotifications.setPermission('granted');
-    await act(async () => appStateListeners.forEach(listener => listener('background')));
-    expect(mainSwitch().props.value).toBe(false);
-    await act(async () => appStateListeners.forEach(listener => listener('active')));
-    await waitFor(() => expect(mainSwitch().props.value).toBe(true));
+    await act(() => {
+      emitAppState('background');
+    });
+    expect(mainSwitch().props['value']).toBe(false);
+    await act(() => {
+      emitAppState('active');
+    });
+    await waitFor(() => {
+      expect(mainSwitch().props['value']).toBe(true);
+    });
   });
 });
 
 describe('creator switches', () => {
   it('shows Floatplane’s settings per creator', async () => {
     await renderEnabled();
-    expect(screen.getByLabelText('Notifications for LTT').props.value).toBe(true);
-    expect(screen.getByLabelText('Emails for LTT').props.value).toBe(false);
-    expect(screen.getByLabelText('Notifications for GN').props.value).toBe(false);
-    expect(screen.getByLabelText('Emails for GN').props.value).toBe(true);
+    expect(screen.getByLabelText('Notifications for LTT').props['value']).toBe(true);
+    expect(screen.getByLabelText('Emails for LTT').props['value']).toBe(false);
+    expect(screen.getByLabelText('Notifications for GN').props['value']).toBe(false);
+    expect(screen.getByLabelText('Emails for GN').props['value']).toBe(true);
     expect(screen.getByText('Notify me')).toBeTruthy();
   });
 
@@ -178,21 +256,23 @@ describe('creator switches', () => {
     await fireEvent(screen.getByLabelText('Notifications for GN'), 'valueChange', true);
     await fireEvent(screen.getByLabelText('Emails for LTT'), 'valueChange', true);
 
-    await waitFor(() =>
+    await waitFor(() => {
       expect(updates).toEqual([
         { creator: 'c2', property: 'contentFirebase', newValue: true },
         { creator: 'c1', property: 'contentEmail', newValue: true },
-      ]),
-    );
-    expect(screen.getByLabelText('Notifications for GN').props.value).toBe(true);
+      ]);
+    });
+    expect(screen.getByLabelText('Notifications for GN').props['value']).toBe(true);
   });
 
   it('rolls back and explains a failed save', async () => {
     await renderEnabled();
     updateFails = true;
     await fireEvent(screen.getByLabelText('Notifications for LTT'), 'valueChange', false);
-    await waitFor(() => expect(screen.getByText('Couldn’t save that change. Please try again.')).toBeTruthy());
-    expect(screen.getByLabelText('Notifications for LTT').props.value).toBe(true);
+    await waitFor(() => {
+      expect(screen.getByText('Couldn’t save that change. Please try again.')).toBeTruthy();
+    });
+    expect(screen.getByLabelText('Notifications for LTT').props['value']).toBe(true);
   });
 
   it('offers a retry when the list fails to load', async () => {
@@ -201,9 +281,13 @@ describe('creator switches', () => {
     await setNotificationsEnabled(true);
     await renderSettings();
 
-    await waitFor(() => expect(screen.getByText('Couldn’t load creator settings. Tap to retry.')).toBeTruthy());
+    await waitFor(() => {
+      expect(screen.getByText('Couldn’t load creator settings. Tap to retry.')).toBeTruthy();
+    });
     await fireEvent.press(screen.getByText('Couldn’t load creator settings. Tap to retry.'));
-    await waitFor(() => expect(screen.getByLabelText('Notifications for LTT')).toBeTruthy());
+    await waitFor(() => {
+      expect(screen.getByLabelText('Notifications for LTT')).toBeTruthy();
+    });
   });
 
   it('renders nothing for an empty list, and does not load without a session', async () => {
@@ -211,7 +295,9 @@ describe('creator switches', () => {
     mockNotifications.setPermission('granted');
     await setNotificationsEnabled(true);
     await renderSettings();
-    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalled();
+    });
     expect(screen.queryByText('Notify me')).toBeNull();
   });
 
@@ -220,10 +306,20 @@ describe('creator switches', () => {
     await setNotificationsEnabled(true);
     queryClient.setQueryData(
       ['notifications', 'creators', null],
-      [{ creatorId: 'c1', title: 'LTT', iconUrl: null, contentFirebase: true, contentEmail: false }],
+      [
+        {
+          creatorId: 'c1',
+          title: 'LTT',
+          iconUrl: null,
+          contentFirebase: true,
+          contentEmail: false,
+        },
+      ],
     );
     await renderSettings(null);
-    await waitFor(() => expect(screen.getByLabelText('Notifications for LTT')).toBeTruthy());
+    await waitFor(() => {
+      expect(screen.getByLabelText('Notifications for LTT')).toBeTruthy();
+    });
 
     await fireEvent(screen.getByLabelText('Notifications for LTT'), 'valueChange', false);
     expect(updates).toEqual([]);

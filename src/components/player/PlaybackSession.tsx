@@ -1,4 +1,11 @@
-import { createContext, useContext, useEffect, useState, useSyncExternalStore, type ReactNode } from 'react';
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useState,
+  useSyncExternalStore,
+  type ReactNode,
+} from 'react';
 import { createVideoPlayer, type VideoPlayer, type VideoSource } from 'expo-video';
 
 /** What is playing: lets the mini player label it and reopen its page. */
@@ -15,7 +22,7 @@ export interface PlaybackMedia {
   /** Channel / creator name. */
   subtitle?: string;
   /** Saved position (seconds) to resume from if the player hasn't started yet when a view takes it over. */
-  resumeAt?: number;
+  resumeAt?: number | undefined;
 }
 
 export interface PlaybackSession {
@@ -23,6 +30,12 @@ export interface PlaybackSession {
   player: VideoPlayer;
   /** Set by the player page's close arrow: the mini player takes over until the page reopens. */
   minimized: boolean;
+}
+
+/** A player handed out by `acquire`: `reused` when it is the running session's. */
+export interface AcquiredPlayer {
+  player: VideoPlayer;
+  reused: boolean;
 }
 
 /**
@@ -42,27 +55,39 @@ export class PlaybackStore {
   private readonly released = new WeakSet<VideoPlayer>();
   private readonly listeners = new Set<() => void>();
 
-  subscribe = (listener: () => void) => {
+  subscribe = (listener: () => void): (() => void) => {
     this.listeners.add(listener);
     return () => {
       this.listeners.delete(listener);
     };
   };
 
-  getSnapshot = () => this.session;
+  getSnapshot = (): PlaybackSession | null => this.session;
 
-  private setSession(session: PlaybackSession | null) {
+  private setSession(session: PlaybackSession | null): void {
     this.session = session;
-    for (const listener of this.listeners) listener();
+    for (const listener of this.listeners) {
+      listener();
+    }
   }
 
   /** The session's player when `media.key` matches it (`reused`), else a new player replacing the session. */
-  acquire(media: PlaybackMedia, source: VideoSource, setup?: (instance: VideoPlayer) => void) {
-    if (this.session?.media.key === media.key) return { player: this.session.player, reused: true };
+  acquire(
+    media: PlaybackMedia,
+    source: VideoSource,
+    setup?: (instance: VideoPlayer) => void,
+  ): AcquiredPlayer {
+    if (this.session?.media.key === media.key) {
+      return { player: this.session.player, reused: true };
+    }
     // Called while rendering: pausing can synchronously notify the replaced player's still-mounted
     // view, which must not update state mid-render, so retire it right after.
     const replaced = this.session;
-    if (replaced) void Promise.resolve().then(() => this.retire(replaced));
+    if (replaced) {
+      void Promise.resolve().then(() => {
+        this.retire(replaced);
+      });
+    }
     const player = createVideoPlayer(source);
     setup?.(player);
     this.session = { media, player, minimized: false };
@@ -70,61 +95,79 @@ export class PlaybackStore {
   }
 
   /** A view of `player` mounted. Mounting the session's player on its page ends the mini player. */
-  attach(player: VideoPlayer) {
+  attach(player: VideoPlayer): void {
     this.attachments.set(player, (this.attachments.get(player) ?? 0) + 1);
     // Also publishes a session `acquire` created while rendering.
-    if (this.session?.player === player) this.setSession({ ...this.session, minimized: false });
+    if (this.session?.player === player) {
+      this.setSession({ ...this.session, minimized: false });
+    }
   }
 
   /** A view of `player` unmounted: release it once nothing shows it, unless the mini player took it. */
-  detach(player: VideoPlayer) {
+  detach(player: VideoPlayer): void {
     const count = (this.attachments.get(player) ?? 1) - 1;
     this.attachments.set(player, count);
-    if (count > 0) return;
+    if (count > 0) {
+      return;
+    }
     if (this.session?.player === player) {
-      if (this.session.minimized) return;
+      if (this.session.minimized) {
+        return;
+      }
       // Ended right away, so a later mount of the same media starts a fresh player. A page still
       // showing an earlier session underneath takes over again.
       this.setSession(this.resumeSuspended());
     } else {
-      this.suspended = this.suspended.filter(entry => entry.player !== player);
+      this.suspended = this.suspended.filter((entry) => entry.player !== player);
     }
     // Released a tick later: an effect re-run (cleanup + setup) re-attaches the same view first.
     setTimeout(() => {
-      if ((this.attachments.get(player) ?? 0) <= 0) this.release(player);
+      if ((this.attachments.get(player) ?? 0) <= 0) {
+        this.release(player);
+      }
     }, 0);
   }
 
   /** Hand the session's player to the mini player (the page is about to close). */
-  minimize() {
-    if (this.session && !this.session.minimized) this.setSession({ ...this.session, minimized: true });
+  minimize(): void {
+    if (this.session && !this.session.minimized) {
+      this.setSession({ ...this.session, minimized: true });
+    }
   }
 
   /** A player page opened for `kind`/`id`: stop any other playback right away. */
-  claim(kind: PlaybackMedia['kind'], id: string) {
+  claim(kind: PlaybackMedia['kind'], id: string): void {
     const media = this.session?.media;
-    if (media && (media.kind !== kind || media.id !== id)) this.close();
+    if (media && (media.kind !== kind || media.id !== id)) {
+      this.close();
+    }
   }
 
   /**
    * A player page closed. If it left no session (it never got as far as a player, e.g. backed out
    * while loading), the page it covered takes its suspended session back.
    */
-  unclaim() {
-    if (this.session) return;
+  unclaim(): void {
+    if (this.session) {
+      return;
+    }
     const resumed = this.resumeSuspended();
-    if (resumed) this.setSession(resumed);
+    if (resumed) {
+      this.setSession(resumed);
+    }
   }
 
   /** Whether `player` is the current session's (a suspended or retired one isn't). */
-  isCurrent(player: VideoPlayer) {
+  isCurrent(player: VideoPlayer): boolean {
     return this.session?.player === player;
   }
 
   /** Stop and drop the session (mini player close, sign-out). */
-  close() {
+  close(): void {
     const current = this.session;
-    if (!current) return;
+    if (!current) {
+      return;
+    }
     this.retire(current);
     this.setSession(null);
   }
@@ -133,24 +176,36 @@ export class PlaybackStore {
    * Pause a session's player as it leaves the session; release it now unless a view still shows it
    * (then it is suspended until that view takes over again or unmounts).
    */
-  private retire(session: PlaybackSession) {
+  private retire(session: PlaybackSession): void {
     const { player } = session;
     player.pause();
-    if ((this.attachments.get(player) ?? 0) <= 0) this.release(player);
-    else this.suspended = [...this.suspended.filter(entry => entry.player !== player), { ...session, minimized: false }];
+    if ((this.attachments.get(player) ?? 0) <= 0) {
+      this.release(player);
+    } else {
+      this.suspended = [
+        ...this.suspended.filter((entry) => entry.player !== player),
+        { ...session, minimized: false },
+      ];
+    }
   }
 
   /** The most recently suspended session whose page is still mounted, removed from the list. */
   private resumeSuspended(): PlaybackSession | null {
-    const index = this.suspended.findLastIndex(candidate => (this.attachments.get(candidate.player) ?? 0) > 0);
-    if (index < 0) return null;
+    const index = this.suspended.findLastIndex(
+      (candidate) => (this.attachments.get(candidate.player) ?? 0) > 0,
+    );
+    if (index < 0) {
+      return null;
+    }
     const [resumed] = this.suspended.splice(index, 1);
-    return resumed;
+    return resumed ?? null;
   }
 
-  private release(player: VideoPlayer) {
+  private release(player: VideoPlayer): void {
     this.attachments.delete(player);
-    if (this.released.has(player)) return;
+    if (this.released.has(player)) {
+      return;
+    }
     this.released.add(player);
     player.release();
   }
@@ -159,24 +214,32 @@ export class PlaybackStore {
 const PlaybackContext = createContext<PlaybackStore | null>(null);
 
 /** App-wide playback session (root layout). Stops playback when `active` turns false (sign-out). */
-export function PlaybackProvider({ active = true, children }: { active?: boolean; children: ReactNode }) {
+export function PlaybackProvider({
+  active = true,
+  children,
+}: Readonly<{
+  active?: boolean;
+  children: ReactNode;
+}>): React.JSX.Element {
   const [store] = useState(() => new PlaybackStore());
   useEffect(() => {
-    if (!active) store.close();
+    if (!active) {
+      store.close();
+    }
   }, [active, store]);
   return <PlaybackContext.Provider value={store}>{children}</PlaybackContext.Provider>;
 }
 
 /** The app's playback store, or null outside a `PlaybackProvider`. */
-export function usePlaybackStore() {
+export function usePlaybackStore(): PlaybackStore | null {
   return useContext(PlaybackContext);
 }
 
 const noSession = () => null;
-const noSubscription = () => () => {};
+const noSubscription = () => () => undefined;
 
 /** The current playback session (re-renders when it starts, stops, minimizes or restores). */
-export function usePlaybackSession() {
+export function usePlaybackSession(): PlaybackSession | null {
   const store = usePlaybackStore();
   return useSyncExternalStore(store?.subscribe ?? noSubscription, store?.getSnapshot ?? noSession);
 }
@@ -186,16 +249,24 @@ export function usePlaybackSession() {
  * app session (reused when that playback is already running: `reused`); otherwise the view owns a
  * private one. Either way it is released once no view shows it.
  */
-export function useSessionPlayer(source: VideoSource, setup: (instance: VideoPlayer) => void, media?: PlaybackMedia) {
+export function useSessionPlayer(
+  source: VideoSource,
+  setup: (instance: VideoPlayer) => void,
+  media?: PlaybackMedia,
+): AcquiredPlayer & { isCurrent: () => boolean } {
   const appStore = usePlaybackStore();
   const [localStore] = useState(() => new PlaybackStore());
   const store = media && appStore ? appStore : localStore;
-  const [acquired] = useState(() => store.acquire(media ?? { key: 'local', kind: 'video', id: '' }, source, setup));
+  const [acquired] = useState(() =>
+    store.acquire(media ?? { key: 'local', kind: 'video', id: '' }, source, setup),
+  );
   const { player } = acquired;
 
   useEffect(() => {
     store.attach(player);
-    return () => store.detach(player);
+    return () => {
+      store.detach(player);
+    };
   }, [store, player]);
 
   return { ...acquired, isCurrent: () => store.isCurrent(player) };

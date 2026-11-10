@@ -13,10 +13,22 @@ describe('miniPlayerSize', () => {
 
 describe('cornerOffset', () => {
   it('parks the tile inside the edges of each corner', () => {
-    expect(cornerOffset('top-left', WINDOW, TILE, EDGES)).toEqual({ x: 12, y: 60 });
-    expect(cornerOffset('top-right', WINDOW, TILE, EDGES)).toEqual({ x: 204, y: 60 });
-    expect(cornerOffset('bottom-left', WINDOW, TILE, EDGES)).toEqual({ x: 12, y: 596 });
-    expect(cornerOffset('bottom-right', WINDOW, TILE, EDGES)).toEqual({ x: 204, y: 596 });
+    expect(cornerOffset('top-left', { window: WINDOW, tile: TILE, edges: EDGES })).toEqual({
+      x: 12,
+      y: 60,
+    });
+    expect(cornerOffset('top-right', { window: WINDOW, tile: TILE, edges: EDGES })).toEqual({
+      x: 204,
+      y: 60,
+    });
+    expect(cornerOffset('bottom-left', { window: WINDOW, tile: TILE, edges: EDGES })).toEqual({
+      x: 12,
+      y: 596,
+    });
+    expect(cornerOffset('bottom-right', { window: WINDOW, tile: TILE, edges: EDGES })).toEqual({
+      x: 204,
+      y: 596,
+    });
   });
 });
 
@@ -24,14 +36,26 @@ describe('nearestCorner', () => {
   const still = { x: 0, y: 0 };
 
   it('picks the quadrant the tile centre was dropped in', () => {
-    expect(nearestCorner({ x: 10, y: 100 }, still, WINDOW, TILE)).toBe('top-left');
-    expect(nearestCorner({ x: 250, y: 100 }, still, WINDOW, TILE)).toBe('top-right');
-    expect(nearestCorner({ x: 10, y: 600 }, still, WINDOW, TILE)).toBe('bottom-left');
-    expect(nearestCorner({ x: 250, y: 600 }, still, WINDOW, TILE)).toBe('bottom-right');
+    expect(nearestCorner({ x: 10, y: 100 }, still, { window: WINDOW, tile: TILE })).toBe(
+      'top-left',
+    );
+    expect(nearestCorner({ x: 250, y: 100 }, still, { window: WINDOW, tile: TILE })).toBe(
+      'top-right',
+    );
+    expect(nearestCorner({ x: 10, y: 600 }, still, { window: WINDOW, tile: TILE })).toBe(
+      'bottom-left',
+    );
+    expect(nearestCorner({ x: 250, y: 600 }, still, { window: WINDOW, tile: TILE })).toBe(
+      'bottom-right',
+    );
   });
 
   it('follows a fling past the middle', () => {
-    expect(nearestCorner({ x: 204, y: 60 }, { x: 0, y: 3 }, WINDOW, TILE)).toBe('bottom-right');
-    expect(nearestCorner({ x: 204, y: 60 }, { x: -2, y: 0 }, WINDOW, TILE)).toBe('top-left');
+    expect(nearestCorner({ x: 204, y: 60 }, { x: 0, y: 3 }, { window: WINDOW, tile: TILE })).toBe(
+      'bottom-right',
+    );
+    expect(nearestCorner({ x: 204, y: 60 }, { x: -2, y: 0 }, { window: WINDOW, tile: TILE })).toBe(
+      'top-left',
+    );
   });
 });

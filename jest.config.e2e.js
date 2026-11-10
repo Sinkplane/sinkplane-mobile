@@ -13,7 +13,12 @@ module.exports = {
   roots: ['<rootDir>/__tests__/e2e'],
   testMatch: ['**/*.e2e.test.@(ts|tsx)'],
   setupFilesAfterEnv: ['<rootDir>/__tests__/e2e/jest.setup.ts'],
-  collectCoverageFrom: ['src/**/*.{ts,tsx}', '!src/shared.ts', '!src/**/*.d.ts', '!src/**/*.test.{ts,tsx}'],
+  collectCoverageFrom: [
+    'src/**/*.{ts,tsx}',
+    '!src/shared.ts',
+    '!src/**/*.d.ts',
+    '!src/**/*.test.{ts,tsx}',
+  ],
   coverageDirectory: '<rootDir>/coverage/e2e',
   coverageThreshold: {
     global: {

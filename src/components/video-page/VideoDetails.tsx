@@ -1,30 +1,51 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, type ReactElement } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Image } from 'expo-image';
 
+import { imagePath, type ApiImage } from '@/components/image-path';
 import { ReactionBar } from '@/components/video-page/ReactionBar';
 import type { usePostReaction } from '@/hooks/use-post-reaction';
 import { useThemeColor, type VideoPost } from '@/shared';
 import { formatRelativeDate, htmlToText } from '@/utils/format-video';
 
 interface VideoDetailsProps {
-  post: VideoPost;
-  reaction: ReturnType<typeof usePostReaction>;
+  readonly post: VideoPost;
+  readonly reaction: ReturnType<typeof usePostReaction>;
+}
+
+/** A post's channel or creator as the API may send it (either can be missing, or lack an icon). */
+type PostOwner = { readonly title: string; readonly icon?: ApiImage | null } | null | undefined;
+
+/** What the header reads from the post; the API can omit the channel and the comment count. */
+interface PostHeaderSource {
+  readonly channel?: PostOwner;
+  readonly creator?: PostOwner;
+  readonly comments?: number | null;
 }
 
 const COLLAPSED_LINES = 3;
 /** Roughly what fits in the collapsed lines; shorter descriptions get no toggle. */
 const COLLAPSIBLE_CHARS = 160;
+const SHOW_MORE_HIT_SLOP = 8;
+const PLACEHOLDER_COLORS = { light: '#e6e8ea', dark: '#26292b' };
+
+function isCollapsible(text: string): boolean {
+  return text.length > COLLAPSIBLE_CHARS || text.split('\n').length > COLLAPSED_LINES;
+}
 
 /** The post body, collapsed to a few lines with a Show more / Show less toggle when long. */
-function PostDescription({ html }: { html: string | null | undefined }) {
+function PostDescription({
+  html,
+}: Readonly<{ html: string | null | undefined }>): ReactElement | null {
   const textColor = useThemeColor({}, 'text');
   const mutedColor = useThemeColor({}, 'icon');
   const [expanded, setExpanded] = useState(false);
   const text = useMemo(() => htmlToText(html), [html]);
-  if (!text) return null;
+  if (text === '') {
+    return null;
+  }
 
-  const collapsible = text.length > COLLAPSIBLE_CHARS || text.split('\n').length > COLLAPSED_LINES;
+  const collapsible = isCollapsible(text);
   return (
     <View>
       <Text
@@ -35,37 +56,55 @@ function PostDescription({ html }: { html: string | null | undefined }) {
         {text}
       </Text>
       {collapsible ? (
-        <Pressable onPress={() => setExpanded(e => !e)} hitSlop={8} accessibilityRole="button" style={styles.showMore}>
-          <Text style={[styles.showMoreText, { color: mutedColor }]}>{expanded ? 'Show less' : 'Show more'}</Text>
+        <Pressable
+          onPress={() => {
+            setExpanded((e) => !e);
+          }}
+          hitSlop={SHOW_MORE_HIT_SLOP}
+          accessibilityRole="button"
+          style={styles.showMore}
+        >
+          <Text style={[styles.showMoreText, { color: mutedColor }]}>
+            {expanded ? 'Show less' : 'Show more'}
+          </Text>
         </Pressable>
       ) : null}
     </View>
   );
 }
 
-/** Title, channel, reactions, description and the comments heading shown above the comment list. */
-export function VideoDetails({ post, reaction }: VideoDetailsProps) {
+function ownerIconPath({ channel, creator }: PostHeaderSource): string | undefined {
+  return imagePath(channel?.icon) ?? imagePath(creator?.icon);
+}
+
+function ownerTitle({ channel, creator }: PostHeaderSource): string | undefined {
+  return channel?.title ?? creator?.title;
+}
+
+/** The channel's icon and name, falling back to the creator's when the post has no channel. */
+function ChannelRow({ source }: Readonly<{ source: PostHeaderSource }>): ReactElement {
   const textColor = useThemeColor({}, 'text');
-  const mutedColor = useThemeColor({}, 'icon');
-  const placeholderColor = useThemeColor({ light: '#e6e8ea', dark: '#26292b' }, 'background');
-  const channelIcon = post.channel?.icon?.path ?? post.creator?.icon?.path;
-
+  const placeholderColor = useThemeColor(PLACEHOLDER_COLORS, 'background');
+  const iconPath = ownerIconPath(source);
+  const title = ownerTitle(source);
   return (
-    <View style={styles.container}>
-      <Text testID="video-title" style={[styles.title, { color: textColor }]}>
-        {post.title}
-      </Text>
-      <Text style={[styles.meta, { color: mutedColor }]}>{formatRelativeDate(post.releaseDate)}</Text>
-
-      <View style={styles.channelRow}>
-        <View style={[styles.channelIcon, { backgroundColor: placeholderColor }]}>
-          {channelIcon ? <Image source={channelIcon} style={StyleSheet.absoluteFill} /> : null}
-        </View>
-        <Text style={[styles.channelName, { color: textColor }]} numberOfLines={1}>
-          {post.channel?.title ?? post.creator?.title}
-        </Text>
+    <View style={styles.channelRow}>
+      <View style={[styles.channelIcon, { backgroundColor: placeholderColor }]}>
+        {iconPath === undefined ? null : (
+          <Image source={iconPath} style={StyleSheet.absoluteFill} />
+        )}
       </View>
+      <Text style={[styles.channelName, { color: textColor }]} numberOfLines={1}>
+        {title}
+      </Text>
+    </View>
+  );
+}
 
+function PostReactions({ reaction }: Pick<VideoDetailsProps, 'reaction'>): ReactElement {
+  const mutedColor = useThemeColor({}, 'icon');
+  return (
+    <>
       <ReactionBar
         reaction={reaction.reaction}
         likes={reaction.likes}
@@ -73,11 +112,35 @@ export function VideoDetails({ post, reaction }: VideoDetailsProps) {
         disabled={reaction.isPending}
         onToggle={reaction.toggle}
       />
-      {reaction.error ? <Text style={[styles.error, { color: mutedColor }]}>Couldn&apos;t save your reaction. Try again.</Text> : null}
+      {reaction.error === null ? null : (
+        <Text style={[styles.error, { color: mutedColor }]}>
+          Couldn&apos;t save your reaction. Try again.
+        </Text>
+      )}
+    </>
+  );
+}
 
+/** Title, channel, reactions, description and the comments heading shown above the comment list. */
+export function VideoDetails({ post, reaction }: VideoDetailsProps): ReactElement {
+  const textColor = useThemeColor({}, 'text');
+  const mutedColor = useThemeColor({}, 'icon');
+  const source: PostHeaderSource = post;
+
+  return (
+    <View style={styles.container}>
+      <Text testID="video-title" style={[styles.title, { color: textColor }]}>
+        {post.title}
+      </Text>
+      <Text style={[styles.meta, { color: mutedColor }]}>
+        {formatRelativeDate(post.releaseDate)}
+      </Text>
+      <ChannelRow source={source} />
+      <PostReactions reaction={reaction} />
       <PostDescription html={post.text} />
-
-      <Text style={[styles.commentsHeading, { color: textColor }]}>{`Comments · ${post.comments ?? 0}`}</Text>
+      <Text style={[styles.commentsHeading, { color: textColor }]}>
+        {`Comments · ${String(source.comments ?? 0)}`}
+      </Text>
     </View>
   );
 }

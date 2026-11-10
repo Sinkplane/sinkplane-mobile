@@ -4,32 +4,37 @@ Guidance for AI coding agents (opencode, Claude Code, Cursor, etc.) working in t
 
 ## Project Overview
 
-Sinkplane Mobile is the phone/tablet companion to **sinkplane-tv**, a fan-made app for [floatplane.com](https://www.floatplane.com). Built on Expo (SDK 58, new architecture) with Expo Router for file-based navigation. Package manager is **npm** (`package-lock.json`; no bun/pnpm here).
+Sinkplane Mobile is the phone/tablet companion to **sinkplane-tv**, a fan-made app for [floatplane.com](https://www.floatplane.com). Built on Expo (SDK 58, new architecture) with Expo Router for file-based navigation. Package manager is **pnpm** (`pnpm-lock.yaml`, version pinned in `packageManager`; Node from `.nvmrc`). Never use npm/yarn here.
 
 Authentication uses the same **username/password flow as floatplane.com/login**: the sign-in screen fetches captcha requirements from `/api/v3/auth/captcha/info`, renders the Cloudflare **Turnstile** challenge in a WebView (`src/components/turnstile-widget.tsx`), then `POST /api/v3/auth/login` with `returnSessionToken: true` (plus a 2FA step via `/api/v3/auth/checkFor2faLogin` when the account requires it). The returned session token is stored in `expo-secure-store` via the shared `SessionProvider` and sent as `Authorization: Bearer` on all API calls — the same mechanism Floatplane's own native apps use. All of this lives in `@sinkplane/shared` (`auth/passwordLogin.ts`) — this app only wires it up. (The TV app keeps the OIDC device flow because TV platforms can't render Turnstile.)
 
 ## Essential Commands
 
 ```bash
-npm install              # install deps (uses .npmrc: GitHub Packages + legacy-peer-deps)
-npm start                # Expo bundler
-npm run ios              # dev server for iOS
-npm run android          # dev server for Android
-npm run web              # web dev server
+make setup               # pnpm install --frozen-lockfile + git hooks (.githooks)
+pnpm start               # Expo bundler
+pnpm ios                 # build + run on iOS (development build)
+pnpm android             # build + run on Android
+pnpm web                 # web dev server
 
-# Quality gates — run these before considering work done
-npm run lint             # ESLint (expo lint)
-npx tsc --noEmit         # typecheck
-npm run test:ci          # unit + E2E suites, coverage thresholds enforced (what CI runs)
+# The gate — run before you stop (the agent stop hook, pre-push hook and CI run it too)
+make check               # fmt-check lint typecheck arch coverage crap build
 
-# Tests
-npm test                 # unit then E2E
-npm run test:unit        # unit only (npm run test:unit:watch while iterating)
-npm run test:e2e         # E2E only
-npm run test:coverage    # both, with coverage reports in coverage/{unit,e2e}
+# Fast feedback
+make test                # unit suite (pnpm test:unit:watch while iterating)
+make acceptance          # E2E suite
+make lint                # eslint --max-warnings=0, then knip (unused files/exports/deps)
+make typecheck           # tsc (app + scripts/)
+make arch                # dependency-cruiser layer rules
+make crap                # per-function CRAP (run make coverage first)
+make build               # Metro export for iOS + Android
+make mutate SCOPE=changed  # Stryker on src files changed vs origin/main (CI runs this on PRs)
+make fmt                 # prettier --write
 ```
 
-`expo-secure-store` contains native code, so running on a device/simulator requires a **development build** (`npx expo run:ios|android`, or `eas build --profile development`). Expo Go will not work.
+Every gate's config is listed in `.gates-protected`: **ask a human before editing any of those files, and never loosen a gate to get green.** Suppressions need `-- reason`; coverage/mutation ignore comments are banned by lint. Skills live in `.cursor/skills` (also `.claude/skills`); the `gauntlet` skill runs a story through specifier → coder → cleaner → hardener → qa.
+
+`expo-secure-store` contains native code, so running on a device/simulator requires a **development build** (`pnpm exec expo run:ios|android`, or `eas build --profile development`). Expo Go will not work.
 
 ## Expo has changed — do not trust your training data
 
@@ -39,7 +44,7 @@ Expo ships breaking changes every SDK release. APIs you remember are likely rena
 2. Fetch the matching versioned docs: `https://docs.expo.dev/versions/v<major>.0.0/`
 3. For anything else, fetch https://docs.expo.dev/llms.txt — an index of all Expo docs with corrections to common LLM misconceptions.
 
-Always install packages with `npx expo install <package>` so versions resolve SDK-compatible ones.
+Always install packages with `pnpm exec expo install <package>` so versions resolve SDK-compatible ones.
 
 ## Architecture
 
@@ -52,6 +57,7 @@ Always install packages with `npx expo install <package>` so versions resolve SD
   - `(tabs)/index.tsx` — Videos tab: infinite list of the active creator's posts, channel chips, newest/oldest sort.
   - `(tabs)/history.tsx` — History tab (as in the TV app): the watch history (`/api/v3/content/history`, offset-paged) with saved progress, newest watch first; refetches when the tab regains focus. Tapping an item opens the video page.
   - `(tabs)/live.tsx` — Live tab (as in the TV app): every subscribed creator's livestream with its status (live first, offline card otherwise); re-checks on focus and pull-to-refresh. Tapping a live stream opens the live player page.
+  - Route files stay thin: screen pieces live in `src/components/<area>/` (e.g. `sign-in/`, `tab-screen/`, `videos/`, `settings/`, `video-page/`).
   - `(tabs)/settings.tsx` — Profile, theme switcher (System / Light / Dark via shared `useTheme`), notifications (`components/settings/NotificationSettings`), subscriptions, sign out.
   - `video/[id].tsx` — Video page: player, title/channel, like/dislike, paged comments. Tapping a list item opens it.
   - `live/[id].tsx` — Live player page for a creator id: the player in live mode plus the stream details.
@@ -60,38 +66,38 @@ Always install packages with `npx expo install <package>` so versions resolve SD
 - **`src/notifications/`** — new-post notifications (see "Notifications notes"): `floatplane-socket` (sync socket client), `creator-notification` (payload parsing), `local-notifications` (permission + presenting), `notification-settings-api` (Floatplane's per-creator switches), `notification-store` (secure-store state), `background-check` (the background task).
 - **`index.ts`** — app entry: defines the background task at module scope, then loads `expo-router/entry`.
 - **`src/components/live/`** — `LiveStreamCard` (Live tab), `LiveDetails` (live page), `LiveStatusPill`.
-- **`src/hooks/`, `src/utils/`** — data hooks (`use-post-comments`, `use-post-reaction`, `use-watch-history`, `use-live-streams`), notification hooks (`use-notification-sync` in the root navigator, `use-notification-navigation` in the tab layout, `use-notification-preferences`, `use-creator-notification-settings`), player hooks (`use-player-gestures`, `use-watch-progress`, `use-fullscreen-orientation`, `use-player-page`, `use-fold-posture`), `use-screen-layout` (tablet detection + list grid, see "Tablets"), formatting, `stream-source` (delivery info → HLS source), `mini-player-layout` (mini player corner geometry) and `player-page-layout` (stacked / side-by-side / immersive player page styles).
+- **`src/hooks/`, `src/utils/`** — data hooks (`use-post-comments`, `use-post-reaction`, `use-watch-history`, `use-live-streams`), notification hooks (`use-notification-sync` in the root navigator, `use-notification-navigation` in the tab layout, `use-notification-preferences`, `use-creator-notification-settings`), player hooks (`use-player-gestures`, `use-watch-progress`, `use-fullscreen-orientation`, `use-fold-posture`; `use-player-page` lives in `components/player` next to the `PlaybackSession` store it reads), `use-screen-layout` (tablet detection + list grid, see "Tablets"), formatting, `log` (the one console sink), `stream-source` (delivery info → HLS source), `mini-player-layout` (mini player corner geometry) and `player-page-layout` (stacked / side-by-side / immersive player page styles).
 - **`src/shared.ts`** — The ONLY place that imports `@sinkplane/shared` subpaths. See below.
 - **`assets/`** — Icons, splash images.
 - **`modules/fold-posture/`** — local Expo module (autolinked): foldable hinge posture. Android: Jetpack WindowManager `FoldingFeature` (state, orientation, bounds in dp). iOS 27.1+: `UIHingeInteraction` (status/angle only, no geometry). Import as `@modules/fold-posture`; read through `src/hooks/use-fold-posture.ts`. Native changes need a new dev build.
 - **`scripts/`** — `link-shared-dist.sh` (local shared-package override).
-- **`patches/`** — `patch-package` patches, applied by `postinstall` (see Player notes for the expo-video one). npm 12 breaks `npx patch-package <pkg>` (its temp install fails), so regenerate a patch with `diff -u` against `npm pack <pkg>@<version>`.
+- **`patches/`** — pnpm patches (`patchedDependencies` in `pnpm-workspace.yaml`; see Player notes for the expo-video one). Edit one with `pnpm patch <pkg>@<version>` → `pnpm patch-commit <dir>`.
 - **`metro.config.js`** — watches the sibling `../shared` clone when present (see below).
 
 ### Shared Package (`@sinkplane/shared`) — read this before importing
 
-`@sinkplane/shared` is published to GitHub Packages and installed as a regular dependency (`@sinkplane/shared@^0.1.1`; registry/auth in `.npmrc` — locally the token lives in `~/.npmrc`).
+`@sinkplane/shared` is published to GitHub Packages and installed as a regular dependency (`@sinkplane/shared@^0.1.2`; registry/auth in `.npmrc` — locally the token lives in `~/.npmrc`).
 
 > **Never import from the `@sinkplane/shared` barrel.** It re-exports the TV connection server (`useTVServer`), which statically imports `react-native-tcp-socket`, `react-native-zeroconf`, and `@preeternal/react-native-cookie-manager` — native modules this app does not include. Importing the barrel breaks the Metro bundle. Import from `@/shared` (the mobile-safe re-export barrel in `src/shared.ts`) instead; add new mobile-safe exports there as needed. Safe areas: `auth/*`, `storage/*`, `theme/*`, `videos/*`, `constants/*`, `types/*`. Never import `connection/*`.
 
 Other shared-package notes:
 
-- The package is built against Expo SDK 57 / the TV app; this app is on SDK 58. That is why `.npmrc` sets `legacy-peer-deps=true` — npm would otherwise fail ERESOLVE on the `~57` peers and auto-install unwanted native modules. The modules its `dist` actually imports here (react, `@tanstack/react-query`, `expo-secure-store`) are installed as direct dependencies of this app.
-- For local development against the sibling clone `../shared`: `npm run link:shared` symlinks `node_modules/@sinkplane/shared/dist` to the clone's `dist/` (Metro watches the clone via `metro.config.js`). Re-run it after every `npm install`. `npm run unlink:shared` restores the published dist. Never run `pnpm install` inside `../shared` (its `node_modules` is a symlink into the TV repo).
-- To consume shared changes: bump to a published version (`npm i @sinkplane/shared@^x.y.z`) or use the link script above.
+- The package is built against Expo SDK 57 / the TV app; this app is on SDK 58. That is why `pnpm-workspace.yaml` sets `autoInstallPeers: false` / `strictPeerDependencies: false` — pnpm would otherwise auto-install the unwanted native peers (zeroconf, tcp-socket, cookie-manager); `pnpm peers check` lists the expected `~57` mismatches. The modules its `dist` actually imports here (react, `@tanstack/react-query`, `expo-secure-store`) are installed as direct dependencies of this app.
+- For local development against the sibling clone `../shared`: `pnpm link:shared` symlinks `node_modules/@sinkplane/shared/dist` (inside pnpm's `.pnpm` store dir) to the clone's `dist/` (Metro watches the clone via `metro.config.js`). Re-run it after every `pnpm install`. `pnpm unlink:shared` restores the published dist. Never run `pnpm install` inside `../shared` (its `node_modules` is a symlink into the TV repo).
+- To consume shared changes: bump to a published version (`pnpm add @sinkplane/shared@^x.y.z`) or use the link script above.
 
 ### Key Technologies
 
-| Concern | Library |
-|---|---|
-| Routing | `expo-router` v58 (typed routes) |
-| Data fetching | `@tanstack/react-query` |
-| Images | `expo-image` |
-| Auth/token storage | `expo-secure-store` |
-| Captcha (login) | Cloudflare Turnstile in `react-native-webview` |
-| Video playback | `expo-video` (config plugin: PiP + background playback) |
-| Orientation | `expo-screen-orientation` |
-| Notifications | `expo-notifications` (local only), `expo-background-task` + `expo-task-manager` |
+| Concern            | Library                                                                         |
+| ------------------ | ------------------------------------------------------------------------------- |
+| Routing            | `expo-router` v58 (typed routes)                                                |
+| Data fetching      | `@tanstack/react-query`                                                         |
+| Images             | `expo-image`                                                                    |
+| Auth/token storage | `expo-secure-store`                                                             |
+| Captcha (login)    | Cloudflare Turnstile in `react-native-webview`                                  |
+| Video playback     | `expo-video` (config plugin: PiP + background playback)                         |
+| Orientation        | `expo-screen-orientation`                                                       |
+| Notifications      | `expo-notifications` (local only), `expo-background-task` + `expo-task-manager` |
 
 ### Player notes
 
@@ -136,33 +142,34 @@ Floatplane pushes only to its own apps (Firebase), so this app builds local noti
 
 Jest (`jest-expo` preset) with React Native Testing Library v14. Two suites, each with its own config on top of `jest.config.base.js`:
 
-| Suite | Config | Files | Coverage gate |
-|---|---|---|---|
-| Unit | `jest.config.unit.js` | colocated `src/**/*.test.ts(x)` | components/hooks/utils (everything in `src` except `src/app` routes and `src/shared.ts`): 95% statements/functions/lines, 90% branches |
-| E2E | `jest.config.e2e.js` | `__tests__/e2e/*.e2e.test.tsx` | all of `src`: 90% statements/functions/lines, 85% branches |
+| Suite | Config                | Files                           | Coverage gate                                                                                                                          |
+| ----- | --------------------- | ------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| Unit  | `jest.config.unit.js` | colocated `src/**/*.test.ts(x)` | components/hooks/utils (everything in `src` except `src/app` routes and `src/shared.ts`): 95% statements/functions/lines, 90% branches |
+| E2E   | `jest.config.e2e.js`  | `__tests__/e2e/*.e2e.test.tsx`  | all of `src`: 90% statements/functions/lines, 85% branches                                                                             |
 
-Coverage thresholds only apply to coverage runs (`test:*:coverage`, `test:ci`); Jest exits non-zero when a metric drops below its threshold. `jest.config.js` runs both suites ungated for `npx jest` / editor integrations.
+Coverage thresholds only apply to coverage runs (`make coverage`, part of `make check`); Jest exits non-zero when a metric drops below its threshold. `jest.config.js` runs both suites ungated for `pnpm exec jest` / editor integrations. `make crap` then scores every function in `src` (complexity² × uncovered³ + complexity, coverage merged from both suites) and fails above 6. `make mutate` runs Stryker against the unit suite over the same scope as unit coverage (routes are only exercised end to end).
 
 - **Unit tests** render one component/hook in isolation. Shared helpers live in `jest/` (alias `@test/*`): `fixtures.ts` (user, creators, channels, videos, pinned `FIXED_NOW`) and `mocks/` (mapped for every suite: in-memory `expo-secure-store`; `expo-notifications` with permission state, presented notifications, and `tapNotification()`; `expo-task-manager` / `expo-background-task` with `mockTaskManager.run(name)` to run a task like the OS would). `window-size.ts` (`@test/window-size`): both suites start each test in a **390×844 phone window** (`resetTestWindow`); call `setTestWindow(TABLET_PORTRAIT_WINDOW | TABLET_LANDSCAPE_WINDOW | LARGE_PORTRAIT_WINDOW | …)` to test tablet layouts (it goes through `Dimensions.set`, so mounted `useWindowDimensions` update like a rotation).
 - **E2E tests** boot the real Expo Router app (`src/app`) with `expo-router/testing-library` against a stateful in-memory Floatplane API that replaces `fetch` (`__tests__/e2e/helpers/mock-floatplane-api.ts`: password login + Turnstile token check, 2FA, sessions, content, progress, watch history, livestreams via `api.liveNow`, notification settings; supports failure injection (optionally narrowed with a `where` predicate), `NETWORK_ERROR`, and latency), plus an in-memory sync socket server that replaces `WebSocket` (`helpers/mock-floatplane-socket.ts`; `rt.socket.notifyPostRelease(...)` pushes a live notification). Only native-only modules are mocked (`helpers/native-mocks.ts`: the Turnstile WebView, splash screen); native tabs render as their real host components.
 - Each E2E test starts with `const rt = loadRuntime()` (fresh module registry + reset API/storage), then `rt.seedSession()` / `rt.renderApp(url)`. Under fake timers use `rt.until(...)` instead of `waitFor`. Other helpers: `rt.turnstile.solve()`, `rt.selectTab()` / `rt.inTab()` / `rt.selectedTab()` / `rt.tabBadge()` (non-focused tabs stay mounted, so scope queries), `rt.router` (navigate in-app; deep links into signed-in routes don't survive launch while the session loads), `rt.listItemIds()` / `rt.reachListEnd()` (FlatList virtualizes), `rt.pressWithoutWaiting()` (assert in-flight UI), `rt.setWindow(...)` (tablet / rotation window sizes) and `rt.listNumColumns()` (grid columns of a tab list).
 - RNTL v14: `render`, `renderHook`, and `fireEvent.*` are async — always `await` them.
-- Tests need `@sinkplane/shared` with `auth/passwordLogin` (≥ 0.1.2, or `npm run link:shared`).
+- Tests need `@sinkplane/shared` with `auth/passwordLogin` (≥ 0.1.2, or `pnpm link:shared`).
 
 ## Code Style & Conventions
 
 ### TypeScript
 
-- **Strict mode** is on (`tsconfig.json` extends `expo/tsconfig.base`).
+- **Strictest mode** (`tsconfig.json` extends `expo/tsconfig.base`): `strict` plus `noUncheckedIndexedAccess`, `exactOptionalPropertyTypes`, `noPropertyAccessFromIndexSignature`, `noUnused*`, `verbatimModuleSyntax`, … `skipLibCheck` stays on: React Native's global declarations conflict with `lib.dom` and can't pass a full lib check. `scripts/` (Node, type-stripped `.mts`) has its own `scripts/tsconfig.json`.
 - **Path alias**: `@/*` maps to `./src/*` — prefer `@/shared`, `@/components/...` over relative imports.
 - **No `any`** (`@typescript-eslint/no-explicit-any: error`).
 - Prefer functional components with hooks over class components.
 
 ### Linting / Formatting (enforced)
 
-- ESLint config in `eslint.config.js` runs on commit via Husky `pre-commit` → `lint-staged` → `expo lint --fix`.
-- Notable rules: `max-len: 140`, `complexity: 12`, `eqeqeq: smart`, `no-var`, `prefer-const`, `no-shadow`, `camelcase`, `no-bitwise`.
-- Prettier (`.prettierrc`): single quotes, trailingComma `all`, 2-space indent, `printWidth: 140`, LF, `arrowParens: avoid`.
+- `eslint.config.mjs` (typescript-eslint `strictTypeChecked` + `stylisticTypeChecked`, sonarjs, react-hooks, eslint-comments, import-x, jest): `complexity` 6, `max-lines-per-function` 40 (not in tests), `max-lines` 300, `max-params` 3, `max-depth` 3, `max-nested-callbacks` 3, `no-magic-numbers`, `strict-boolean-expressions`, `explicit-module-boundary-types`, `naming-convention`, `no-console`, `import-x/no-default-export` (except `src/app`, where Expo Router needs default exports), `no-restricted-imports` for the `@sinkplane/shared` barrel. Size/complexity rules cannot be disabled inline.
+- Git hooks (`.githooks`, enabled by `make setup`): pre-commit runs `make fmt-check lint`, pre-push runs `make check`.
+- Prettier (`.prettierrc`): single quotes, `printWidth: 100`; `.editorconfig` for the rest.
+- Console output goes through `src/utils/log.ts` (the only `no-console` exception).
 
 ### File Naming
 
@@ -173,7 +180,8 @@ Coverage thresholds only apply to coverage runs (`test:*:coverage`, `test:ci`); 
 ### Components
 
 - Named exports preferred.
-- Reusable components → `src/components`; screen components → `src/app` (Expo Router conventions).
+- Reusable components → `src/components`; routes → `src/app` (Expo Router conventions), kept thin.
+- Layers (`make arch`): `src/app` → `src/components` → `src/hooks` → `src/notifications`, `src/utils` → `src/shared.ts`. Import your own layer and those below, never above; nothing outside `src/app` imports a route.
 - Use `useThemeColor` from `@/shared` for light/dark-aware colors; shared palette is `Colors`.
 
 ## Commit Conventions
@@ -192,7 +200,7 @@ Types: `feat`, `fix`, `docs`, `style`, `refactor`, `perf`, `test`, `chore`, `ci`
 
 ### Pull Requests
 
-- Lint + typecheck must pass (CI runs both).
+- Every CI job is a required check: `static` (format, lint + knip, typecheck, arch), `test` (coverage + CRAP), `bundle` (Metro export), `mutation` (Stryker on changed files; `thresholds.break` in `stryker.config.json` is a ratchet, starting at 69% (the full-run score when the gate was added). Raise it as tests harden, never lower it).
 - Test on iOS and Android where practical.
 - Reference related issues.
 - **Do not commit unless explicitly asked.** Only stage intended files; never commit secrets.
@@ -200,5 +208,5 @@ Types: `feat`, `fix`, `docs`, `style`, `refactor`, `perf`, `test`, `chore`, `ci`
 ## Development Tips
 
 - Use absolute paths when running commands (avoid `cd` chains).
-- If Metro can't resolve modules, run `npx expo start --clear` and/or `rm -rf node_modules/.cache`.
-- If `npm install` fails on `@sinkplane/shared` auth, check `~/.npmrc` contains `//npm.pkg.github.com/:_authToken=…`.
+- If Metro can't resolve modules, run `pnpm exec expo start --clear` and/or `rm -rf node_modules/.cache`.
+- If `pnpm install` fails on `@sinkplane/shared` auth, check `~/.npmrc` contains `//npm.pkg.github.com/:_authToken=…`.

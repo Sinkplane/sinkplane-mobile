@@ -8,7 +8,7 @@ import { formatRate } from '@/components/player/SpeedMenu';
 import { formatDuration } from '@/utils/format-video';
 
 export interface PlayerControlsProps {
-  title?: string;
+  title?: string | undefined;
   playing: boolean;
   ended: boolean;
   currentTime: number;
@@ -17,14 +17,14 @@ export interface PlayerControlsProps {
   rate: number;
   fullscreen: boolean;
   /** Live stream: no seeking, skipping or speed changes; a LIVE badge replaces the time. */
-  live?: boolean;
+  live?: boolean | undefined;
   onTogglePlay: () => void;
   onSkip: (seconds: number) => void;
   onSeek: (seconds: number) => void;
   onScrub: (seconds: number | null) => void;
   onOpenSpeedMenu: () => void;
   onToggleFullscreen: () => void;
-  onBack?: () => void;
+  onBack?: (() => void) | undefined;
   /**
    * `overlay` (default): drawn over the video. `panel`: the tabletop half below a foldable's hinge —
    * always the close arrow and the title, no fullscreen toggle (the posture decides the layout).
@@ -33,6 +33,11 @@ export interface PlayerControlsProps {
 }
 
 type IconName = SymbolViewProps['name'];
+
+const DEFAULT_ICON_SIZE = 24;
+const PANEL_TITLE_LINES = 2;
+/** Padding around the controls when they span the screen (fullscreen / tabletop panel). */
+const SCREEN_EDGE_PADDING = 12;
 
 const ICONS = {
   close: { ios: 'chevron.down', android: 'keyboard_arrow_down', web: 'keyboard_arrow_down' },
@@ -43,11 +48,29 @@ const ICONS = {
   skipBack: { ios: 'gobackward.15', android: 'fast_rewind', web: 'fast_rewind' },
   skipForward: { ios: 'goforward.15', android: 'fast_forward', web: 'fast_forward' },
   speed: { ios: 'gauge.with.dots.needle.67percent', android: 'speed', web: 'speed' },
-  enterFullscreen: { ios: 'arrow.up.left.and.arrow.down.right', android: 'fullscreen', web: 'fullscreen' },
-  exitFullscreen: { ios: 'arrow.down.right.and.arrow.up.left', android: 'fullscreen_exit', web: 'fullscreen_exit' },
+  enterFullscreen: {
+    ios: 'arrow.up.left.and.arrow.down.right',
+    android: 'fullscreen',
+    web: 'fullscreen',
+  },
+  exitFullscreen: {
+    ios: 'arrow.down.right.and.arrow.up.left',
+    android: 'fullscreen_exit',
+    web: 'fullscreen_exit',
+  },
 } satisfies Record<string, IconName>;
 
-function IconButton({ icon, label, size = 24, onPress }: { icon: IconName; label: string; size?: number; onPress: () => void }) {
+function IconButton({
+  icon,
+  label,
+  size = DEFAULT_ICON_SIZE,
+  onPress,
+}: Readonly<{
+  icon: IconName;
+  label: string;
+  size?: number;
+  onPress: () => void;
+}>) {
   return (
     <Pressable
       onPress={onPress}
@@ -70,7 +93,7 @@ function LiveBadge() {
   );
 }
 
-function SpeedButton({ rate, onPress }: { rate: number; onPress: () => void }) {
+function SpeedButton({ rate, onPress }: Readonly<{ rate: number; onPress: () => void }>) {
   return (
     <Pressable
       onPress={onPress}
@@ -80,54 +103,85 @@ function SpeedButton({ rate, onPress }: { rate: number; onPress: () => void }) {
       accessibilityLabel={`Playback speed ${formatRate(rate)}`}
     >
       <SymbolView name={ICONS.speed} size={18} tintColor="#fff" />
-      <Text style={styles.speedText}>{`${rate}×`}</Text>
+      <Text style={styles.speedText}>{`${String(rate)}×`}</Text>
     </Pressable>
   );
 }
 
+type ControlsProps = Readonly<PlayerControlsProps>;
+
+/** Fullscreen (overlay): back out of fullscreen. Inline / panel: close the video, when allowed. */
+function LeadingButton({
+  fullscreen,
+  variant,
+  onToggleFullscreen,
+  onBack,
+}: ControlsProps): React.JSX.Element | null {
+  if (fullscreen && variant !== 'panel') {
+    return <IconButton icon={ICONS.back} label="Back" onPress={onToggleFullscreen} />;
+  }
+  if (onBack) {
+    return <IconButton icon={ICONS.close} label="Close video" onPress={onBack} />;
+  }
+  return null;
+}
+
 /** Back / close, the title (fullscreen / panel only) and the speed button. */
-function TopRow({ title, fullscreen, live, rate, variant, onOpenSpeedMenu, onToggleFullscreen, onBack }: PlayerControlsProps) {
+function TopRow(props: ControlsProps) {
+  const { title, fullscreen, live, rate, variant, onOpenSpeedMenu } = props;
   const panel = variant === 'panel';
   return (
     <View style={styles.row} pointerEvents="box-none">
-      {fullscreen && !panel ? (
-        <IconButton icon={ICONS.back} label="Back" onPress={onToggleFullscreen} />
-      ) : onBack ? (
-        <IconButton icon={ICONS.close} label="Close video" onPress={onBack} />
-      ) : null}
-      <Text style={styles.title} numberOfLines={panel ? 2 : 1}>
+      <LeadingButton {...props} />
+      <Text style={styles.title} numberOfLines={panel ? PANEL_TITLE_LINES : 1}>
         {fullscreen || panel ? title : ''}
       </Text>
-      {live ? null : <SpeedButton rate={rate} onPress={onOpenSpeedMenu} />}
+      {live === true ? null : <SpeedButton rate={rate} onPress={onOpenSpeedMenu} />}
     </View>
   );
 }
 
-/** Skip back, play/pause/replay, skip forward (live: play/pause only). */
-function CenterRow({ playing, ended, live, onTogglePlay, onSkip }: PlayerControlsProps) {
-  const playIcon = ended ? ICONS.replay : playing ? ICONS.pause : ICONS.play;
-  const playLabel = ended ? 'Replay' : playing ? 'Pause' : 'Play';
-  const skipButton = (seconds: number) => (
+/** The middle button: replay once ended, else pause / play. */
+function playButton(ended: boolean, playing: boolean): { icon: IconName; label: string } {
+  if (ended) {
+    return { icon: ICONS.replay, label: 'Replay' };
+  }
+  return playing ? { icon: ICONS.pause, label: 'Pause' } : { icon: ICONS.play, label: 'Play' };
+}
+
+function SkipButton({
+  seconds,
+  onSkip,
+}: Readonly<{ seconds: number; onSkip: (seconds: number) => void }>) {
+  return (
     <IconButton
       icon={seconds < 0 ? ICONS.skipBack : ICONS.skipForward}
-      label={`${seconds < 0 ? 'Back' : 'Forward'} ${SEEK_STEP_SECONDS} seconds`}
+      label={`${seconds < 0 ? 'Back' : 'Forward'} ${String(SEEK_STEP_SECONDS)} seconds`}
       size={30}
-      onPress={() => onSkip(seconds)}
+      onPress={() => {
+        onSkip(seconds);
+      }}
     />
   );
+}
 
+/** Skip back, play/pause/replay, skip forward (live: play/pause only). */
+function CenterRow({ playing, ended, live, onTogglePlay, onSkip }: ControlsProps) {
+  const play = playButton(ended, playing);
+  const seekable = live !== true;
   return (
     <View style={styles.center} pointerEvents="box-none">
-      {live ? null : skipButton(-SEEK_STEP_SECONDS)}
-      <IconButton icon={playIcon} label={playLabel} size={44} onPress={onTogglePlay} />
-      {live ? null : skipButton(SEEK_STEP_SECONDS)}
+      {seekable ? <SkipButton seconds={-SEEK_STEP_SECONDS} onSkip={onSkip} /> : null}
+      <IconButton icon={play.icon} label={play.label} size={44} onPress={onTogglePlay} />
+      {seekable ? <SkipButton seconds={SEEK_STEP_SECONDS} onSkip={onSkip} /> : null}
     </View>
   );
 }
 
 /** Time (live: the LIVE badge), fullscreen toggle and the seek bar. */
-function BottomRow(props: PlayerControlsProps) {
-  const { live, fullscreen, variant } = props;
+function BottomRow(props: ControlsProps) {
+  const { fullscreen, variant } = props;
+  const live = props.live === true;
   return (
     <View pointerEvents="box-none">
       <View style={styles.row} pointerEvents="box-none">
@@ -169,17 +223,26 @@ function BottomRow(props: PlayerControlsProps) {
  * the seek bar at the bottom. Inline, the back button closes the video; in fullscreen it leaves fullscreen.
  * Live streams only get play/pause and fullscreen. Empty areas pass touches through to the gesture surface beneath.
  */
-export function PlayerControls(props: PlayerControlsProps) {
+export function PlayerControls(props: ControlsProps): React.JSX.Element {
   const insets = useSafeAreaInsets();
   const panel = props.variant === 'panel';
   const edges =
     props.fullscreen || panel
-      ? { paddingLeft: insets.left + 12, paddingRight: insets.right + 12, paddingTop: 12, paddingBottom: Math.max(insets.bottom, 12) }
+      ? {
+          paddingLeft: insets.left + SCREEN_EDGE_PADDING,
+          paddingRight: insets.right + SCREEN_EDGE_PADDING,
+          paddingTop: SCREEN_EDGE_PADDING,
+          paddingBottom: Math.max(insets.bottom, SCREEN_EDGE_PADDING),
+        }
       : null;
 
   // The panel reads top to bottom: title, seek bar, then the big buttons nearest the hand.
   return (
-    <View testID="player-controls" style={[panel ? styles.panel : styles.overlay, edges]} pointerEvents="box-none">
+    <View
+      testID="player-controls"
+      style={[panel ? styles.panel : styles.overlay, edges]}
+      pointerEvents="box-none"
+    >
       <TopRow {...props} />
       {panel ? <BottomRow {...props} /> : <CenterRow {...props} />}
       {panel ? <CenterRow {...props} /> : <BottomRow {...props} />}

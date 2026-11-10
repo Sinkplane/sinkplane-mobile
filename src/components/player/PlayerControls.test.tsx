@@ -140,7 +140,13 @@ describe('PlayerControls', () => {
     it('stacks title, time + seek bar, then the buttons, with the close arrow and no fullscreen toggle', async () => {
       const onBack = jest.fn();
       const onToggleFullscreen = jest.fn();
-      await renderControls({ variant: 'panel', title: 'Big Buck Bunny', fullscreen: true, onBack, onToggleFullscreen });
+      await renderControls({
+        variant: 'panel',
+        title: 'Big Buck Bunny',
+        fullscreen: true,
+        onBack,
+        onToggleFullscreen,
+      });
 
       expect(screen.getByText('Big Buck Bunny')).toBeTruthy();
       expect(screen.getByTestId('player-seek-bar')).toBeTruthy();
@@ -149,7 +155,10 @@ describe('PlayerControls', () => {
       await fireEvent.press(screen.getByRole('button', { name: 'Close video' }));
       expect(onBack).toHaveBeenCalled();
       expect(onToggleFullscreen).not.toHaveBeenCalled();
-      expect(screen.getByTestId('player-controls')).toHaveStyle({ justifyContent: 'space-evenly', paddingBottom: 83 });
+      expect(screen.getByTestId('player-controls')).toHaveStyle({
+        justifyContent: 'space-evenly',
+        paddingBottom: 83,
+      });
     });
   });
 });

@@ -8,9 +8,9 @@
  * here (auth, storage, theme, content hooks, and types are all safe).
  */
 export { Colors } from '@sinkplane/shared/constants/colors';
-export { useStorageState, setStorageItemAsync } from '@sinkplane/shared/storage/useStorageState';
+export { useStorageState } from '@sinkplane/shared/storage/useStorageState';
 
-export { SessionProvider, useSession, type AuthState } from '@sinkplane/shared/auth/auth.context';
+export { SessionProvider, useSession } from '@sinkplane/shared/auth/auth.context';
 export { authenticatedFetch, BROWSER_USER_AGENT } from '@sinkplane/shared/auth/apiClient';
 export {
   FloatplaneApiError,
@@ -18,16 +18,15 @@ export {
   getCaptchaInfo,
   loginWithPassword,
   logout,
-  type CaptchaInfo,
   type LoginResponse,
 } from '@sinkplane/shared/auth/passwordLogin';
-export { fetchProfile, useGetProfile } from '@sinkplane/shared/auth/useGetProfile';
+export { fetchProfile } from '@sinkplane/shared/auth/useGetProfile';
 
 export { ThemeProvider, useTheme, type ThemeMode } from '@sinkplane/shared/theme/theme.context';
 export { useColorScheme } from '@sinkplane/shared/theme/useColorScheme';
 export { useThemeColor } from '@sinkplane/shared/theme/useThemeColor';
 
-export { AssDass, useGetVideosInfinite } from '@sinkplane/shared/videos/useGetVideos';
+export { AssDass } from '@sinkplane/shared/videos/useGetVideos';
 export { useGetVideoProgress } from '@sinkplane/shared/videos/useGetVideoProgress';
 export { useGetVideoPost } from '@sinkplane/shared/videos/useGetVideoPost';
 export { useGetVideoDelivery } from '@sinkplane/shared/videos/useGetVideoDelivery';

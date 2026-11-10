@@ -1,7 +1,9 @@
 import { getStreamUrl, buildVideoSource } from '@/utils/stream-source';
 import { BROWSER_USER_AGENT, type VideoDelivery } from '@/shared';
 
-const delivery = (overrides: Partial<VideoDelivery['groups'][number]['variants'][number]>[] = []): VideoDelivery =>
+const delivery = (
+  overrides: Partial<VideoDelivery['groups'][number]['variants'][number]>[] = [],
+): VideoDelivery =>
   ({
     groups: [
       {
@@ -23,7 +25,12 @@ describe('getStreamUrl', () => {
 
   it('accepts variant urls without a leading slash and origins with extra slashes', () => {
     const shape = {
-      groups: [{ origins: [{ url: 'https://edge.floatplane.test/guid///' }], variants: [{ url: '720.m3u8' }] }],
+      groups: [
+        {
+          origins: [{ url: 'https://edge.floatplane.test/guid///' }],
+          variants: [{ url: '720.m3u8' }],
+        },
+      ],
     } as unknown as VideoDelivery;
     expect(getStreamUrl(shape)).toBe('https://edge.floatplane.test/guid/720.m3u8');
   });
@@ -76,13 +83,18 @@ describe('getStreamUrl', () => {
 
   it('returns null without delivery, groups, origins or variants', () => {
     expect(getStreamUrl(undefined)).toBeNull();
-    expect(getStreamUrl({ groups: [] } as unknown as VideoDelivery)).toBeNull();
+    expect(getStreamUrl({ groups: [] })).toBeNull();
     const noOrigins = { groups: [{ origins: [], variants: [] }] } as unknown as VideoDelivery;
-    const noVariants = { groups: [{ origins: [{ url: 'https://edge.test/' }], variants: [] }] } as unknown as VideoDelivery;
+    const noVariants = {
+      groups: [{ origins: [{ url: 'https://edge.test/' }], variants: [] }],
+    } as unknown as VideoDelivery;
     expect(getStreamUrl(noOrigins)).toBeNull();
     expect(getStreamUrl(noVariants)).toBeNull();
   });
 });
+
+// Computed: HTTP header names are PascalCase, which the naming convention rejects as a plain key.
+const AUTHORIZATION = 'Authorization';
 
 describe('buildVideoSource', () => {
   it('returns null without a url', () => {
@@ -98,7 +110,7 @@ describe('buildVideoSource', () => {
     expect(source).toEqual({
       uri: 'https://edge.floatplane.test/x.m3u8',
       contentType: 'hls',
-      headers: { 'User-Agent': BROWSER_USER_AGENT, Authorization: 'Bearer session-token' },
+      headers: { 'User-Agent': BROWSER_USER_AGENT, [AUTHORIZATION]: 'Bearer session-token' },
       metadata: { title: 'A Video', artist: 'A Channel', artwork: 'https://cdn.test/art.jpg' },
     });
   });

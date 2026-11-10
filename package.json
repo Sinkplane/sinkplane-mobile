@@ -2,22 +2,20 @@
   "name": "sinkplane-mobile",
   "main": "index.ts",
   "version": "1.0.0",
+  "private": true,
+  "packageManager": "pnpm@12.11.2",
+  "engines": {
+    "node": ">=26.12.1",
+    "pnpm": ">=12.11.2"
+  },
   "scripts": {
     "start": "expo start",
     "android": "expo run:android",
     "ios": "expo run:ios",
     "web": "expo start --web",
-    "lint": "expo lint src __tests__ jest modules",
-    "test": "npm run test:unit && npm run test:e2e",
-    "test:unit": "jest -c jest.config.unit.js",
+    "test": "make test acceptance",
     "test:unit:watch": "jest -c jest.config.unit.js --watch",
-    "test:unit:coverage": "jest -c jest.config.unit.js --coverage",
-    "test:e2e": "jest -c jest.config.e2e.js",
-    "test:e2e:coverage": "jest -c jest.config.e2e.js --coverage",
-    "test:coverage": "npm run test:unit:coverage && npm run test:e2e:coverage",
-    "test:ci": "jest -c jest.config.unit.js --ci --coverage && jest -c jest.config.e2e.js --ci --coverage",
-    "prepare": "husky",
-    "postinstall": "patch-package",
+    "check": "make check",
     "link:shared": "./scripts/link-shared-dist.sh",
     "unlink:shared": "./scripts/link-shared-dist.sh --unlink"
   },
@@ -51,32 +49,32 @@
     "react-native-worklets": "0.13.0"
   },
   "devDependencies": {
-    "@eslint/js": "^9.39.5",
+    "@eslint-community/eslint-plugin-eslint-comments": "4.8.1",
+    "@eslint/js": "10.0.1",
     "@react-native/jest-preset": "^0.88.1",
+    "@stryker-mutator/core": "10.1.1",
+    "@stryker-mutator/jest-runner": "10.1.1",
+    "@stryker-mutator/typescript-checker": "10.1.1",
     "@testing-library/react-native": "^14.1.0",
     "@types/jest": "30.0.0",
+    "@types/node": "26.6.6",
     "@types/react": "~19.3.0",
-    "@typescript-eslint/eslint-plugin": "^8.72.0",
-    "@typescript-eslint/parser": "^8.72.0",
-    "eslint": "^8.57.1",
-    "eslint-config-expo": "^58.0.4",
-    "eslint-plugin-react": "^7.37.5",
+    "@types/react-reconciler": "0.33.1",
+    "dependency-cruiser": "18.7.2",
+    "eslint": "10.14.0",
+    "eslint-config-prettier": "10.1.8",
+    "eslint-plugin-import-x": "4.18.0",
+    "eslint-plugin-jest": "29.17.0",
     "eslint-plugin-react-hooks": "^7.1.1",
-    "husky": "^9.1.7",
+    "eslint-plugin-sonarjs": "4.2.2",
+    "globals": "17.14.0",
     "jest": "~30.5.2",
     "jest-expo": "~58.0.14",
-    "lint-staged": "^17.6.0",
-    "patch-package": "^8.0.1",
+    "knip": "6.44.2",
     "prettier": "^3.9.10",
     "typescript": "~6.0.3",
-    "typescript-eslint": "^8.72.0"
+    "typescript-eslint": "8.72.1"
   },
-  "lint-staged": {
-    "*.{js,jsx,ts,tsx}": [
-      "expo lint --fix"
-    ]
-  },
-  "private": true,
   "expo": {
     "autolinking": {
       "ios": {

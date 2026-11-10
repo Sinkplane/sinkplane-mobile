@@ -12,8 +12,18 @@ import { makeHistoryEntry, makeVideo, techCreator, techMainChannel } from '@test
 // shifting between pages while the user keeps watching.
 // ---------------------------------------------------------------------------
 
-type OkResult = { ok: true; status: 200; json: () => Promise<ContentHistoryEntry[]>; text: () => Promise<string> };
-type ErrorResult = { ok: false; status: number; json: () => Promise<never>; text: () => Promise<string> };
+interface OkResult {
+  ok: true;
+  status: 200;
+  json: () => Promise<ContentHistoryEntry[]>;
+  text: () => Promise<string>;
+}
+interface ErrorResult {
+  ok: false;
+  status: number;
+  json: () => Promise<never>;
+  text: () => Promise<string>;
+}
 
 const PAGE_SIZE = 2;
 
@@ -22,24 +32,49 @@ let entries: ContentHistoryEntry[];
 let scriptedPages: ContentHistoryEntry[][];
 let failure: { remaining: number; status: number; body: string } | null;
 
-const fetchMock = jest.fn(async (input: RequestInfo | URL): Promise<OkResult | ErrorResult> => {
-  const url = new URL(String(input));
+function urlOf(input: RequestInfo | URL): string {
+  if (typeof input === 'string') {
+    return input;
+  }
+  return input instanceof URL ? input.href : input.url;
+}
+
+/** The fake /api/v3/content/history. */
+function respond(input: RequestInfo | URL): OkResult | ErrorResult {
+  const url = new URL(urlOf(input));
   if (url.pathname !== '/api/v3/content/history') {
     const text = `no mock for ${url.pathname}`;
-    return { ok: false, status: 404, json: () => Promise.reject(new Error(text)), text: () => Promise.resolve(text) };
+    return {
+      ok: false,
+      status: 404,
+      json: () => Promise.reject(new Error(text)),
+      text: () => Promise.resolve(text),
+    };
   }
 
   if (failure && failure.remaining > 0) {
     failure.remaining -= 1;
     const { status, body: errorBody } = failure;
-    return { ok: false, status, json: () => Promise.reject(new Error(errorBody)), text: () => Promise.resolve(errorBody) };
+    return {
+      ok: false,
+      status,
+      json: () => Promise.reject(new Error(errorBody)),
+      text: () => Promise.resolve(errorBody),
+    };
   }
 
   const scripted = scriptedPages.shift();
   const offset = Number(url.searchParams.get('offset') ?? 0);
   const body = scripted ?? entries.slice(offset, offset + PAGE_SIZE);
-  return { ok: true, status: 200, json: () => Promise.resolve(body), text: () => Promise.resolve(JSON.stringify(body)) };
-});
+  return {
+    ok: true,
+    status: 200,
+    json: () => Promise.resolve(body),
+    text: () => Promise.resolve(JSON.stringify(body)),
+  };
+}
+
+const fetchMock = jest.fn((input: RequestInfo | URL) => Promise.resolve(respond(input)));
 
 beforeEach(() => {
   entries = [];
@@ -49,32 +84,44 @@ beforeEach(() => {
   globalThis.fetch = fetchMock as unknown as typeof globalThis.fetch;
 });
 
-const requestedOffsets = () => fetchMock.mock.calls.map(([input]) => Number(new URL(String(input)).searchParams.get('offset')));
+const requestedOffsets = () =>
+  fetchMock.mock.calls.map(([input]) => Number(new URL(urlOf(input)).searchParams.get('offset')));
 
 const video = (id: string) => makeVideo(techCreator, techMainChannel, { id, title: `Video ${id}` });
+const videoIds = (result: { current: { videos: Video[] } }) =>
+  result.current.videos.map((v) => v.id);
 const entry = (post: Video, progress: number) => makeHistoryEntry(post, progress);
 
 interface HistoryProps {
-  token?: string;
-  tokenExpiration?: string;
+  token?: string | undefined;
+  tokenExpiration?: string | undefined;
 }
 
 // QueryClients created per test; torn down so react-query's GC timers don't outlive the run.
 const queryClients: QueryClient[] = [];
 
 afterEach(() => {
-  queryClients.forEach(client => client.clear());
+  queryClients.forEach((client) => {
+    client.clear();
+  });
   queryClients.length = 0;
 });
 
-async function renderHistory(props: HistoryProps = { token: 'session-token', tokenExpiration: '2030-01-01' }) {
+async function renderHistory(
+  props: HistoryProps = { token: 'session-token', tokenExpiration: '2030-01-01' },
+) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   queryClients.push(queryClient);
-  const wrapper = ({ children }: { children: ReactNode }) => <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>;
-  return renderHook(({ token, tokenExpiration }: HistoryProps) => useWatchHistory(token, tokenExpiration), {
-    wrapper,
-    initialProps: props,
-  });
+  const wrapper = ({ children }: { children: ReactNode }) => (
+    <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+  );
+  return renderHook(
+    ({ token, tokenExpiration }: HistoryProps) => useWatchHistory(token, tokenExpiration),
+    {
+      wrapper,
+      initialProps: props,
+    },
+  );
 }
 
 describe('useWatchHistory', () => {
@@ -83,8 +130,10 @@ describe('useWatchHistory', () => {
 
     const { result } = await renderHistory();
 
-    await waitFor(() => expect(result.current.isSuccess).toBe(true));
-    expect(result.current.videos.map(v => v.id)).toEqual(['v1', 'v2']);
+    await waitFor(() => {
+      expect(result.current.isSuccess).toBe(true);
+    });
+    expect(result.current.videos.map((v) => v.id)).toEqual(['v1', 'v2']);
     expect(result.current.progressById.get('v1')).toBe(30);
     expect(result.current.progressById.get('v2')).toBe(0);
     expect(requestedOffsets()).toEqual([0]);
@@ -95,25 +144,33 @@ describe('useWatchHistory', () => {
 
     const { result } = await renderHistory();
 
-    await waitFor(() => expect(result.current.isSuccess).toBe(true));
-    expect(result.current.videos.map(v => v.id)).toEqual(['v1', 'v2']);
+    await waitFor(() => {
+      expect(result.current.isSuccess).toBe(true);
+    });
+    expect(result.current.videos.map((v) => v.id)).toEqual(['v1', 'v2']);
     expect(result.current.hasNextPage).toBe(true); // a full page promises more
 
     await act(async () => {
       await result.current.fetchNextPage();
     });
-    await waitFor(() => expect(result.current.videos).toHaveLength(4));
+    await waitFor(() => {
+      expect(result.current.videos).toHaveLength(4);
+    });
     await act(async () => {
       await result.current.fetchNextPage();
     });
-    await waitFor(() => expect(result.current.videos).toHaveLength(5));
+    await waitFor(() => {
+      expect(result.current.videos).toHaveLength(5);
+    });
     await act(async () => {
       await result.current.fetchNextPage();
     });
-    await waitFor(() => expect(result.current.hasNextPage).toBe(false)); // the empty tail page ends paging
+    await waitFor(() => {
+      expect(result.current.hasNextPage).toBe(false);
+    }); // the empty tail page ends paging
 
     expect(requestedOffsets()).toEqual([0, 2, 4, 5]); // 2 + 2 + 1 entries fetched so far
-    expect(result.current.videos.map(v => v.id)).toEqual(['v1', 'v2', 'v3', 'v4', 'v5']);
+    expect(result.current.videos.map((v) => v.id)).toEqual(['v1', 'v2', 'v3', 'v4', 'v5']);
     expect(result.current.progressById.get('v5')).toBe(40);
   });
 
@@ -125,24 +182,33 @@ describe('useWatchHistory', () => {
 
     const { result } = await renderHistory();
 
-    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    await waitFor(() => {
+      expect(result.current.isSuccess).toBe(true);
+    });
     await act(async () => {
       await result.current.fetchNextPage();
     });
-    await waitFor(() => expect(result.current.videos.map(v => v.id)).toEqual(['v1', 'v2', 'v3']));
-    expect(result.current.videos.filter(v => v.id === 'v1')).toHaveLength(1);
+    await waitFor(() => {
+      expect(videoIds(result)).toEqual(['v1', 'v2', 'v3']);
+    });
+    expect(result.current.videos.filter((v) => v.id === 'v1')).toHaveLength(1);
     expect(result.current.progressById.get('v1')).toBe(10); // the first (most recent) entry's progress
   });
 
   it('skips entries whose post is gone or has no id', async () => {
-    const gone = { ...entry(video('gone'), 10), blogPost: undefined } as unknown as ContentHistoryEntry;
+    const gone = {
+      ...entry(video('gone'), 10),
+      blogPost: undefined,
+    } as unknown as ContentHistoryEntry;
     const unnamed = { ...entry(video('unnamed'), 20), blogPost: { ...video('unnamed'), id: '' } };
     scriptedPages = [[entry(video('v1'), 5), gone, unnamed]];
 
     const { result } = await renderHistory();
 
-    await waitFor(() => expect(result.current.isSuccess).toBe(true));
-    expect(result.current.videos.map(v => v.id)).toEqual(['v1']);
+    await waitFor(() => {
+      expect(result.current.isSuccess).toBe(true);
+    });
+    expect(result.current.videos.map((v) => v.id)).toEqual(['v1']);
     expect(result.current.progressById.has('gone')).toBe(false);
     expect(result.current.progressById.has('unnamed')).toBe(false);
   });
@@ -161,8 +227,12 @@ describe('useWatchHistory', () => {
 
     const { result } = await renderHistory();
 
-    await waitFor(() => expect(result.current.isError).toBe(true));
-    expect(result.current.error).toEqual(new Error('Failed to fetch watch history: 500 - history blast'));
+    await waitFor(() => {
+      expect(result.current.isError).toBe(true);
+    });
+    expect(result.current.error).toEqual(
+      new Error('Failed to fetch watch history: 500 - history blast'),
+    );
     expect(result.current.videos).toEqual([]);
   });
 });

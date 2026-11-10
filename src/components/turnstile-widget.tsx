@@ -1,16 +1,20 @@
-import { useCallback, useMemo, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useRef, type ReactElement } from 'react';
 import { Platform } from 'react-native';
 import { WebView, type WebViewMessageEvent } from 'react-native-webview';
 
-export type TurnstileEvent = { type: 'load' } | { type: 'token'; token: string } | { type: 'expire' } | { type: 'error'; error: string };
+export type TurnstileEvent =
+  | { type: 'load' }
+  | { type: 'token'; token: string }
+  | { type: 'expire' }
+  | { type: 'error'; error: string };
 
 interface TurnstileWidgetProps {
-  siteKey: string;
-  theme: 'light' | 'dark';
+  readonly siteKey: string;
+  readonly theme: 'light' | 'dark';
   /** Fired when Cloudflare Turnstile issues, expires, or rejects a token. */
-  onEvent: (event: TurnstileEvent) => void;
+  readonly onEvent: (event: TurnstileEvent) => void;
   /** Bump to force a fresh widget (tokens are single-use). */
-  reloadKey?: number;
+  readonly reloadKey?: number;
 }
 
 // Turnstile treats generic WebView user agents as bot-like and gets stuck in an
@@ -21,17 +25,8 @@ const IOS_USER_AGENT =
 const ANDROID_USER_AGENT =
   'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Mobile Safari/537.36';
 
-/**
- * Renders a Cloudflare Turnstile "managed" challenge in a WebView and streams
- * the resulting captcha token back to React Native via postMessage. This is
- * the same widget + variant the floatplane.com/login page uses.
- */
-export function TurnstileWidget({ siteKey, theme, onEvent, reloadKey = 0 }: TurnstileWidgetProps) {
-  const onEventRef = useRef(onEvent);
-  onEventRef.current = onEvent;
-
-  const html = useMemo(
-    () => `<!DOCTYPE html>
+/** The page up to the widget render call (fixed). */
+const PAGE_START = `<!DOCTYPE html>
 <html>
 <head>
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
@@ -54,16 +49,10 @@ export function TurnstileWidget({ siteKey, theme, onEvent, reloadKey = 0 }: Turn
   // widget would silently never render.
   window.onTsLoad = function () {
     try {
-      turnstile.render('#widget', {
-        sitekey: ${JSON.stringify(siteKey)},
-        size: 'flexible',
-        theme: ${JSON.stringify(theme)},
-        callback: function (token) { send({ type: 'token', token: token }); },
-        'expired-callback': function () { send({ type: 'expire' }); },
-        'timeout-callback': function () { send({ type: 'expire' }); },
-        'error-callback': function (errorCode) { send({ type: 'error', error: 'turnstile: ' + errorCode }); },
-      });
-      send({ type: 'load' });
+`;
+
+/** Everything after the render call (fixed). */
+const PAGE_END = `      send({ type: 'load' });
     } catch (err) {
       send({ type: 'error', error: 'render failed: ' + String(err) });
     }
@@ -77,9 +66,32 @@ export function TurnstileWidget({ siteKey, theme, onEvent, reloadKey = 0 }: Turn
 })();
 </script>
 </body>
-</html>`,
-    [siteKey, theme],
-  );
+</html>`;
+
+/** `turnstile.render(...)` for this site key and theme. */
+function renderCall(siteKey: string, theme: TurnstileWidgetProps['theme']): string {
+  return `      turnstile.render('#widget', {
+        sitekey: ${JSON.stringify(siteKey)},
+        size: 'flexible',
+        theme: ${JSON.stringify(theme)},
+        callback: function (token) { send({ type: 'token', token: token }); },
+        'expired-callback': function () { send({ type: 'expire' }); },
+        'timeout-callback': function () { send({ type: 'expire' }); },
+        'error-callback': function (errorCode) { send({ type: 'error', error: 'turnstile: ' + errorCode }); },
+      });
+`;
+}
+
+function turnstileHtml(siteKey: string, theme: TurnstileWidgetProps['theme']): string {
+  return PAGE_START + renderCall(siteKey, theme) + PAGE_END;
+}
+
+/** WebView callbacks that forward page messages and load failures to the latest `onEvent`. */
+function useWebViewHandlers(onEvent: TurnstileWidgetProps['onEvent']) {
+  const onEventRef = useRef(onEvent);
+  useEffect(() => {
+    onEventRef.current = onEvent;
+  }, [onEvent]);
 
   const handleMessage = useCallback((event: WebViewMessageEvent) => {
     try {
@@ -91,8 +103,32 @@ export function TurnstileWidget({ siteKey, theme, onEvent, reloadKey = 0 }: Turn
   }, []);
 
   const handleWebViewError = useCallback((event: { nativeEvent: { description?: string } }) => {
-    onEventRef.current({ type: 'error', error: event.nativeEvent.description ?? 'WebView failed to load' });
+    onEventRef.current({
+      type: 'error',
+      error: event.nativeEvent.description ?? 'WebView failed to load',
+    });
   }, []);
+
+  const handleHttpError = useCallback((event: { nativeEvent: { statusCode: number } }) => {
+    onEventRef.current({ type: 'error', error: `HTTP ${String(event.nativeEvent.statusCode)}` });
+  }, []);
+
+  return { handleMessage, handleWebViewError, handleHttpError };
+}
+
+/**
+ * Renders a Cloudflare Turnstile "managed" challenge in a WebView and streams
+ * the resulting captcha token back to React Native via postMessage. This is
+ * the same widget + variant the floatplane.com/login page uses.
+ */
+export function TurnstileWidget({
+  siteKey,
+  theme,
+  onEvent,
+  reloadKey = 0,
+}: TurnstileWidgetProps): ReactElement {
+  const html = useMemo(() => turnstileHtml(siteKey, theme), [siteKey, theme]);
+  const { handleMessage, handleWebViewError, handleHttpError } = useWebViewHandlers(onEvent);
 
   return (
     <WebView
@@ -112,7 +148,7 @@ export function TurnstileWidget({ siteKey, theme, onEvent, reloadKey = 0 }: Turn
       onMessage={handleMessage}
       onError={handleWebViewError}
       onRenderError={handleWebViewError}
-      onHttpError={e => onEventRef.current({ type: 'error', error: `HTTP ${e.nativeEvent.statusCode}` })}
+      onHttpError={handleHttpError}
       scrollEnabled={false}
       nestedScrollEnabled
       setSupportMultipleWindows={false}

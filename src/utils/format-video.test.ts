@@ -12,6 +12,7 @@ describe('htmlToText', () => {
     ['Tom &amp; Jerry &lt;3 &quot;hi&quot; &apos;yo&apos;&nbsp;!', 'Tom & Jerry <3 "hi" \'yo\' !'],
     ['&#169; &#x1F383; &#ab; &bogus;', '© 🎃 &#ab; &bogus;'],
     ['<a href="https://x.test">link</a>   \n tail', 'link\n tail'],
+    ['1 < 2 <b>x</b> and 3 < 4', '1 x and 3 < 4'],
   ])('converts %p to %p', (html, expected) => {
     expect(htmlToText(html)).toBe(expected);
   });
