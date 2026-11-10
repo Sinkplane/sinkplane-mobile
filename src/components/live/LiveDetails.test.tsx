@@ -24,7 +24,11 @@ describe('LiveDetails', () => {
   it('omits the description and icon when there are none', async () => {
     const stream = makeCreatorLiveStream('live');
     const creator = { ...gamingCreator, icon: undefined } as unknown as typeof gamingCreator;
-    await render(<LiveDetails stream={{ ...stream, creator, liveStream: { ...stream.liveStream, description: '' } }} />);
+    await render(
+      <LiveDetails
+        stream={{ ...stream, creator, liveStream: { ...stream.liveStream, description: '' } }}
+      />,
+    );
 
     expect(screen.getByText('Gaming Channel')).toBeTruthy();
     expect(screen.queryByTestId('live-description')).toBeNull();

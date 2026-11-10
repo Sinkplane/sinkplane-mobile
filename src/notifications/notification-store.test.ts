@@ -28,9 +28,13 @@ describe('enabled flag', () => {
 
   it('writes with AFTER_FIRST_UNLOCK so the background task can read it while locked', async () => {
     await setNotificationsEnabled(true);
-    expect(SecureStore.setItemAsync).toHaveBeenCalledWith('sinkplane.notifications.enabled', 'true', {
-      keychainAccessible: SecureStore.AFTER_FIRST_UNLOCK,
-    });
+    expect(SecureStore.setItemAsync).toHaveBeenCalledWith(
+      'sinkplane.notifications.enabled',
+      'true',
+      {
+        keychainAccessible: SecureStore.AFTER_FIRST_UNLOCK,
+      },
+    );
   });
 
   it('reads as unset when the keychain is unavailable', async () => {
@@ -53,11 +57,18 @@ describe('seen state', () => {
     expect(await markSeen('post:a', 1000)).toBe(true);
     expect(await markSeen('post:b', 2000)).toBe(true);
     expect(await markSeen('post:a', 3000)).toBe(false);
-    expect(await loadSeenState()).toEqual({ since: 1000, checkedAt: 1000, pending: {}, ids: ['post:b', 'post:a'] });
+    expect(await loadSeenState()).toEqual({
+      since: 1000,
+      checkedAt: 1000,
+      pending: {},
+      ids: ['post:b', 'post:a'],
+    });
   });
 
   it('keeps every id recorded at the same time', async () => {
-    expect(await Promise.all([markSeen('post:a'), markSeen('post:b'), markSeen('post:a')])).toEqual([true, true, false]);
+    expect(await Promise.all([markSeen('post:a'), markSeen('post:b'), markSeen('post:a')])).toEqual(
+      [true, true, false],
+    );
     expect((await loadSeenState())?.ids.sort()).toEqual(['post:a', 'post:b']);
   });
 
@@ -68,7 +79,7 @@ describe('seen state', () => {
   });
 
   it('caps and de-duplicates what it keeps', async () => {
-    const ids = Array.from({ length: SEEN_LIMIT + 10 }, (_, i) => `post:${i}`);
+    const ids = Array.from({ length: SEEN_LIMIT + 10 }, (_, i) => `post:${String(i)}`);
     await saveSeenState({ since: 1, checkedAt: 1, pending: {}, ids: ['post:0', ...ids] });
     const state = await loadSeenState();
     expect(state?.ids).toHaveLength(SEEN_LIMIT);
@@ -82,9 +93,15 @@ describe('seen state', () => {
     expect(await loadSeenState()).toBeNull();
     items.set('sinkplane.notifications.seen', JSON.stringify({ checkedAt: 5, ids: ['post:a', 7] }));
     expect(await loadSeenState()).toEqual({ since: 0, checkedAt: 5, pending: {}, ids: ['post:a'] });
-    items.set('sinkplane.notifications.seen', JSON.stringify({ since: 3, checkedAt: 5, pending: { c1: 'x' }, ids: [] }));
+    items.set(
+      'sinkplane.notifications.seen',
+      JSON.stringify({ since: 3, checkedAt: 5, pending: { c1: 'x' }, ids: [] }),
+    );
     expect(await loadSeenState()).toEqual({ since: 3, checkedAt: 5, pending: {}, ids: [] });
-    items.set('sinkplane.notifications.seen', JSON.stringify({ since: 3, checkedAt: 5, pending: { c1: 4 }, ids: [] }));
+    items.set(
+      'sinkplane.notifications.seen',
+      JSON.stringify({ since: 3, checkedAt: 5, pending: { c1: 4 }, ids: [] }),
+    );
     expect(await loadSeenState()).toEqual({ since: 3, checkedAt: 5, pending: { c1: 4 }, ids: [] });
   });
 
@@ -99,7 +116,12 @@ describe('seen state', () => {
     expect(await loadSeenState()).toEqual({ since: 100, checkedAt: 100, pending: {}, ids: [] });
     await saveSeenState({ since: 100, checkedAt: 200, pending: { c1: 150 }, ids: ['post:a'] });
     await resetSeenBaseline(300);
-    expect(await loadSeenState()).toEqual({ since: 300, checkedAt: 300, pending: {}, ids: ['post:a'] });
+    expect(await loadSeenState()).toEqual({
+      since: 300,
+      checkedAt: 300,
+      pending: {},
+      ids: ['post:a'],
+    });
   });
 
   it('clears the session and seen state, keeping the user’s choice', async () => {

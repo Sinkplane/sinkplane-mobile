@@ -11,6 +11,9 @@
  * Import this before any app module so the `jest.mock` factories register first.
  */
 
+import type * as ReactModule from 'react';
+import type * as ReactNativeModule from 'react-native';
+
 /** Props the Turnstile widget passes to the native WebView. */
 export interface MockWebViewProps {
   source?: { html: string; baseUrl?: string };
@@ -27,10 +30,10 @@ export const mockWebViewState = { props: null as MockWebViewProps | null, mounts
 // ---------------------------------------------------------------------------
 
 jest.mock('react-native-webview', () => {
-  const React = jest.requireActual<typeof import('react')>('react');
-  const { View } = jest.requireActual<typeof import('react-native')>('react-native');
+  const React = jest.requireActual<typeof ReactModule>('react');
+  const { View } = jest.requireActual<typeof ReactNativeModule>('react-native');
 
-  function MockWebView(props: MockWebViewProps) {
+  function MockWebView(props: MockWebViewProps): ReactModule.ReactElement {
     mockWebViewState.props = props;
     React.useEffect(() => {
       mockWebViewState.mounts += 1;
@@ -38,7 +41,11 @@ jest.mock('react-native-webview', () => {
     return React.createElement(View, { testID: 'turnstile-webview' });
   }
 
-  return { __esModule: true, WebView: MockWebView, default: MockWebView };
+  // Keys assigned by name: the module's export names are not camelCase.
+  const mockModule: Record<string, unknown> = { default: MockWebView };
+  mockModule['__esModule'] = true;
+  mockModule['WebView'] = MockWebView;
+  return mockModule;
 });
 
 // ---------------------------------------------------------------------------
@@ -46,8 +53,8 @@ jest.mock('react-native-webview', () => {
 // ---------------------------------------------------------------------------
 
 jest.mock('expo-splash-screen', () => ({
-  preventAutoHideAsync: jest.fn(async () => true),
-  hideAsync: jest.fn(async () => true),
+  preventAutoHideAsync: jest.fn(() => Promise.resolve(true)),
+  hideAsync: jest.fn(() => Promise.resolve(true)),
   hide: jest.fn(),
   setOptions: jest.fn(),
 }));

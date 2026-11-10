@@ -13,7 +13,9 @@ describe('formatRate', () => {
 
 describe('SpeedMenu', () => {
   const renderMenu = async (props: Partial<Parameters<typeof SpeedMenu>[0]> = {}) =>
-    render(<SpeedMenu visible={false} rate={1} onSelect={jest.fn()} onClose={jest.fn()} {...props} />);
+    render(
+      <SpeedMenu visible={false} rate={1} onSelect={jest.fn()} onClose={jest.fn()} {...props} />,
+    );
 
   it('renders nothing until visible', async () => {
     await renderMenu();
@@ -24,7 +26,7 @@ describe('SpeedMenu', () => {
     await renderMenu({ visible: true, rate: 1.5 });
 
     for (const speed of PLAYBACK_SPEEDS) {
-      expect(screen.getByTestId(`speed-option-${speed}`)).toBeTruthy();
+      expect(screen.getByTestId(`speed-option-${String(speed)}`)).toBeTruthy();
     }
     expect(screen.getByTestId('speed-option-1.5')).toBeSelected();
     expect(screen.getByTestId('speed-option-1')).not.toBeSelected();

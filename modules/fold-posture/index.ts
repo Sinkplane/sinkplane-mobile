@@ -25,9 +25,11 @@ export interface NativeFoldPosture {
   angle?: number;
 }
 
-type FoldPostureEvents = {
-  onPostureChange: (event: { posture: NativeFoldPosture | null }) => void;
-};
+// A type alias, not an interface: NativeModule's EventsMap constraint needs an index signature.
+type FoldPostureEvents = Record<
+  'onPostureChange',
+  (event: { posture: NativeFoldPosture | null }) => void
+>;
 
 declare class FoldPostureModule extends NativeModule<FoldPostureEvents> {
   getPosture(): NativeFoldPosture | null;
@@ -42,7 +44,11 @@ export function getFoldPosture(): NativeFoldPosture | null {
 }
 
 /** Subscribe to posture changes; the native side only tracks the hinge while someone listens. */
-export function addFoldPostureListener(listener: (posture: NativeFoldPosture | null) => void): { remove: () => void } {
-  if (!native) return { remove: () => {} };
-  return native.addListener('onPostureChange', ({ posture }) => listener(posture));
+export function addFoldPostureListener(listener: (posture: NativeFoldPosture | null) => void): {
+  remove: () => void;
+} {
+  if (!native) return { remove: () => undefined };
+  return native.addListener('onPostureChange', ({ posture }) => {
+    listener(posture);
+  });
 }

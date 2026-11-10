@@ -1,226 +1,237 @@
-import { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
-import { useEvent, useEventListener } from 'expo';
-import { VideoView, type VideoPlayer as NativeVideoPlayer, type VideoSource } from 'expo-video';
+import { useState } from 'react';
+import { StyleSheet, View } from 'react-native';
+import type { VideoPlayer as NativeVideoPlayer, VideoSource } from 'expo-video';
 
-import { CONTROLS_HIDE_MS, HOLD_PLAYBACK_RATE, SEEK_STEP_SECONDS } from '@/components/player/constants';
+import { SEEK_STEP_SECONDS } from '@/components/player/constants';
 import { useSessionPlayer, type PlaybackMedia } from '@/components/player/PlaybackSession';
-import { PlayerControls, type PlayerControlsProps } from '@/components/player/PlayerControls';
+import type { PlayerControlsProps } from '@/components/player/PlayerControls';
+import { applyPlayerSettings } from '@/components/player/player-settings';
+import { ControlsLayer, PlayerSurface } from '@/components/player/PlayerSurface';
 import { SpeedMenu } from '@/components/player/SpeedMenu';
+import {
+  useControlsVisibility,
+  type ControlsVisibility,
+} from '@/components/player/use-controls-visibility';
+import { usePlaybackErrors } from '@/components/player/use-playback-errors';
+import { usePlaybackSpeed, type PlaybackSpeed } from '@/components/player/use-playback-speed';
+import { usePlaybackState, type PlaybackState } from '@/components/player/use-playback-state';
+import { useSeekFeedback } from '@/components/player/use-seek-feedback';
 import type { TabletopLayout } from '@/hooks/use-fold-posture';
 import { usePlayerGestures, type SeekSide } from '@/hooks/use-player-gestures';
 import { useWatchProgress } from '@/hooks/use-watch-progress';
-import { useStorageState } from '@/shared';
 
-export interface VideoPlayerProps {
+const TIME_UPDATE_INTERVAL_SECONDS = 0.5;
+const ASPECT_WIDTH = 16;
+const ASPECT_HEIGHT = 9;
+
+interface VideoPlayerProps {
   /** Read once at mount: later changes (refetched stream URL, refreshed token) would restart playback. */
   source: VideoSource;
-  title?: string;
+  title?: string | undefined;
   /** Position to resume from, in seconds. */
-  initialTime?: number;
+  initialTime?: number | undefined;
   /** Used until the stream reports its own duration. */
-  fallbackDuration?: number;
+  fallbackDuration?: number | undefined;
   fullscreen: boolean;
   onFullscreenChange: (fullscreen: boolean) => void;
-  onBack?: () => void;
+  onBack?: (() => void) | undefined;
   /** Called with the watch position (seconds) to persist it. */
-  onSaveProgress?: (seconds: number) => void;
+  onSaveProgress?: ((seconds: number) => void) | undefined;
   /**
    * Live stream: no seeking (skip buttons, double-tap, seek bar), no speed changes (menu, hold
    * for 2×) and no saved progress; the controls show a LIVE badge instead of the time.
    */
-  live?: boolean;
+  live?: boolean | undefined;
   /** Called with the native error message whenever the stream fails to load or play. */
-  onError?: (message: string | undefined) => void;
+  onError?: ((message: string | undefined) => void) | undefined;
   /** Replaces the error overlay's default Retry (reloading the original source). */
-  onRetry?: () => void;
+  onRetry?: (() => void) | undefined;
   /**
    * Plays through the app's playback session (see `PlaybackSession`), so the mini player can take
    * over when the page closes, and reopening the same media resumes that player seamlessly.
    */
-  media?: PlaybackMedia;
+  media?: PlaybackMedia | undefined;
   /**
    * Foldable in tabletop posture: the video fills the screen above the hinge and the controls
    * stay up on the screen below it (YouTube's "flex mode"). The player takes the whole screen.
    */
-  tabletop?: TabletopLayout | null;
+  tabletop?: TabletopLayout | null | undefined;
 }
 
-const GESTURE_LABELS = {
-  live: 'Live video. Tap to show controls',
-  onDemand: 'Video. Tap to show controls, double-tap a side to skip, press and hold for 2× speed',
-};
+type Props = Readonly<VideoPlayerProps>;
 
-const SEEK_FEEDBACK_MS = 600;
-
-interface SeekFeedback {
-  side: SeekSide;
-  seconds: number;
+function setUpPlayer(player: NativeVideoPlayer): void {
+  applyPlayerSettings(player, {
+    timeUpdateEventInterval: TIME_UPDATE_INTERVAL_SECONDS,
+    staysActiveInBackground: true,
+    showNowPlayingNotification: true,
+  });
 }
 
-function usePlaybackState(player: NativeVideoPlayer) {
-  const { isPlaying } = useEvent(player, 'playingChange', { isPlaying: player.playing });
-  const time = useEvent(player, 'timeUpdate', {
-    currentTime: player.currentTime,
-    bufferedPosition: 0,
-    currentLiveTimestamp: null,
-    currentOffsetFromLive: null,
-  });
-  const { status, error } = useEvent(player, 'statusChange', { status: player.status, error: undefined });
-  const [ended, setEnded] = useState(false);
-
-  useEventListener(player, 'playToEnd', () => setEnded(true));
-  useEventListener(player, 'playingChange', ({ isPlaying: nowPlaying }) => {
-    if (nowPlaying) setEnded(false);
-  });
-
-  return { playing: isPlaying, ended, status, error, currentTime: time.currentTime, bufferedPosition: time.bufferedPosition };
+/** The resume position travels with the session, for a view that takes over a not-yet-started player. */
+function sessionMediaFor({ media, live, initialTime }: Props): PlaybackMedia | undefined {
+  return media ? { ...media, resumeAt: live === true ? undefined : initialTime } : undefined;
 }
 
 /**
- * The playback speed picked in the speed menu (persisted across videos), applied to the player
- * unless a press-and-hold boost is active. Live streams always play at 1×.
+ * The native player (from the playback session), its state, saved progress (live streams
+ * autoplay without resuming a saved position or reporting watch progress) and error handling.
  */
-function usePlaybackRate(player: NativeVideoPlayer, live: boolean, holding: boolean) {
-  const [[, storedRate], setStoredRate] = useStorageState<number>('playbackSpeed');
-  const rate = live ? 1 : (storedRate ?? 1);
-
-  useEffect(() => {
-    if (!holding) player.playbackRate = rate;
-  }, [player, rate, holding]);
-
-  return [rate, setStoredRate] as const;
+function usePlayback(props: Props) {
+  const [initialSource] = useState(props.source);
+  const [sessionMedia] = useState(() => sessionMediaFor(props));
+  const { player, isCurrent } = useSessionPlayer(initialSource, setUpPlayer, sessionMedia);
+  const state = usePlaybackState(player);
+  const live = props.live === true;
+  useWatchProgress(player, {
+    initialTime: live ? undefined : props.initialTime,
+    save: live ? undefined : props.onSaveProgress,
+    canAutoplay: isCurrent,
+  });
+  const retry = usePlaybackErrors(player, initialSource, { ...props, state });
+  const duration = player.duration > 0 ? player.duration : (props.fallbackDuration ?? 0);
+  return { player, state, retry, duration };
 }
 
-/** Live streams autoplay without resuming a saved position or reporting watch progress. */
-function usePlaybackProgress(
+/** Seek (clamped to the duration once known), skip and play/pause/replay. */
+function playerActions(
   player: NativeVideoPlayer,
-  isCurrent: () => boolean,
-  { live, initialTime, onSaveProgress }: Pick<VideoPlayerProps, 'live' | 'initialTime' | 'onSaveProgress'>,
+  { duration, ended }: Readonly<{ duration: number; ended: boolean }>,
+  controls: ControlsVisibility,
 ) {
-  useWatchProgress(player, live ? undefined : initialTime, live ? undefined : onSaveProgress, isCurrent);
+  const seekTo = (seconds: number) => {
+    applyPlayerSettings(player, {
+      currentTime: Math.min(Math.max(seconds, 0), duration > 0 ? duration : seconds),
+    });
+  };
+  const togglePlay = () => {
+    if (ended) {
+      player.replay();
+    } else if (player.playing) {
+      player.pause();
+    } else {
+      player.play();
+    }
+    controls.touch();
+  };
+  const skip = (seconds: number) => {
+    seekTo(player.currentTime + seconds);
+    controls.touch();
+  };
+  return { seekTo, togglePlay, skip };
 }
 
-function setUpPlayer(player: NativeVideoPlayer) {
-  player.timeUpdateEventInterval = 0.5;
-  player.staysActiveInBackground = true;
-  player.showNowPlayingNotification = true;
+interface ControlState {
+  props: Props;
+  state: PlaybackState;
+  speed: PlaybackSpeed;
+  duration: number;
+  scrubTime: number | null;
+  setScrubTime: (seconds: number | null) => void;
+  controls: ControlsVisibility;
+  actions: ReturnType<typeof playerActions>;
 }
 
-/** Controls stay up while paused/ended/scrubbing, and hide after a few idle seconds while playing. */
-function useControlsVisibility(keepVisible: boolean) {
-  const [visible, setVisible] = useState(true);
-  const [activity, setActivity] = useState(0);
-
-  useEffect(() => {
-    if (!visible || keepVisible) return;
-    const timer = setTimeout(() => setVisible(false), CONTROLS_HIDE_MS);
-    return () => clearTimeout(timer);
-  }, [visible, keepVisible, activity]);
-
+function controlPropsFor({
+  props,
+  state,
+  speed,
+  duration,
+  scrubTime,
+  setScrubTime,
+  controls,
+  actions,
+}: Readonly<ControlState>): PlayerControlsProps {
   return {
-    visible: visible || keepVisible,
-    toggle: () => setVisible(v => !v),
-    /** Any interaction with the controls restarts the hide timer. */
-    touch: () => {
-      setVisible(true);
-      setActivity(a => a + 1);
+    title: props.title,
+    playing: state.playing,
+    ended: state.ended,
+    currentTime: scrubTime ?? state.currentTime,
+    duration,
+    bufferedPosition: state.bufferedPosition,
+    rate: speed.rate,
+    fullscreen: props.fullscreen,
+    live: props.live,
+    onTogglePlay: actions.togglePlay,
+    onSkip: actions.skip,
+    onSeek: actions.seekTo,
+    onScrub: setScrubTime,
+    onOpenSpeedMenu: speed.openMenu,
+    onToggleFullscreen: () => {
+      props.onFullscreenChange(!props.fullscreen);
+      controls.touch();
     },
+    onBack: props.onBack,
   };
 }
 
-/** The "−15s" / "+15s" bubble after a double tap; repeated double taps accumulate, like YouTube. */
-function useSeekFeedback() {
-  const [feedback, setFeedback] = useState<SeekFeedback | null>(null);
-  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  useEffect(
-    () => () => {
-      if (timer.current) clearTimeout(timer.current);
-    },
-    [],
-  );
-
-  const show = (side: SeekSide) => {
-    setFeedback(current => ({ side, seconds: (current?.side === side ? current.seconds : 0) + SEEK_STEP_SECONDS }));
-    if (timer.current) clearTimeout(timer.current);
-    timer.current = setTimeout(() => setFeedback(null), SEEK_FEEDBACK_MS);
-  };
-
-  return { feedback, show };
+/** Errors, picture-in-picture and (unless the controls have their own tabletop panel) idling / holding. */
+function controlsHidden(
+  {
+    status,
+    controls,
+    holding,
+  }: Readonly<{ status: string; controls: ControlsVisibility; holding: boolean }>,
+  inPictureInPicture: boolean,
+  tabletop: TabletopLayout | null,
+): boolean {
+  return status === 'error' || inPictureInPicture || (!tabletop && (!controls.visible || holding));
 }
 
-/** Transient overlays that never take touches: buffering spinner, seek bubble, 2× badge. */
-function PlaybackFeedback({ seek, holding, loading }: { seek: SeekFeedback | null; holding: boolean; loading: boolean }) {
-  return (
-    <>
-      {loading ? <ActivityIndicator testID="player-loading" pointerEvents="none" style={styles.loading} color="#fff" size="large" /> : null}
-      {seek ? (
-        <View
-          testID={`seek-feedback-${seek.side}`}
-          pointerEvents="none"
-          style={[styles.seekFeedback, seek.side === 'back' ? styles.seekFeedbackLeft : styles.seekFeedbackRight]}
-        >
-          <Text style={styles.badgeText}>{`${seek.side === 'back' ? '−' : '+'}${seek.seconds}s`}</Text>
-        </View>
-      ) : null}
-      {holding ? (
-        <View testID="hold-speed-badge" pointerEvents="none" style={styles.holdBadge}>
-          <Text style={styles.badgeText}>{`${HOLD_PLAYBACK_RATE}× ▸▸`}</Text>
-        </View>
-      ) : null}
-    </>
-  );
-}
-
-/**
- * Reacts to playback errors: leaves fullscreen (the error overlay replaces the controls, incl. the
- * exit-fullscreen button, so don't strand the user there) and reports the error. Returns the
- * overlay's Retry action: `onRetry`, or else reloading the original source.
- */
-function usePlaybackErrors(
+/** Double-tapping a side skips back / forward (not live) and shows the accumulating bubble. */
+function useDoubleTapSkip(
   player: NativeVideoPlayer,
-  initialSource: VideoSource,
-  { status, error }: ReturnType<typeof usePlaybackState>,
-  { fullscreen, onFullscreenChange, onError, onRetry }: Pick<VideoPlayerProps, 'fullscreen' | 'onFullscreenChange' | 'onError' | 'onRetry'>,
+  live: boolean,
+  seekTo: (seconds: number) => void,
 ) {
-  useEffect(() => {
-    if (status === 'error' && fullscreen) onFullscreenChange(false);
-  }, [status, fullscreen, onFullscreenChange]);
-
-  const onErrorRef = useRef(onError);
-  onErrorRef.current = onError;
-  const message = error?.message;
-  useEffect(() => {
-    if (status === 'error') onErrorRef.current?.(message);
-  }, [status, message]);
-
-  return (
-    onRetry ??
-    (() => {
-      player
-        .replaceAsync(initialSource)
-        .then(() => player.play())
-        .catch(() => {});
-    })
-  );
+  const seekFeedback = useSeekFeedback();
+  const onDoubleTap = (side: SeekSide) => {
+    if (live) {
+      return;
+    }
+    seekTo(player.currentTime + (side === 'back' ? -SEEK_STEP_SECONDS : SEEK_STEP_SECONDS));
+    seekFeedback.show(side);
+  };
+  return { seek: seekFeedback.feedback, onDoubleTap };
 }
 
-/** Shown when the stream fails to load or play; Retry reloads the same source. */
-function PlaybackError({ message, onRetry }: { message?: string; onRetry: () => void }) {
-  return (
-    <View testID="player-error" style={styles.errorOverlay}>
-      <Text style={styles.badgeText}>Playback failed</Text>
-      {message ? (
-        <Text style={styles.errorMessage} numberOfLines={2}>
-          {message}
-        </Text>
-      ) : null}
-      <Pressable onPress={onRetry} style={styles.retryButton} accessibilityRole="button">
-        <Text style={styles.badgeText}>Retry</Text>
-      </Pressable>
-    </View>
+/** Everything the player view renders, wired to the native player. */
+function useVideoPlayer(props: Props) {
+  const live = props.live === true;
+  const tabletop = props.tabletop ?? null;
+  const { player, state, retry, duration } = usePlayback(props);
+  const speed = usePlaybackSpeed(player, live);
+  const [scrubTime, setScrubTime] = useState<number | null>(null);
+  const [inPictureInPicture, setInPictureInPicture] = useState(false);
+  // Tabletop: the controls live on their own half of the screen, so they never hide.
+  const controls = useControlsVisibility(
+    !state.playing || scrubTime !== null || speed.menuOpen || tabletop !== null,
   );
+  const actions = playerActions(player, { duration, ended: state.ended }, controls);
+  const { seek, onDoubleTap } = useDoubleTapSkip(player, live, actions.seekTo);
+  const gestures = usePlayerGestures({
+    onSingleTap: controls.toggle,
+    onDoubleTap,
+    onHoldStart: speed.startHold,
+    onHoldEnd: speed.endHold,
+  });
+  const controlProps = controlPropsFor({
+    props,
+    state,
+    speed,
+    duration,
+    scrubTime,
+    setScrubTime,
+    controls,
+    actions,
+  });
+  const hidden = controlsHidden(
+    { status: state.status, controls, holding: speed.holding },
+    inPictureInPicture,
+    tabletop,
+  );
+  const surface = { player, live, tabletop, gestures, seek, state, onRetry: retry };
+  return { speed, tabletop, surface, controlProps, hidden, setInPictureInPicture };
 }
 
 /**
@@ -228,191 +239,29 @@ function PlaybackError({ message, onRetry }: { message?: string; onRetry: () => 
  * the left/right half to skip back/forward, press and hold for 2× speed. Picture-in-picture starts
  * automatically when the app is backgrounded during playback.
  */
-export function VideoPlayer({
-  source,
-  title,
-  initialTime,
-  fallbackDuration = 0,
-  fullscreen,
-  onFullscreenChange,
-  onBack,
-  onSaveProgress,
-  live,
-  onError,
-  onRetry,
-  media,
-  tabletop,
-}: VideoPlayerProps) {
-  const [initialSource] = useState(source);
-  // The resume position travels with the session, for a view that takes over a not-yet-started player.
-  const [sessionMedia] = useState(() => (media ? { ...media, resumeAt: live ? undefined : initialTime } : undefined));
-  const { player, isCurrent } = useSessionPlayer(initialSource, setUpPlayer, sessionMedia);
-  const state = usePlaybackState(player);
-  usePlaybackProgress(player, isCurrent, { live, initialTime, onSaveProgress });
-
-  const [holding, setHolding] = useState(false);
-  const [rate, setStoredRate] = usePlaybackRate(player, !!live, holding);
-  const [scrubTime, setScrubTime] = useState<number | null>(null);
-  const [speedMenuOpen, setSpeedMenuOpen] = useState(false);
-  const [inPictureInPicture, setInPictureInPicture] = useState(false);
-  const seekFeedback = useSeekFeedback();
-  // Tabletop: the controls live on their own half of the screen, so they never hide.
-  const controls = useControlsVisibility(!state.playing || scrubTime !== null || speedMenuOpen || !!tabletop);
-
-  const retry = usePlaybackErrors(player, initialSource, state, { fullscreen, onFullscreenChange, onError, onRetry });
-
-  const duration = player.duration > 0 ? player.duration : fallbackDuration;
-
-  const seekTo = (seconds: number) => {
-    player.currentTime = Math.min(Math.max(seconds, 0), duration || seconds);
-  };
-
-  const skip = (seconds: number) => {
-    seekTo(player.currentTime + seconds);
-    controls.touch();
-  };
-
-  const gestures = usePlayerGestures({
-    onSingleTap: controls.toggle,
-    onDoubleTap: side => {
-      if (live) return;
-      seekTo(player.currentTime + (side === 'back' ? -SEEK_STEP_SECONDS : SEEK_STEP_SECONDS));
-      seekFeedback.show(side);
-    },
-    onHoldStart: () => {
-      if (live || !player.playing) return;
-      setHolding(true);
-      player.playbackRate = HOLD_PLAYBACK_RATE;
-    },
-    onHoldEnd: () => {
-      setHolding(false);
-      player.playbackRate = rate;
-    },
-  });
-
-  const togglePlay = () => {
-    if (state.ended) player.replay();
-    else if (player.playing) player.pause();
-    else player.play();
-    controls.touch();
-  };
-
-  const controlProps: PlayerControlsProps = {
-    title,
-    playing: state.playing,
-    ended: state.ended,
-    currentTime: scrubTime ?? state.currentTime,
-    duration,
-    bufferedPosition: state.bufferedPosition,
-    rate,
-    fullscreen,
-    live,
-    onTogglePlay: togglePlay,
-    onSkip: skip,
-    onSeek: seekTo,
-    onScrub: setScrubTime,
-    onOpenSpeedMenu: () => setSpeedMenuOpen(true),
-    onToggleFullscreen: () => {
-      onFullscreenChange(!fullscreen);
-      controls.touch();
-    },
-    onBack,
-  };
+export function VideoPlayer(props: Props): React.JSX.Element {
+  const { speed, tabletop, surface, controlProps, hidden, setInPictureInPicture } =
+    useVideoPlayer(props);
 
   return (
-    <View testID="video-player" style={fullscreen || tabletop ? styles.fullscreen : styles.inline}>
+    <View
+      testID="video-player"
+      style={props.fullscreen || tabletop ? styles.fullscreen : styles.inline}
+    >
       <PlayerSurface
-        player={player}
-        live={live}
-        tabletop={tabletop}
-        gestures={gestures}
-        seek={seekFeedback.feedback}
-        holding={holding}
-        state={state}
-        onRetry={retry}
+        {...surface}
+        holding={speed.holding}
         onPictureInPictureChange={setInPictureInPicture}
       />
 
-      <ControlsLayer
-        tabletop={tabletop}
-        hidden={state.status === 'error' || inPictureInPicture || (!tabletop && (!controls.visible || holding))}
-        controlProps={controlProps}
-      />
+      <ControlsLayer tabletop={tabletop} hidden={hidden} controlProps={controlProps} />
 
       <SpeedMenu
-        visible={speedMenuOpen}
-        rate={rate}
-        onSelect={speed => {
-          setStoredRate(speed);
-          setSpeedMenuOpen(false);
-        }}
-        onClose={() => setSpeedMenuOpen(false)}
+        visible={speed.menuOpen}
+        rate={speed.rate}
+        onSelect={speed.selectSpeed}
+        onClose={speed.closeMenu}
       />
-    </View>
-  );
-}
-
-interface PlayerSurfaceProps {
-  player: NativeVideoPlayer;
-  live?: boolean;
-  tabletop?: TabletopLayout | null;
-  gestures: ReturnType<typeof usePlayerGestures>;
-  seek: SeekFeedback | null;
-  holding: boolean;
-  state: ReturnType<typeof usePlaybackState>;
-  onRetry: () => void;
-  onPictureInPictureChange: (active: boolean) => void;
-}
-
-/** The video, the touch surface over it and the transient feedback; above the hinge in tabletop. */
-function PlayerSurface({ player, live, tabletop, gestures, seek, holding, state, onRetry, onPictureInPictureChange }: PlayerSurfaceProps) {
-  return (
-    <View testID="player-video-area" style={tabletop ? [styles.tabletopVideo, { height: tabletop.hingeTop }] : StyleSheet.absoluteFill}>
-      <VideoView
-        testID="video-view"
-        player={player}
-        style={StyleSheet.absoluteFill}
-        contentFit="contain"
-        nativeControls={false}
-        allowsPictureInPicture
-        startsPictureInPictureAutomatically
-        onPictureInPictureStart={() => onPictureInPictureChange(true)}
-        onPictureInPictureStop={() => onPictureInPictureChange(false)}
-      />
-
-      <Pressable
-        testID="player-gesture-surface"
-        style={StyleSheet.absoluteFill}
-        delayLongPress={350}
-        onLayout={gestures.onLayout}
-        onPress={gestures.onPress}
-        onLongPress={gestures.onLongPress}
-        onPressOut={gestures.onPressOut}
-        accessibilityLabel={GESTURE_LABELS[live ? 'live' : 'onDemand']}
-      />
-
-      <PlaybackFeedback seek={seek} holding={holding} loading={state.status === 'loading'} />
-
-      {state.status === 'error' ? <PlaybackError message={state.error?.message} onRetry={onRetry} /> : null}
-    </View>
-  );
-}
-
-/** The controls over the video, or — in tabletop — on their own panel below the hinge. */
-function ControlsLayer({
-  tabletop,
-  hidden,
-  controlProps,
-}: {
-  tabletop?: TabletopLayout | null;
-  hidden: boolean;
-  controlProps: PlayerControlsProps;
-}) {
-  if (hidden) return null;
-  if (!tabletop) return <PlayerControls {...controlProps} />;
-  return (
-    <View testID="player-tabletop-panel" style={[styles.tabletopPanel, { top: tabletop.hingeBottom }]}>
-      <PlayerControls {...controlProps} variant="panel" />
     </View>
   );
 }
@@ -420,75 +269,12 @@ function ControlsLayer({
 const styles = StyleSheet.create({
   inline: {
     width: '100%',
-    aspectRatio: 16 / 9,
+    aspectRatio: ASPECT_WIDTH / ASPECT_HEIGHT,
     backgroundColor: '#000',
   },
   // A separate style rather than an override: `aspectRatio: undefined` doesn't cancel the inline one.
   fullscreen: {
     flex: 1,
     backgroundColor: '#000',
-  },
-  tabletopVideo: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-  },
-  tabletopPanel: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: '#0d0d0d',
-  },
-  seekFeedback: {
-    position: 'absolute',
-    top: '40%',
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 20,
-    backgroundColor: 'rgba(0, 0, 0, 0.55)',
-  },
-  seekFeedbackLeft: {
-    left: '12%',
-  },
-  seekFeedbackRight: {
-    right: '12%',
-  },
-  errorOverlay: {
-    ...StyleSheet.absoluteFill,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 10,
-    padding: 16,
-    backgroundColor: '#000',
-  },
-  errorMessage: {
-    color: 'rgba(255, 255, 255, 0.7)',
-    fontSize: 13,
-    textAlign: 'center',
-  },
-  retryButton: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 16,
-    backgroundColor: 'rgba(255, 255, 255, 0.15)',
-  },
-  loading: {
-    ...StyleSheet.absoluteFill,
-  },
-  holdBadge: {
-    position: 'absolute',
-    top: 16,
-    alignSelf: 'center',
-    paddingHorizontal: 14,
-    paddingVertical: 6,
-    borderRadius: 16,
-    backgroundColor: 'rgba(0, 0, 0, 0.6)',
-  },
-  badgeText: {
-    color: '#fff',
-    fontSize: 15,
-    fontWeight: '700',
   },
 });

@@ -10,7 +10,12 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
  * SafeAreaProvider whose bottom inset includes the tab bar). On Android the tab
  * content is already laid out above the tab bar, so only the top needs padding.
  */
-export function useTabScreenInsets() {
+export interface TabScreenInsets {
+  top: number;
+  bottom: number;
+}
+
+export function useTabScreenInsets(): TabScreenInsets {
   const insets = useSafeAreaInsets();
   return { top: insets.top, bottom: Platform.OS === 'ios' ? insets.bottom : 0 };
 }

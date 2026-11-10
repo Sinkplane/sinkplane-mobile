@@ -8,7 +8,8 @@ function tapAt(locationX: number) {
   return { nativeEvent: { locationX } } as unknown as GestureResponderEvent;
 }
 
-const layout = (width: number) => ({ nativeEvent: { layout: { width, height: 100 } } }) as unknown as LayoutChangeEvent;
+const layout = (width: number) =>
+  ({ nativeEvent: { layout: { width, height: 100 } } }) as unknown as LayoutChangeEvent;
 
 interface Handlers {
   onSingleTap: jest.Mock;
@@ -20,12 +21,12 @@ interface Handlers {
 async function renderGestures(width = 300) {
   const handlers: Handlers = {
     onSingleTap: jest.fn(),
-    onDoubleTap: jest.fn(side => side as SeekSide),
+    onDoubleTap: jest.fn((side) => side as SeekSide),
     onHoldStart: jest.fn(),
     onHoldEnd: jest.fn(),
   };
   const { result, unmount } = await renderHook(() => usePlayerGestures(handlers));
-  await act(async () => {
+  await act(() => {
     result.current.onLayout(layout(width));
   });
   return { handlers, gestures: result, unmount };
@@ -43,12 +44,12 @@ describe('usePlayerGestures', () => {
   it('reports a single tap only after the double-tap window passes', async () => {
     const { handlers, gestures } = await renderGestures();
 
-    await act(async () => {
+    await act(() => {
       gestures.current.onPress(tapAt(80));
     });
     expect(handlers.onSingleTap).not.toHaveBeenCalled();
 
-    await act(async () => {
+    await act(() => {
       jest.advanceTimersByTime(DOUBLE_TAP_MS);
     });
     expect(handlers.onSingleTap).toHaveBeenCalledTimes(1);
@@ -58,7 +59,7 @@ describe('usePlayerGestures', () => {
   it('double-taps the left half as back and the right half as forward', async () => {
     const { handlers, gestures } = await renderGestures();
 
-    await act(async () => {
+    await act(() => {
       gestures.current.onPress(tapAt(80)); // left of 150
       jest.advanceTimersByTime(DOUBLE_TAP_MS - 10);
       gestures.current.onPress(tapAt(120));
@@ -76,7 +77,7 @@ describe('usePlayerGestures', () => {
   it('keeps double-tapping while the taps keep coming (repeat skips)', async () => {
     const { handlers, gestures } = await renderGestures();
 
-    await act(async () => {
+    await act(() => {
       for (let i = 0; i < 4; i += 1) {
         gestures.current.onPress(tapAt(280));
         jest.advanceTimersByTime(150);
@@ -91,7 +92,7 @@ describe('usePlayerGestures', () => {
   it('does not double-tap across halves or after the window', async () => {
     const { handlers, gestures } = await renderGestures();
 
-    await act(async () => {
+    await act(() => {
       gestures.current.onPress(tapAt(80));
       gestures.current.onPress(tapAt(280)); // other half within the window
       jest.advanceTimersByTime(DOUBLE_TAP_MS);
@@ -101,12 +102,12 @@ describe('usePlayerGestures', () => {
     // The first tap's pending single-tap was cancelled by the second press.
     expect(handlers.onSingleTap).toHaveBeenCalledTimes(1);
 
-    await act(async () => {
+    await act(() => {
       jest.advanceTimersByTime(DOUBLE_TAP_MS * 2);
     });
     expect(handlers.onSingleTap).toHaveBeenCalledTimes(1);
 
-    await act(async () => {
+    await act(() => {
       gestures.current.onPress(tapAt(80));
       jest.advanceTimersByTime(DOUBLE_TAP_MS + 1);
       gestures.current.onPress(tapAt(80));
@@ -119,22 +120,22 @@ describe('usePlayerGestures', () => {
   it('holds: long press starts, press out ends', async () => {
     const { handlers, gestures } = await renderGestures();
 
-    await act(async () => {
+    await act(() => {
       gestures.current.onLongPress();
     });
     expect(handlers.onHoldStart).toHaveBeenCalledTimes(1);
 
-    await act(async () => {
+    await act(() => {
       gestures.current.onLongPress();
     });
     expect(handlers.onHoldStart).toHaveBeenCalledTimes(2); // holding ref is idempotent here
 
-    await act(async () => {
+    await act(() => {
       gestures.current.onPressOut();
     });
     expect(handlers.onHoldEnd).toHaveBeenCalledTimes(1);
 
-    await act(async () => {
+    await act(() => {
       gestures.current.onPressOut();
     });
     expect(handlers.onHoldEnd).toHaveBeenCalledTimes(1); // not holding anymore
@@ -143,11 +144,11 @@ describe('usePlayerGestures', () => {
   it('drops a pending single tap on unmount', async () => {
     const { handlers, gestures, unmount } = await renderGestures();
 
-    await act(async () => {
+    await act(() => {
       gestures.current.onPress(tapAt(80));
     });
     await unmount();
-    await act(async () => {
+    await act(() => {
       jest.advanceTimersByTime(DOUBLE_TAP_MS * 2);
     });
     expect(handlers.onSingleTap).not.toHaveBeenCalled();

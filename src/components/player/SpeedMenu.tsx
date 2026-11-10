@@ -10,33 +10,67 @@ interface SpeedMenuProps {
   onClose: () => void;
 }
 
-export const formatRate = (rate: number) => (rate === 1 ? 'Normal' : `${rate}×`);
+const CHECK_ICON_SIZE = 18;
+
+export const formatRate = (rate: number): string => (rate === 1 ? 'Normal' : `${String(rate)}×`);
+
+function SpeedOption({
+  speed,
+  selected,
+  onSelect,
+}: Readonly<{ speed: number; selected: boolean; onSelect: (rate: number) => void }>) {
+  return (
+    <Pressable
+      testID={`speed-option-${String(speed)}`}
+      onPress={() => {
+        onSelect(speed);
+      }}
+      style={({ pressed }) => [styles.option, pressed && styles.pressed]}
+      accessibilityRole="button"
+      accessibilityState={{ selected }}
+    >
+      <View style={styles.check}>
+        {selected ? (
+          <SymbolView
+            name={{ ios: 'checkmark', android: 'check', web: 'check' }}
+            size={CHECK_ICON_SIZE}
+            tintColor="#fff"
+          />
+        ) : null}
+      </View>
+      <Text style={[styles.optionText, selected && styles.optionTextSelected]}>
+        {formatRate(speed)}
+      </Text>
+    </Pressable>
+  );
+}
 
 /** Bottom sheet listing the playback speeds; works in fullscreen landscape too. */
-export function SpeedMenu({ visible, rate, onSelect, onClose }: SpeedMenuProps) {
+export function SpeedMenu({
+  visible,
+  rate,
+  onSelect,
+  onClose,
+}: Readonly<SpeedMenuProps>): React.JSX.Element {
   return (
-    <Modal visible={visible} transparent animationType="fade" supportedOrientations={['portrait', 'landscape']} onRequestClose={onClose}>
-      <Pressable testID="speed-menu-backdrop" style={styles.backdrop} onPress={onClose} accessibilityLabel="Close speed menu">
+    <Modal
+      visible={visible}
+      transparent
+      animationType="fade"
+      supportedOrientations={['portrait', 'landscape']}
+      onRequestClose={onClose}
+    >
+      <Pressable
+        testID="speed-menu-backdrop"
+        style={styles.backdrop}
+        onPress={onClose}
+        accessibilityLabel="Close speed menu"
+      >
         <View style={styles.sheet}>
           <Text style={styles.heading}>Playback speed</Text>
-          {PLAYBACK_SPEEDS.map(speed => {
-            const selected = speed === rate;
-            return (
-              <Pressable
-                key={speed}
-                testID={`speed-option-${speed}`}
-                onPress={() => onSelect(speed)}
-                style={({ pressed }) => [styles.option, pressed && styles.pressed]}
-                accessibilityRole="button"
-                accessibilityState={{ selected }}
-              >
-                <View style={styles.check}>
-                  {selected ? <SymbolView name={{ ios: 'checkmark', android: 'check', web: 'check' }} size={18} tintColor="#fff" /> : null}
-                </View>
-                <Text style={[styles.optionText, selected && styles.optionTextSelected]}>{formatRate(speed)}</Text>
-              </Pressable>
-            );
-          })}
+          {PLAYBACK_SPEEDS.map((speed) => (
+            <SpeedOption key={speed} speed={speed} selected={speed === rate} onSelect={onSelect} />
+          ))}
         </View>
       </Pressable>
     </Modal>

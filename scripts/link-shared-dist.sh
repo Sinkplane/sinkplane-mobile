@@ -12,7 +12,7 @@
 #   ./scripts/link-shared-dist.sh            # link the local clone's dist (default)
 #   ./scripts/link-shared-dist.sh --unlink  # restore the published dist
 #
-# Re-run the link after `npm install` / dependency updates: reinstalling
+# Re-run the link after `pnpm install` / dependency updates: reinstalling
 # the package recreates dist/ as a real directory and drops the backup.
 
 set -e
@@ -35,10 +35,10 @@ SHARED_DIR="$PARENT_DIR/shared"
 PKG_DIR="$PROJECT_DIR/node_modules/@sinkplane/shared"
 DIST_DIR="$PKG_DIR/dist"
 BACKUP_DIR="$PKG_DIR/dist.published"
-# Relative target so the link stays valid if the repo pair is moved together.
-# node_modules/@sinkplane/shared/ is three levels below the project root, and
-# the clone is a sibling of the project root — hence four levels up.
-REL_LINK="../../../../shared/dist"
+# Absolute target: with pnpm, node_modules/@sinkplane/shared is itself a symlink
+# into node_modules/.pnpm/…, so a relative link would resolve from that real
+# directory, not from node_modules/@sinkplane/shared.
+LINK_TARGET="$SHARED_DIR/dist"
 
 if [[ "${1:-}" == "--unlink" ]]; then
     if [ -L "$DIST_DIR" ]; then
@@ -52,13 +52,13 @@ if [[ "${1:-}" == "--unlink" ]]; then
         print_success "Restored the published dist"
     elif [ ! -e "$DIST_DIR" ]; then
         print_warning "No published dist backup found — restore it with:"
-        echo "  npm install --force"
+        echo "  pnpm install --force"
     fi
     exit 0
 fi
 
 if [ ! -d "$PKG_DIR" ]; then
-    print_error "@sinkplane/shared is not installed — run npm install first."
+    print_error "@sinkplane/shared is not installed — run pnpm install first."
     exit 1
 fi
 
@@ -70,7 +70,7 @@ fi
 
 # Fresh clones don't ship dist/ (gitignored) — build it from the clone.
 # Its deps resolve through the node_modules symlink this repo's setup script
-# creates (see scripts/setup-dev-env.sh; do NOT run npm install there).
+# creates (see scripts/setup-dev-env.sh; do NOT run an install there).
 if [ ! -d "$SHARED_DIR/dist" ]; then
     print_info "No dist/ in the shared clone — building it..."
     if [ ! -e "$SHARED_DIR/node_modules" ]; then
@@ -83,7 +83,7 @@ if [ ! -d "$SHARED_DIR/dist" ]; then
 fi
 
 if [ -L "$DIST_DIR" ]; then
-    if [ "$(readlink "$DIST_DIR")" == "$REL_LINK" ]; then
+    if [ "$(readlink "$DIST_DIR")" == "$LINK_TARGET" ]; then
         print_success "dist is already linked to the local clone"
         exit 0
     fi
@@ -94,7 +94,7 @@ elif [ -d "$DIST_DIR" ]; then
     mv "$DIST_DIR" "$BACKUP_DIR"
 fi
 
-ln -s "$REL_LINK" "$DIST_DIR"
+ln -s "$LINK_TARGET" "$DIST_DIR"
 print_success "Linked node_modules/@sinkplane/shared/dist -> $SHARED_DIR/dist"
 print_info "Metro watches the clone via metro.config.js; rebuild with:"
 echo "  cd ../shared && pnpm run build"

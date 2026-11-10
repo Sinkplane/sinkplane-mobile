@@ -1,4 +1,3 @@
-/* global __dirname */
 // Learn more https://docs.expo.io/guides/customizing-metro
 const fs = require('fs');
 const path = require('path');
@@ -8,7 +7,7 @@ const { getDefaultConfig } = require('expo/metro-config');
 const config = getDefaultConfig(__dirname);
 
 // @sinkplane/shared installs from GitHub Packages (see .npmrc). For local
-// development, `npm run link:shared` points node_modules/@sinkplane/shared/dist
+// development, `pnpm link:shared` points node_modules/@sinkplane/shared/dist
 // at the sibling clone's dist/ build output, so Metro must watch the clone.
 const sharedDir = path.resolve(__dirname, '../shared');
 const hasSharedClone = fs.existsSync(sharedDir);
@@ -34,7 +33,11 @@ if (hasSharedClone) {
     const fromSharedClone = context.originModulePath?.startsWith(`${sharedDir}${path.sep}`);
     const isBareSpecifier = !moduleName.startsWith('.') && !path.isAbsolute(moduleName);
     if (fromSharedClone && isBareSpecifier) {
-      return context.resolveRequest({ ...context, originModulePath: appOrigin }, moduleName, platform);
+      return context.resolveRequest(
+        { ...context, originModulePath: appOrigin },
+        moduleName,
+        platform,
+      );
     }
     return previousResolveRequest
       ? previousResolveRequest(context, moduleName, platform)

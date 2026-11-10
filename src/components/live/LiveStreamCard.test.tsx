@@ -15,7 +15,9 @@ describe('LiveStreamCard', () => {
     // The live description stays on the player page.
     expect(screen.queryByText('Live tech talk & news')).toBeNull();
 
-    await fireEvent.press(screen.getByRole('button', { name: 'Watch Tech Channel live: Tech Live: Friday Show' }));
+    await fireEvent.press(
+      screen.getByRole('button', { name: 'Watch Tech Channel live: Tech Live: Friday Show' }),
+    );
     expect(onPress).toHaveBeenCalledWith(stream);
   });
 
@@ -43,7 +45,11 @@ describe('LiveStreamCard', () => {
   it('renders without a creator icon or offline description', async () => {
     const liveStream = { ...makeCreatorLiveStream('offline').liveStream, offline: undefined };
     const creator = { ...gamingCreator, icon: undefined } as unknown as typeof gamingCreator;
-    await render(<LiveStreamCard stream={makeCreatorLiveStream('offline', { creator, liveStream } as never)} />);
+    await render(
+      <LiveStreamCard
+        stream={makeCreatorLiveStream('offline', { creator, liveStream } as never)}
+      />,
+    );
 
     expect(screen.getByText('Gaming Channel is not live right now.')).toBeTruthy();
   });
@@ -51,6 +57,8 @@ describe('LiveStreamCard', () => {
   it('ignores presses while live without a handler', async () => {
     await render(<LiveStreamCard stream={makeCreatorLiveStream('live')} />);
 
-    await expect(fireEvent.press(screen.getByTestId(`live-stream-${techCreator.id}`))).resolves.toBeUndefined();
+    await expect(
+      fireEvent.press(screen.getByTestId(`live-stream-${techCreator.id}`)),
+    ).resolves.toBeUndefined();
   });
 });

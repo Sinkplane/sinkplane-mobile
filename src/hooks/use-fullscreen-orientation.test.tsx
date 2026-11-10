@@ -1,4 +1,5 @@
 import { Platform } from 'react-native';
+import type * as ReactNative from 'react-native';
 import { act, renderHook } from '@testing-library/react-native';
 import {
   emitOrientationChange,
@@ -10,7 +11,25 @@ import {
 } from '@test/mocks/expo-screen-orientation';
 import { PHONE_WINDOW, setTestWindow, TABLET_LANDSCAPE_WINDOW } from '@test/window-size';
 
-import { lockAppOrientation, useFullscreenOrientation } from '@/hooks/use-fullscreen-orientation';
+import {
+  lockAppOrientation,
+  useFullscreenOrientation,
+  type FullscreenOrientation,
+} from '@/hooks/use-fullscreen-orientation';
+
+const rotate = (orientation: Orientation) =>
+  act(() => {
+    emitOrientationChange(orientation);
+  });
+
+/** Toggle fullscreen by hand, as the player button does. */
+const chooseFullscreen = (result: { current: FullscreenOrientation }, next: boolean) =>
+  act(() => {
+    result.current.setFullscreen(next);
+  });
+
+/** An auto-rotating player page whose window may grow into a large one (a foldable unfolding). */
+const useFoldablePage = ({ large }: { large: boolean }) => useFullscreenOrientation(true, large);
 
 describe('lockAppOrientation', () => {
   afterEach(() => {
@@ -37,16 +56,19 @@ describe('lockAppOrientation', () => {
 });
 
 describe('useFullscreenOrientation', () => {
-  const { BackHandler } = jest.requireActual<typeof import('react-native')>('react-native');
-  let backHandlers: Array<() => boolean | null | undefined>;
+  const { BackHandler } = jest.requireActual<typeof ReactNative>('react-native');
+  let backHandlers: (() => boolean | null | undefined)[];
+  let addBackListener: jest.SpiedFunction<typeof BackHandler.addEventListener>;
 
   beforeEach(() => {
     lockAsync.mockClear();
     backHandlers = [];
-    jest.spyOn(BackHandler, 'addEventListener').mockImplementation((_event, handler) => {
-      backHandlers.push(handler as () => boolean | null | undefined);
-      return { remove: () => {} };
-    });
+    addBackListener = jest
+      .spyOn(BackHandler, 'addEventListener')
+      .mockImplementation((_event, handler) => {
+        backHandlers.push(handler as () => boolean | null | undefined);
+        return { remove: () => undefined };
+      });
   });
 
   afterEach(() => {
@@ -55,14 +77,12 @@ describe('useFullscreenOrientation', () => {
   });
 
   const renderOrientation = (autoRotate: boolean, largeScreen = false) =>
-    renderHook(({ auto, large }: { auto: boolean; large: boolean }) => useFullscreenOrientation(auto, large), {
-      initialProps: { auto: autoRotate, large: largeScreen },
-    });
-
-  const rotate = (orientation: Orientation) =>
-    act(() => {
-      emitOrientationChange(orientation);
-    });
+    renderHook(
+      ({ auto, large }: { auto: boolean; large: boolean }) => useFullscreenOrientation(auto, large),
+      {
+        initialProps: { auto: autoRotate, large: largeScreen },
+      },
+    );
 
   it('stays portrait and ignores rotation until there is something to play', async () => {
     const { result, rerender, unmount } = await renderOrientation(false);
@@ -101,12 +121,12 @@ describe('useFullscreenOrientation', () => {
   it('locks to the user’s choice once they toggle fullscreen themselves', async () => {
     const { result } = await renderOrientation(true);
 
-    await act(() => result.current.setFullscreen(true));
+    await chooseFullscreen(result, true);
     expect(result.current.fullscreen).toBe(true);
     expect(lockAsync).toHaveBeenLastCalledWith(OrientationLock.LANDSCAPE);
     expect(orientationListenerCount()).toBe(0);
 
-    await act(() => result.current.setFullscreen(false));
+    await chooseFullscreen(result, false);
     expect(lockAsync).toHaveBeenLastCalledWith(OrientationLock.PORTRAIT_UP);
 
     // Rotations no longer reach the hook: the screen is locked portrait.
@@ -118,7 +138,7 @@ describe('useFullscreenOrientation', () => {
     const { result } = await renderOrientation(true);
     await rotate(Orientation.LANDSCAPE_LEFT);
 
-    await act(() => result.current.setFullscreen(false));
+    await chooseFullscreen(result, false);
     expect(result.current.fullscreen).toBe(false);
     expect(lockAsync).toHaveBeenLastCalledWith(OrientationLock.PORTRAIT_UP);
   });
@@ -126,11 +146,14 @@ describe('useFullscreenOrientation', () => {
   describe('picking up the current orientation when following starts', () => {
     // The read of the device's orientation at follow-start races the listener: an event that
     // arrives first must win, and a result landing after stop/unmount must be dropped.
-    const settle = () => act(async () => {});
+    const settle = () => act(() => Promise.resolve());
 
     /** Queue a controllable result for the hook's next `getOrientationAsync` call. */
     const queueRead = () => {
-      let deferred!: { resolve: (orientation: Orientation) => void; reject: (error: unknown) => void };
+      let deferred!: {
+        resolve: (orientation: Orientation) => void;
+        reject: (error: unknown) => void;
+      };
       const pending = new Promise<Orientation>((resolve, reject) => {
         deferred = { resolve, reject };
       });
@@ -150,7 +173,7 @@ describe('useFullscreenOrientation', () => {
 
     it('a foldable that unfolded, rotated, then folded back picks up the current orientation', async () => {
       const first = queueRead();
-      const { result, rerender } = await renderHook(({ large }: { large: boolean }) => useFullscreenOrientation(true, large), {
+      const { result, rerender } = await renderHook(useFoldablePage, {
         initialProps: { large: false },
       });
 
@@ -212,7 +235,7 @@ describe('useFullscreenOrientation', () => {
 
       // The user toggles fullscreen before any rotation event: following stops (the effect's
       // cleanup flags the in-flight read as stale — same flag an unmount sets).
-      await act(() => result.current.setFullscreen(true));
+      await chooseFullscreen(result, true);
       expect(result.current.fullscreen).toBe(true);
 
       read.resolve(Orientation.PORTRAIT_UP);
@@ -223,22 +246,23 @@ describe('useFullscreenOrientation', () => {
 
   it('handles the Android back button only while fullscreen, exiting instead of leaving', async () => {
     const { result, unmount } = await renderOrientation(true);
-    expect(BackHandler.addEventListener).not.toHaveBeenCalled();
+    expect(addBackListener).not.toHaveBeenCalled();
 
     await rotate(Orientation.LANDSCAPE_LEFT);
-    expect(BackHandler.addEventListener).toHaveBeenCalledWith('hardwareBackPress', expect.any(Function));
+    expect(addBackListener).toHaveBeenCalledWith('hardwareBackPress', expect.any(Function));
     expect(backHandlers).toHaveLength(1);
 
     let handled: boolean | null | undefined;
+    const [pressBack] = backHandlers;
     await act(() => {
-      handled = backHandlers[0]!();
+      handled = pressBack?.();
     });
     expect(handled).toBe(true); // handled: leave fullscreen, not the screen
     expect(result.current.fullscreen).toBe(false);
     expect(lockAsync).toHaveBeenLastCalledWith(OrientationLock.PORTRAIT_UP);
 
     await unmount();
-    expect(BackHandler.addEventListener).toHaveBeenCalledTimes(1); // no resubscription after exit
+    expect(addBackListener).toHaveBeenCalledTimes(1); // no resubscription after exit
   });
 
   it('swallows orientation lock failures', async () => {
@@ -256,7 +280,7 @@ describe('useFullscreenOrientation', () => {
 
     lockAppOrientation(true);
     const { result, unmount } = await renderOrientation(true);
-    await act(() => result.current.setFullscreen(true));
+    await chooseFullscreen(result, true);
     await unmount();
 
     // No native orientation lock or rotation tracking on web (the back-button effect is a harmless web stub there).
@@ -266,12 +290,13 @@ describe('useFullscreenOrientation', () => {
 });
 
 describe('useFullscreenOrientation on large screens', () => {
-  const { BackHandler } = jest.requireActual<typeof import('react-native')>('react-native');
+  const { BackHandler } = jest.requireActual<typeof ReactNative>('react-native');
+  let addBackListener: jest.SpiedFunction<typeof BackHandler.addEventListener>;
 
   beforeEach(() => {
     lockAsync.mockClear();
     setTestWindow(TABLET_LANDSCAPE_WINDOW);
-    jest.spyOn(BackHandler, 'addEventListener');
+    addBackListener = jest.spyOn(BackHandler, 'addEventListener');
   });
 
   afterEach(() => {
@@ -284,11 +309,6 @@ describe('useFullscreenOrientation on large screens', () => {
       initialProps: { auto: autoRotate },
     });
 
-  const rotate = (orientation: Orientation) =>
-    act(() => {
-      emitOrientationChange(orientation);
-    });
-
   it('never follows the device and always keeps DEFAULT, whatever fullscreen does', async () => {
     const { result } = await renderLarge(true);
 
@@ -299,23 +319,23 @@ describe('useFullscreenOrientation on large screens', () => {
     expect(lockAsync).toHaveBeenLastCalledWith(OrientationLock.DEFAULT);
 
     // Toggling fullscreen by hand hides the details but still never locks the orientation.
-    await act(() => result.current.setFullscreen(true));
+    await chooseFullscreen(result, true);
     expect(result.current.fullscreen).toBe(true);
     expect(lockAsync).toHaveBeenLastCalledWith(OrientationLock.DEFAULT);
 
     // Android back still exits fullscreen (rather than leaving the page) — the orientation stays free.
-    expect(BackHandler.addEventListener).toHaveBeenCalledWith('hardwareBackPress', expect.any(Function));
+    expect(addBackListener).toHaveBeenCalledWith('hardwareBackPress', expect.any(Function));
   });
 
   it('unmount restores the app-wide policy: DEFAULT for large, PORTRAIT_UP for a phone', async () => {
-    const phone = await renderHook(({ large }: { large: boolean }) => useFullscreenOrientation(true, large), {
+    const phone = await renderHook(useFoldablePage, {
       initialProps: { large: false },
     });
     await phone.unmount();
     expect(lockAsync).toHaveBeenLastCalledWith(OrientationLock.PORTRAIT_UP);
 
     lockAsync.mockClear();
-    const tablet = await renderHook(({ large }: { large: boolean }) => useFullscreenOrientation(true, large), {
+    const tablet = await renderHook(useFoldablePage, {
       initialProps: { large: true },
     });
     await tablet.unmount();
@@ -323,7 +343,7 @@ describe('useFullscreenOrientation on large screens', () => {
   });
 
   it('rotation-driven fullscreen does not carry over when the window becomes large', async () => {
-    const { result, rerender } = await renderHook(({ large }: { large: boolean }) => useFullscreenOrientation(true, large), {
+    const { result, rerender } = await renderHook(useFoldablePage, {
       initialProps: { large: false },
     });
 

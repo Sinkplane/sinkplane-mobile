@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "hooks": {
+    "preToolUse": [
+      {
+        "command": "scripts/agent-hooks/protect-gates.sh cursor"
+      }
+    ],
+    "stop": [
+      {
+        "command": "scripts/agent-hooks/stop-gate.sh cursor",
+        "timeout": 900,
+        "loop_limit": 5
+      }
+    ]
+  }
+}

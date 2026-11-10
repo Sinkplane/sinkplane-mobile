@@ -1,4 +1,5 @@
-import { useEffect } from 'react';
+import { logError } from '@/utils/log';
+import { useEffect, type ReactElement } from 'react';
 import { Appearance, Platform, StyleSheet, View } from 'react-native';
 import { DarkTheme, DefaultTheme, Stack, ThemeProvider, usePathname } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
@@ -11,13 +12,21 @@ import { lockAppOrientation } from '@/hooks/use-fullscreen-orientation';
 import { useNotificationSync } from '@/hooks/use-notification-sync';
 import { useScreenLayout } from '@/hooks/use-screen-layout';
 import { configureNotifications } from '@/notifications/local-notifications';
-import { SessionProvider, ThemeProvider as AppThemeProvider, useColorScheme, useSession, useTheme } from '@/shared';
+import {
+  SessionProvider,
+  ThemeProvider as AppThemeProvider,
+  useColorScheme,
+  useSession,
+  useTheme,
+} from '@/shared';
 
 // Prevent the splash screen from auto-hiding before the first render is ready.
-SplashScreen.preventAutoHideAsync();
+void SplashScreen.preventAutoHideAsync();
 
 // Show new-post notifications in the foreground too, and create the Android channel.
-configureNotifications().catch(error => console.error('[Notifications] Setup failed:', error));
+configureNotifications().catch((error: unknown) => {
+  logError('[Notifications] Setup failed:', error);
+});
 
 // Create a query client instance
 const queryClient = new QueryClient({
@@ -29,7 +38,7 @@ const queryClient = new QueryClient({
   },
 });
 
-export default function RootLayout() {
+export default function RootLayout(): ReactElement {
   return (
     <AppThemeProvider>
       <RootNavigation />
@@ -38,12 +47,12 @@ export default function RootLayout() {
 }
 
 // Inner component so the navigation theme reacts to the app theme override.
-function RootNavigation() {
+function RootNavigation(): ReactElement {
   const colorScheme = useColorScheme();
   const { themeMode } = useTheme();
 
   useEffect(() => {
-    SplashScreen.hideAsync();
+    void SplashScreen.hideAsync();
   }, []);
 
   useAppOrientation();
@@ -51,7 +60,9 @@ function RootNavigation() {
   // Push the in-app override down to the native layer so system-drawn chrome
   // (native tab bar / Liquid Glass, keyboards, alerts, WebViews) matches it.
   useEffect(() => {
-    if (Platform.OS === 'web') return;
+    if (Platform.OS === 'web') {
+      return;
+    }
     Appearance.setColorScheme(themeMode === 'system' ? 'auto' : themeMode);
   }, [themeMode]);
 
@@ -73,18 +84,20 @@ function RootNavigation() {
  * they're showing (see useFullscreenOrientation), so a window resize under one (folding a foldable)
  * doesn't override them.
  */
-function useAppOrientation() {
+function useAppOrientation(): void {
   const { large } = useScreenLayout();
   const onPlayerPage = isPlayerRoute(usePathname());
   useEffect(() => {
-    if (!onPlayerPage) lockAppOrientation(large);
+    if (!onPlayerPage) {
+      lockAppOrientation(large);
+    }
   }, [large, onPlayerPage]);
 }
 
 // Create a new component that can access the SessionProvider context.
-function RootNavigator() {
+function RootNavigator(): ReactElement {
   const { token, isLoading } = useSession();
-  const signedIn = !!token;
+  const signedIn = token !== null && token !== undefined && token !== '';
 
   useNotificationSync(token, isLoading);
 

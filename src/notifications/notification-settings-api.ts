@@ -1,5 +1,15 @@
 import { authenticatedFetch } from '@/shared';
 
+import {
+  arrayField,
+  booleanField,
+  isJsonObject,
+  numberField,
+  objectField,
+  stringField,
+  type JsonObject,
+} from './json-fields';
+
 /**
  * Floatplane's per-creator notification settings (floatplane.com → Settings → Notifications).
  *
@@ -20,10 +30,15 @@ export interface CreatorNotificationSettings {
   contentEmail: boolean;
 }
 
-interface NotificationListEntry {
-  creator?: { id?: string; title?: string; icon?: { path?: string; childImages?: { path?: string; width?: number }[] } | null };
-  userNotificationSetting?: { creator?: string; contentFirebase?: boolean; contentEmail?: boolean };
+/** One creator's change: `{ creator, property, newValue }` on the wire. */
+export interface NotificationSettingChange {
+  creatorId: string;
+  property: NotificationProperty;
+  value: boolean;
 }
+
+/** The list shows a small avatar: the smallest icon variant at least this wide is used. */
+const MIN_ICON_WIDTH = 100;
 
 export const NOTIFICATION_LIST_PATH = '/api/v3/user/notification/list';
 export const NOTIFICATION_UPDATE_PATH = '/api/v3/user/notification/update';
@@ -31,47 +46,73 @@ export const NOTIFICATION_UPDATE_PATH = '/api/v3/user/notification/update';
 async function ensureOk(response: Response, what: string): Promise<Response> {
   if (!response.ok) {
     const errorText = await response.text().catch(() => '');
-    throw new Error(`Failed to ${what}: ${response.status} - ${errorText}`);
+    throw new Error(`Failed to ${what}: ${response.status.toString()} - ${errorText}`);
   }
   return response;
 }
 
+const isUsableIcon = (image: JsonObject): boolean =>
+  (numberField(image, 'width') ?? 0) >= MIN_ICON_WIDTH && Boolean(stringField(image, 'path'));
+
 /** Smallest icon variant ≥ 100px (the list shows a small avatar), else the original. */
-function iconUrl(icon: NonNullable<NotificationListEntry['creator']>['icon']): string | null {
-  const child = icon?.childImages?.find(image => (image.width ?? 0) >= 100 && image.path);
-  return child?.path ?? icon?.path ?? null;
+function iconUrl(icon: JsonObject): string | null {
+  const child = arrayField(icon, 'childImages').filter(isJsonObject).find(isUsableIcon);
+  return stringField(child ?? {}, 'path') ?? stringField(icon, 'path') ?? null;
 }
 
-export async function fetchNotificationSettings(token: string): Promise<CreatorNotificationSettings[]> {
-  const response = await ensureOk(await authenticatedFetch(NOTIFICATION_LIST_PATH, token), 'load notification settings');
-  const entries = (await response.json()) as NotificationListEntry[];
-  return (Array.isArray(entries) ? entries : []).flatMap(entry => {
-    const creatorId = entry.creator?.id ?? entry.userNotificationSetting?.creator;
-    if (!creatorId) return [];
-    const settings = entry.userNotificationSetting ?? {};
-    return [
-      {
-        creatorId,
-        title: entry.creator?.title ?? 'Creator',
-        iconUrl: iconUrl(entry.creator?.icon),
-        // Floatplane defaults new subscriptions to push on, email off.
-        contentFirebase: settings.contentFirebase ?? true,
-        contentEmail: settings.contentEmail ?? false,
-      },
-    ];
-  });
+/** `creator.id`, else the setting's `creator`; null when neither names a creator. */
+function creatorIdOf(creator: JsonObject, setting: JsonObject): string | null {
+  const creatorId = stringField(creator, 'id') ?? stringField(setting, 'creator');
+  return creatorId === undefined || creatorId === '' ? null : creatorId;
+}
+
+/** Floatplane defaults new subscriptions to push on, email off. */
+function preferencesOf(
+  setting: JsonObject,
+): Pick<CreatorNotificationSettings, NotificationProperty> {
+  return {
+    contentFirebase: booleanField(setting, 'contentFirebase') ?? true,
+    contentEmail: booleanField(setting, 'contentEmail') ?? false,
+  };
+}
+
+/** `{ creator: {…}, userNotificationSetting: {…} }` → settings (none without a creator id). */
+function settingsOf(entry: JsonObject): CreatorNotificationSettings[] {
+  const creator = objectField(entry, 'creator');
+  const setting = objectField(entry, 'userNotificationSetting');
+  const creatorId = creatorIdOf(creator, setting);
+  if (creatorId === null) {
+    return [];
+  }
+  return [
+    {
+      creatorId,
+      title: stringField(creator, 'title') ?? 'Creator',
+      iconUrl: iconUrl(objectField(creator, 'icon')),
+      ...preferencesOf(setting),
+    },
+  ];
+}
+
+export async function fetchNotificationSettings(
+  token: string,
+): Promise<CreatorNotificationSettings[]> {
+  const response = await ensureOk(
+    await authenticatedFetch(NOTIFICATION_LIST_PATH, token),
+    'load notification settings',
+  );
+  const entries: unknown = await response.json();
+  return Array.isArray(entries) ? entries.filter(isJsonObject).flatMap(settingsOf) : [];
 }
 
 export async function updateNotificationSetting(
   token: string,
-  creatorId: string,
-  property: NotificationProperty,
-  newValue: boolean,
+  { creatorId, property, value }: NotificationSettingChange,
 ): Promise<void> {
   await ensureOk(
     await authenticatedFetch(NOTIFICATION_UPDATE_PATH, token, {
       method: 'POST',
-      body: JSON.stringify({ creator: creatorId, property, newValue }),
+      body: JSON.stringify({ creator: creatorId, property, newValue: value }),
     }),
     'update notification settings',
   );

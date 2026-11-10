@@ -20,14 +20,18 @@ describe('SubscriptionPicker', () => {
     await renderPicker();
 
     expect(screen.getByText('All Subscriptions')).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Subscription: All Subscriptions. Tap to change.' })).toBeTruthy();
+    expect(
+      screen.getByRole('button', { name: 'Subscription: All Subscriptions. Tap to change.' }),
+    ).toBeTruthy();
   });
 
   it('shows the selected creator on the button', async () => {
     await renderPicker({ selectedCreatorId: techCreator.id });
 
     expect(screen.getByText('Tech Channel')).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Subscription: Tech Channel. Tap to change.' })).toBeTruthy();
+    expect(
+      screen.getByRole('button', { name: 'Subscription: Tech Channel. Tap to change.' }),
+    ).toBeTruthy();
   });
 
   it('lists every subscription in the modal, marking the selected one', async () => {

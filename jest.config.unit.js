@@ -2,7 +2,7 @@
  * Unit tests: colocated `src/**\/*.test.ts(x)` files exercising components, hooks and utilities in
  * isolation. Screens under src/app are route modules driven by the E2E suite instead.
  *
- * Coverage is enforced: `npm run test:unit:coverage` (and CI) fails when any metric drops below
+ * Coverage is enforced: `make coverage` (and CI) fails when any metric drops below
  * the thresholds below.
  */
 const base = require('./jest.config.base');

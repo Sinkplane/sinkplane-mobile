@@ -16,17 +16,21 @@ export enum BackgroundTaskResult {
 
 export const mockBackgroundTask = {
   status: BackgroundTaskStatus.Available,
-  reset() {
+  reset(): void {
     this.status = BackgroundTaskStatus.Available;
   },
 };
 
-export const getStatusAsync = jest.fn(async () => mockBackgroundTask.status);
+export const getStatusAsync = jest.fn(() => Promise.resolve(mockBackgroundTask.status));
 
-export const registerTaskAsync = jest.fn(async (name: string, options?: { minimumInterval?: number }) => {
-  mockTaskManager.registered.set(name, options ?? {});
-});
+export const registerTaskAsync = jest.fn(
+  (name: string, options?: { minimumInterval?: number }): Promise<void> => {
+    mockTaskManager.registered.set(name, options ?? {});
+    return Promise.resolve();
+  },
+);
 
-export const unregisterTaskAsync = jest.fn(async (name: string) => {
+export const unregisterTaskAsync = jest.fn((name: string): Promise<void> => {
   mockTaskManager.registered.delete(name);
+  return Promise.resolve();
 });

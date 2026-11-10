@@ -1,0 +1,26 @@
+name: Setup
+description: pnpm + Node (from .nvmrc) + GitHub Packages auth + frozen install
+inputs:
+  packages-token:
+    description: Token with read:packages for @sinkplane/shared
+    required: true
+runs:
+  using: composite
+  steps:
+    - uses: pnpm/action-setup@v6
+    - uses: actions/setup-node@v7
+      with:
+        node-version-file: .nvmrc
+        cache: pnpm
+    # @sinkplane/shared is a private GitHub Packages package. Either:
+    #  - add a PACKAGES_AUTH_TOKEN repo secret (PAT with read:packages on the Sinkplane org), or
+    #  - grant this repo read access in the package's settings ("Manage Actions access"),
+    #    in which case the built-in GITHUB_TOKEN is used.
+    - name: Configure GitHub Packages auth
+      shell: bash
+      run: echo "//npm.pkg.github.com/:_authToken=${PACKAGES_AUTH_TOKEN}" >> ~/.npmrc
+      env:
+        PACKAGES_AUTH_TOKEN: ${{ inputs.packages-token }}
+    - name: Install dependencies
+      shell: bash
+      run: make setup

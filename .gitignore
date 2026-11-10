@@ -10,6 +10,7 @@ android/
 /modules/*/ios/build/
 web-build/
 npm-debug.*
+pnpm-debug.*
 yarn-debug.*
 yarn-error.*
 *.jks
@@ -25,17 +26,16 @@ yarn-error.*
 .env
 .env*.local
 
-# Husky (generated hook internals; only .husky/pre-commit is tracked)
-.husky/_
-
 # macOS
 .DS_Store
 
 # Metro
 .metro-health-check*
 
-# Jest coverage output
+# Test output: Jest coverage, Stryker mutation reports and sandbox
 coverage/
+reports/
+.stryker-tmp/
 
 # Archives
 *.tar.gz

@@ -10,7 +10,7 @@
  * __tests__/e2e/helpers/runtime.ts), drive them with `emit(...)`/`setStatus(...)`, and assert
  * seeks recorded by the `currentTime` setter.
  */
-import { useState } from 'react';
+import { type ReactElement, useState } from 'react';
 import { View, type ViewProps } from 'react-native';
 import type { VideoSource } from 'expo-video';
 
@@ -78,7 +78,7 @@ export function createMockVideoPlayer(
     seekBy: jest.fn((seconds: number) => {
       player.currentTime = player.currentTime + seconds;
     }),
-    replaceAsync: jest.fn(async () => undefined),
+    replaceAsync: jest.fn(() => Promise.resolve()),
     release: jest.fn(() => {
       player.released = true;
     }),
@@ -98,6 +98,11 @@ export function createMockVideoPlayer(
     },
   };
 
+  const setPlaying = (playing: boolean): void => {
+    player.playing = playing;
+    player.emit('playingChange', { isPlaying: playing });
+  };
+
   // Setting currentTime seeks (the app assigns it); record every seek.
   let currentTime = 0;
   Object.defineProperty(player, 'currentTime', {
@@ -109,20 +114,19 @@ export function createMockVideoPlayer(
     },
   });
 
-  player.play.mockImplementation(() => setPlaying(player, true));
-  player.pause.mockImplementation(() => setPlaying(player, false));
+  player.play.mockImplementation(() => {
+    setPlaying(true);
+  });
+  player.pause.mockImplementation(() => {
+    setPlaying(false);
+  });
   player.replay.mockImplementation(() => {
     player.currentTime = 0;
-    setPlaying(player, true);
+    setPlaying(true);
   });
 
   setup?.(player);
   return player;
-}
-
-function setPlaying(target: MockVideoPlayer, playing: boolean) {
-  target.playing = playing;
-  target.emit('playingChange', { isPlaying: playing });
 }
 
 /** Props the app passes to `VideoView` (callbacks the tests can invoke). */
@@ -155,7 +159,10 @@ export function resetMockVideoPlayerState(): void {
 }
 
 /** The fake hook: one player per mount, kept stable across renders like the real one. */
-export function useVideoPlayer(source: VideoSource | string | number | null, setup?: (instance: MockVideoPlayer) => void): MockVideoPlayer {
+export function useVideoPlayer(
+  source: VideoSource | string | number | null,
+  setup?: (instance: MockVideoPlayer) => void,
+): MockVideoPlayer {
   const [player] = useState(() => {
     const created = createMockVideoPlayer(source ?? null, setup);
     mockVideoPlayerState.players.push(created);
@@ -171,11 +178,19 @@ export function createVideoPlayer(source: VideoSource | string | number | null):
   return created;
 }
 
-/** The fake view: a host View that forwards props (testID, PiP callbacks) for tests to drive. */
-export function VideoView(props: MockVideoViewProps) {
+/** Record the latest props of a mounted `VideoView` (overall and by testID). */
+function recordViewProps(props: MockVideoViewProps): void {
   mockVideoPlayerState.viewProps = props;
-  if (props.testID) mockVideoPlayerState.viewsByTestID.set(props.testID, props);
-  const rest = { ...props } as Partial<MockVideoViewProps> & ViewProps;
-  delete rest.player; // the real view passes a player id, not the object
+  if (props.testID !== undefined && props.testID !== '') {
+    mockVideoPlayerState.viewsByTestID.set(props.testID, props);
+  }
+}
+
+/** The fake view: a host View that forwards props (testID, PiP callbacks) for tests to drive. */
+export function VideoView(props: Readonly<MockVideoViewProps>): ReactElement {
+  recordViewProps(props);
+  // The real view passes a player id, not the object.
+  const rest: Partial<MockVideoViewProps> = { ...props };
+  delete rest.player;
   return <View {...rest} />;
 }

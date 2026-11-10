@@ -39,7 +39,7 @@ describe('isLargeScreen', () => {
 });
 
 describe('gridColumns', () => {
-  const cases: ReadonlyArray<[number, number, number]> = [
+  const cases: readonly [number, number, number][] = [
     // [window width, expected numColumns, expected columnWidth]
     [390, 1, 358], // phone: everything after 2×16 padding
     [750, 2, 351], // unfolded foldable portrait
@@ -49,12 +49,15 @@ describe('gridColumns', () => {
     [1366, 4, 321.5], // tablet landscape
   ];
 
-  it.each(cases)('a %i-wide window lays out %i columns of %i dp', (width, numColumns, columnWidth) => {
-    expect(gridColumns(width, LIST_PADDING, LIST_GAP)).toEqual({ numColumns, columnWidth });
-    expect(numColumns).toBeGreaterThan(0);
-    // Every column is at least the minimum width, or the list is single-column.
-    if (numColumns > 1) expect(columnWidth).toBeGreaterThanOrEqual(320);
-  });
+  it.each(cases)(
+    'a %i-wide window lays out %i columns of %i dp',
+    (width, numColumns, columnWidth) => {
+      expect(gridColumns(width, LIST_PADDING, LIST_GAP)).toEqual({ numColumns, columnWidth });
+      expect(numColumns).toBeGreaterThan(0);
+      // Every column is at least the minimum width, or the list is single-column.
+      expect(numColumns === 1 || columnWidth >= 320).toBe(true);
+    },
+  );
 
   it('keeps one full-width column when even a single minimum-width column barely fits', () => {
     // padding*2 + 320 exactly: one column, exactly the minimum width.

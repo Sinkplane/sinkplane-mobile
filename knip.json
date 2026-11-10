@@ -1,0 +1,14 @@
+{
+  "$schema": "./node_modules/knip/schema.json",
+  "entry": ["src/app/**/*.tsx", "scripts/*.mts", "modules/*/index.ts"],
+  "project": [
+    "*.{js,mjs,cjs,ts}",
+    "src/**/*.{ts,tsx}",
+    "__tests__/**/*.{ts,tsx}",
+    "jest/**/*.{ts,tsx}",
+    "modules/**/*.{ts,tsx}",
+    "scripts/**/*.mts"
+  ],
+  "ignoreDependencies": ["prettier", "expo-updates"],
+  "ignoreBinaries": ["make"]
+}

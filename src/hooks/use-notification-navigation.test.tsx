@@ -6,7 +6,11 @@ import { makeResponse, mockNotifications, tapNotification } from '@test/mocks/ex
 const mockPush = jest.fn();
 let mockRootState: { key?: string } | undefined;
 jest.mock('expo-router', () => ({
-  router: { push: (...args: unknown[]) => mockPush(...args) },
+  router: {
+    push: (...args: unknown[]) => {
+      mockPush(...args);
+    },
+  },
   useRootNavigationState: () => mockRootState,
 }));
 
@@ -18,7 +22,9 @@ const videoRoute = (id: string) => ({ pathname: '/video/[id]', params: { id } })
 
 describe('useNotificationNavigation', () => {
   it('opens the post of a tapped notification', async () => {
-    await renderHook(() => useNotificationNavigation());
+    await renderHook(() => {
+      useNotificationNavigation();
+    });
 
     tapNotification({ postId: 'p1' });
     expect(mockPush).toHaveBeenCalledWith(videoRoute('p1'));
@@ -26,7 +32,9 @@ describe('useNotificationNavigation', () => {
   });
 
   it('ignores taps without a post and non-default actions', async () => {
-    await renderHook(() => useNotificationNavigation());
+    await renderHook(() => {
+      useNotificationNavigation();
+    });
 
     tapNotification({ postId: '' });
     tapNotification({});
@@ -37,7 +45,9 @@ describe('useNotificationNavigation', () => {
   it('opens the notification that launched the app once navigation is ready', async () => {
     mockNotifications.lastResponse = makeResponse({ postId: 'p2' });
     mockRootState = undefined;
-    const { rerender } = await renderHook(() => useNotificationNavigation());
+    const { rerender } = await renderHook(() => {
+      useNotificationNavigation();
+    });
     expect(mockPush).not.toHaveBeenCalled();
 
     mockRootState = { key: 'root' };
@@ -47,7 +57,9 @@ describe('useNotificationNavigation', () => {
   });
 
   it('stops listening on unmount', async () => {
-    const { unmount } = await renderHook(() => useNotificationNavigation());
+    const { unmount } = await renderHook(() => {
+      useNotificationNavigation();
+    });
     await unmount();
     tapNotification({ postId: 'p1' });
     expect(mockPush).not.toHaveBeenCalled();

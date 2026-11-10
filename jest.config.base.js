@@ -1,4 +1,3 @@
-/* global __dirname */
 /**
  * Settings shared by the unit (jest.config.unit.js) and E2E (jest.config.e2e.js) suites.
  */
@@ -9,8 +8,10 @@ module.exports = {
   rootDir: __dirname,
   // jest-expo only transforms an allow-list of node_modules packages. @sinkplane/shared ships
   // untranspiled ESM + JSX, so add it to that list (prepended to the preset's own pattern).
-  transformIgnorePatterns: expoPreset.transformIgnorePatterns.map(pattern =>
-    pattern.startsWith('/node_modules/(?!(') ? pattern.replace('/node_modules/(?!(', '/node_modules/(?!(@sinkplane|') : pattern,
+  transformIgnorePatterns: expoPreset.transformIgnorePatterns.map((pattern) =>
+    pattern.startsWith('/node_modules/(?!(')
+      ? pattern.replace('/node_modules/(?!(', '/node_modules/(?!(@sinkplane|')
+      : pattern,
   ),
   moduleNameMapper: {
     // jest-expo maps tsconfig `paths` in declaration order, so `@/*` would shadow `@/assets/*`.
@@ -28,13 +29,13 @@ module.exports = {
     // Local native module (modules/fold-posture): a posture the tests set and broadcast.
     '^@modules/fold-posture$': '<rootDir>/jest/mocks/fold-posture.ts',
   },
-  // With `npm run link:shared`, @sinkplane/shared resolves (by realpath) into the sibling clone,
+  // With `pnpm link:shared`, @sinkplane/shared resolves (by realpath) into the sibling clone,
   // whose own node_modules is not this app's. Fall back to this app's node_modules so bare
   // imports from the shared dist share one instance of react, react-query, …
   modulePaths: ['<rootDir>/node_modules'],
   clearMocks: true,
   testTimeout: 30000,
-  coverageReporters: ['text', 'text-summary', 'lcov', 'html'],
+  coverageReporters: ['text-summary', 'json', 'lcov', 'html'],
   // GitHub Actions annotations for failing tests in CI (built into Jest 30).
   reporters: process.env.CI ? ['default', 'github-actions'] : ['default'],
 };

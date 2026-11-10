@@ -4,7 +4,9 @@ import { ReactionBar } from '@/components/video-page/ReactionBar';
 
 async function renderBar(props: Partial<Parameters<typeof ReactionBar>[0]> = {}) {
   const onToggle = jest.fn();
-  await render(<ReactionBar reaction={null} likes={10} dislikes={2} onToggle={onToggle} {...props} />);
+  await render(
+    <ReactionBar reaction={null} likes={10} dislikes={2} onToggle={onToggle} {...props} />,
+  );
   return { onToggle };
 }
 

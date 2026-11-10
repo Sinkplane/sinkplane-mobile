@@ -1,32 +1,73 @@
-import { useState } from 'react';
+import { useState, type ReactElement } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { Image } from 'expo-image';
-import { ThemeSwitcher } from '@/components/ThemeSwitcher';
+
 import { NotificationSettings } from '@/components/settings/NotificationSettings';
+import { ProfileHeader } from '@/components/settings/ProfileHeader';
+import { SubscriptionList } from '@/components/settings/SubscriptionList';
+import { ThemeSwitcher } from '@/components/ThemeSwitcher';
 import { useTabScreenInsets } from '@/hooks/use-tab-screen-insets';
 import { logout, useSession, useThemeColor } from '@/shared';
 
-export default function Settings() {
-  const { user, subscriptions, creators, token, isLoading, signOut } = useSession();
+/** Breathing room below the sign-out button, on top of the tab bar inset. */
+const CONTENT_BOTTOM_PADDING = 32;
+
+/** Best effort: invalidates the session server-side, then always clears it locally. */
+function useSignOut(): { isSigningOut: boolean; handleSignOut: () => void } {
+  const { token, signOut } = useSession();
   const [isSigningOut, setIsSigningOut] = useState(false);
-  const insets = useTabScreenInsets();
 
-  const backgroundColor = useThemeColor({}, 'background');
-  const textColor = useThemeColor({}, 'text');
-  const mutedColor = useThemeColor({}, 'icon');
-  // The shared dark tint (#aaa) is too light behind white button text.
-  const buttonColor = useThemeColor({}, 'link');
-
-  const handleSignOut = async () => {
+  const handleSignOut = () => {
     setIsSigningOut(true);
-    try {
-      // Best effort: invalidate the session server-side, then clear locally.
-      if (token) await logout(token).catch(() => undefined);
-    } finally {
+    const serverLogout =
+      token === null || token === undefined || token === ''
+        ? Promise.resolve()
+        : logout(token).catch(() => undefined);
+    void serverLogout.finally(() => {
       signOut();
       setIsSigningOut(false);
-    }
+    });
   };
+
+  return { isSigningOut, handleSignOut };
+}
+
+function SignOutButton(): ReactElement {
+  // The shared dark tint (#aaa) is too light behind white button text.
+  const buttonColor = useThemeColor({}, 'link');
+  const { isSigningOut, handleSignOut } = useSignOut();
+  return (
+    <Pressable
+      style={({ pressed }) => [
+        styles.signOutButton,
+        { backgroundColor: buttonColor },
+        (pressed || isSigningOut) && styles.buttonPressed,
+      ]}
+      onPress={handleSignOut}
+      disabled={isSigningOut}
+    >
+      <Text style={styles.buttonText}>{isSigningOut ? 'Signing Out...' : 'Sign Out'}</Text>
+    </Pressable>
+  );
+}
+
+function Section({
+  title,
+  children,
+}: Readonly<{ title: string; children: ReactElement }>): ReactElement {
+  const textColor = useThemeColor({}, 'text');
+  return (
+    <>
+      <Text style={[styles.sectionHeader, { color: textColor }]}>{title}</Text>
+      {children}
+    </>
+  );
+}
+
+export default function Settings(): ReactElement {
+  const { user, subscriptions, creators, token, isLoading } = useSession();
+  const insets = useTabScreenInsets();
+  const backgroundColor = useThemeColor({}, 'background');
+  const mutedColor = useThemeColor({}, 'icon');
 
   if (isLoading) {
     return (
@@ -39,61 +80,27 @@ export default function Settings() {
   return (
     <View style={[styles.container, { backgroundColor, paddingTop: insets.top }]}>
       <ScrollView
-        contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 32 }]}
+        contentContainerStyle={[
+          styles.content,
+          { paddingBottom: insets.bottom + CONTENT_BOTTOM_PADDING },
+        ]}
         scrollIndicatorInsets={{ bottom: insets.bottom }}
       >
-        <View style={styles.profileRow}>
-          {user?.profileImage?.path ? (
-            <Image source={{ uri: user.profileImage.path }} style={styles.avatar} contentFit="cover" />
-          ) : (
-            <View style={[styles.avatar, styles.avatarFallback]}>
-              <Text style={styles.avatarText}>{(user?.username ?? '?').charAt(0).toUpperCase()}</Text>
-            </View>
-          )}
-          <View style={styles.profileMeta}>
-            <Text style={[styles.title, { color: textColor }]}>{user?.displayName ?? user?.username ?? 'Signed in'}</Text>
-            <Text style={[styles.body, { color: mutedColor }]}>@{user?.username}</Text>
+        <ProfileHeader user={user} />
+        <Section title="Appearance">
+          <View style={styles.section}>
+            <ThemeSwitcher />
           </View>
-        </View>
-
-        <Text style={[styles.sectionHeader, { color: textColor }]}>Appearance</Text>
-        <View style={styles.section}>
-          <ThemeSwitcher />
-        </View>
-
-        <Text style={[styles.sectionHeader, { color: textColor }]}>Notifications</Text>
-        <View style={styles.section}>
-          <NotificationSettings token={token} />
-        </View>
-
-        <Text style={[styles.sectionHeader, { color: textColor }]}>Subscriptions</Text>
-        {subscriptions && subscriptions.length > 0 ? (
-          subscriptions.map(subscription => {
-            const creator = creators?.find(c => c.id === subscription.creator);
-            return (
-              <View key={subscription.creator} style={[styles.card, { borderColor: `${mutedColor}22` }]}>
-                <Text style={[styles.cardTitle, { color: textColor }]}>
-                  {creator?.title ?? creator?.owner?.username ?? `Creator ${subscription.creator}`}
-                </Text>
-                <Text style={[styles.body, { color: mutedColor }]}>{subscription.plan?.title ?? 'Active'}</Text>
-              </View>
-            );
-          })
-        ) : (
-          <Text style={[styles.body, { color: mutedColor }]}>No subscriptions found.</Text>
-        )}
-
-        <Pressable
-          style={({ pressed }) => [
-            styles.signOutButton,
-            { backgroundColor: buttonColor },
-            (pressed || isSigningOut) && styles.buttonPressed,
-          ]}
-          onPress={handleSignOut}
-          disabled={isSigningOut}
-        >
-          <Text style={styles.buttonText}>{isSigningOut ? 'Signing Out...' : 'Sign Out'}</Text>
-        </Pressable>
+        </Section>
+        <Section title="Notifications">
+          <View style={styles.section}>
+            <NotificationSettings token={token} />
+          </View>
+        </Section>
+        <Section title="Subscriptions">
+          <SubscriptionList subscriptions={subscriptions} creators={creators} />
+        </Section>
+        <SignOutButton />
       </ScrollView>
     </View>
   );
@@ -115,34 +122,6 @@ const styles = StyleSheet.create({
     maxWidth: 720,
     alignSelf: 'center',
   },
-  profileRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 28,
-  },
-  profileMeta: {
-    marginLeft: 16,
-    flex: 1,
-  },
-  avatar: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-  },
-  avatarFallback: {
-    backgroundColor: '#0085FF',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  avatarText: {
-    color: '#fff',
-    fontSize: 26,
-    fontWeight: 'bold',
-  },
-  title: {
-    fontSize: 22,
-    fontWeight: 'bold',
-  },
   section: {
     marginBottom: 28,
   },
@@ -150,17 +129,6 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '600',
     marginBottom: 12,
-  },
-  card: {
-    borderWidth: 1,
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 10,
-  },
-  cardTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    marginBottom: 4,
   },
   body: {
     fontSize: 15,

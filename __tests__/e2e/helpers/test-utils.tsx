@@ -3,7 +3,7 @@
  */
 
 import { act as reactAct } from 'react';
-import type { Fiber } from 'react-reconciler';
+import { type StyleProp, StyleSheet, type TextStyle, type ViewStyle } from 'react-native';
 import { act, fireEvent, renderRouter, screen, within } from 'expo-router/testing-library';
 
 import type { User } from '@/shared';
@@ -11,18 +11,26 @@ import { FIXED_NOW, fixtureUser } from '@test/fixtures';
 import { items as secureStore } from '@test/mocks/expo-secure-store';
 
 import { api } from './mock-floatplane-api';
-import { mockWebViewState } from './native-mocks';
+import { type MockWebViewProps, mockWebViewState } from './native-mocks';
 
 // Re-exported so tests use the exact instances renderRouter binds to.
-export { act, fireEvent, screen, testRouter, userEvent, within } from 'expo-router/testing-library';
+export { act, fireEvent, screen, testRouter, within } from 'expo-router/testing-library';
+// expo-router only re-exports userEvent's type; the runtime value is RNTL's (same module registry).
+export { userEvent } from '@testing-library/react-native';
 // The imperative router of this test's module registry (navigate like a deep link / notification would).
 export { router } from 'expo-router';
 export { api };
 
-// renderRouter resolves this against the working directory (the project root under the npm scripts).
+interface PressableProps {
+  onPress?: () => unknown;
+}
+
+// renderRouter resolves this against the working directory (the project root under the make targets).
 const APP_DIR = './src/app';
 
 type RenderRouterResult = Awaited<ReturnType<typeof renderRouter>>;
+/** A rendered element (RNTL's `TestInstance`). */
+export type TestInstance = ReturnType<typeof screen.getByTestId>;
 
 /**
  * Boot the real app (src/app routes, providers, screens) at `initialUrl`.
@@ -33,12 +41,28 @@ export async function renderApp(initialUrl = '/'): Promise<RenderRouterResult> {
   return renderRouter(APP_DIR, { initialUrl });
 }
 
+/** `value`, or a thrown error naming `what` when it is missing (instead of a `!` assertion). */
+export function defined<T>(value: T | null | undefined, what = 'value'): T {
+  if (value === null || value === undefined) {
+    throw new Error(`Expected ${what} to be defined`);
+  }
+  return value;
+}
+
+/** The flattened `style` prop of a rendered element (`{}` when it has none). */
+export function styleOf(element: TestInstance): ViewStyle & TextStyle {
+  return StyleSheet.flatten(element.props['style'] as StyleProp<ViewStyle & TextStyle>) ?? {};
+}
+
 /**
  * Seed secure storage the way a previous sign-in left it — i.e. launch the app already signed in.
  * useStorageState JSON-encodes values and the session provider hands it a pre-stringified user,
  * so `fpuser` is double-encoded on disk.
  */
-export function seedSession({ token = api.createSession(), user = fixtureUser }: { token?: string; user?: User } = {}): string {
+export function seedSession({
+  token = api.createSession(),
+  user = fixtureUser,
+}: { token?: string; user?: User } = {}): string {
   secureStore.set('fptoken', JSON.stringify(token));
   secureStore.set('fpuser', JSON.stringify(JSON.stringify(user)));
   return token;
@@ -55,16 +79,29 @@ export async function advanceTime(ms: number): Promise<void> {
  * Deterministic `waitFor` for fake timers: flush, assert, step the clock, repeat until the
  * assertion passes or the fake-time budget runs out.
  */
-export async function until(assertion: () => void, { maxFakeMs = 5000, stepMs = 50 } = {}): Promise<void> {
+export async function until(
+  assertion: () => void,
+  { maxFakeMs = 5000, stepMs = 50 } = {},
+): Promise<void> {
   for (let waited = 0; ; waited += stepMs) {
-    try {
-      await advanceTime(0);
-      assertion();
+    if (await passesAfterFlush(assertion, waited >= maxFakeMs)) {
       return;
-    } catch (error) {
-      if (waited >= maxFakeMs) throw error;
-      await advanceTime(stepMs);
     }
+    await advanceTime(stepMs);
+  }
+}
+
+/** Flush pending work, then run `assertion`: true when it passes; rethrows on the last attempt. */
+async function passesAfterFlush(assertion: () => void, lastAttempt: boolean): Promise<boolean> {
+  await advanceTime(0);
+  try {
+    assertion();
+    return true;
+  } catch (error) {
+    if (lastAttempt) {
+      throw error;
+    }
+    return false;
   }
 }
 
@@ -73,14 +110,22 @@ export async function until(assertion: () => void, { maxFakeMs = 5000, stepMs = 
  * test can assert the in-between UI. (RNTL's fireEvent only resolves once the handler's work
  * settles.) Follow up with until(), which advances the fake clock inside act().
  */
-export function pressWithoutWaiting(element: { unstable_fiber: Fiber | null }): void {
-  let fiber = element.unstable_fiber;
-  while (fiber && typeof (fiber.memoizedProps as { onPress?: unknown } | null)?.onPress !== 'function') fiber = fiber.return;
-  if (!fiber) throw new Error('No onPress handler found for element');
-  const { onPress } = fiber.memoizedProps as { onPress: () => unknown };
+export function pressWithoutWaiting(element: TestInstance): void {
+  const onPress = nearestOnPress(element);
   reactAct(() => {
     void onPress();
   });
+}
+
+/** The `onPress` of the element or its closest ancestor that has one. */
+function nearestOnPress(element: TestInstance): () => unknown {
+  for (let fiber = element.unstable_fiber; fiber; fiber = fiber.return) {
+    const props = fiber.memoizedProps as PressableProps | null;
+    if (typeof props?.onPress === 'function') {
+      return props.onPress;
+    }
+  }
+  throw new Error('No onPress handler found for element');
 }
 
 // ---------------------------------------------------------------------------
@@ -90,34 +135,56 @@ export function pressWithoutWaiting(element: { unstable_fiber: Fiber | null }): 
 
 export type TabName = 'index' | 'history' | 'live' | 'settings';
 
-const tabHost = () => {
-  const [host] = screen.container.queryAll(node => node.type === 'RNSTabsHostIOS');
-  if (!host) throw new Error('Native tab host is not rendered');
-  return host;
+/** The props of the native tab host / tab screens this file reads. */
+interface TabHostProps {
+  navStateRequest?: { selectedScreenKey?: string; baseProvenance?: number };
+}
+interface TabScreenProps {
+  screenKey?: string;
+  badgeValue?: string;
+}
+
+const tabHost = (): { instance: TestInstance; props: TabHostProps } => {
+  const [host] = screen.container.queryAll((node) => node.type === 'RNSTabsHostIOS');
+  if (!host) {
+    throw new Error('Native tab host is not rendered');
+  }
+  return { instance: host, props: host.props as TabHostProps };
 };
 
 /** The tab the native tab bar currently shows. */
-export const selectedTab = (): string | undefined => tabHost().props.navStateRequest?.selectedScreenKey;
+export const selectedTab = (): string | undefined =>
+  tabHost().props.navStateRequest?.selectedScreenKey;
 
-const tabScreen = (name: TabName) => {
-  const [found] = screen.container.queryAll(node => node.type === 'RNSTabsScreenIOS' && node.props.screenKey === name);
-  if (!found) throw new Error(`Tab "${name}" is not rendered`);
+const isTabScreen = (node: TestInstance, name: TabName): boolean =>
+  node.type === 'RNSTabsScreenIOS' && (node.props as TabScreenProps).screenKey === name;
+
+const tabScreen = (name: TabName): TestInstance => {
+  const [found] = screen.container.queryAll((node) => isTabScreen(node, name));
+  if (!found) {
+    throw new Error(`Tab "${name}" is not rendered`);
+  }
   return found;
 };
 
 /** Queries scoped to one tab's screen. */
-export function inTab(name: TabName) {
+export function inTab(name: TabName): ReturnType<typeof within> {
   return within(tabScreen(name));
 }
 
 /** The badge text on a tab bar item (undefined when it shows no badge). */
-export const tabBadge = (name: TabName): string | undefined => tabScreen(name).props.badgeValue;
+export const tabBadge = (name: TabName): string | undefined =>
+  (tabScreen(name).props as TabScreenProps).badgeValue;
 
 /** Tap a native tab bar item (the selection event UITabBar / BottomNavigationView report). */
 export async function selectTab(name: TabName): Promise<void> {
   const host = tabHost();
-  await fireEvent(host, 'tabSelected', {
-    nativeEvent: { selectedScreenKey: name, provenance: host.props.navStateRequest?.baseProvenance ?? 0, actionOrigin: 'user' },
+  await fireEvent(host.instance, 'tabSelected', {
+    nativeEvent: {
+      selectedScreenKey: name,
+      provenance: host.props.navStateRequest?.baseProvenance ?? 0,
+      actionOrigin: 'user',
+    },
   });
 }
 
@@ -134,21 +201,29 @@ interface ListProps {
   numColumns?: number;
 }
 
+/** The props of a FlatList / VirtualizedList element (both take `data` + `renderItem`). */
+const asListProps = (props: unknown): ListProps | null => {
+  const candidate = props as ListProps | null;
+  return Array.isArray(candidate?.data) && 'renderItem' in candidate ? candidate : null;
+};
+
 function listProps(testID: string): ListProps {
   let fiber = screen.getByTestId(testID).unstable_fiber;
   let belowFlatList: ListProps | null = null;
   while (fiber) {
-    const props = fiber.memoizedProps as ListProps | null;
-    if (Array.isArray(props?.data) && 'renderItem' in props) {
-      // The FlatList element itself. (The VirtualizedList below it gets the same `data` but not
-      // `numColumns` — FlatList destructures that prop out — so keep walking past it.)
-      if ('numColumns' in props) return props;
-      belowFlatList ??= props;
+    const props = asListProps(fiber.memoizedProps);
+    // The FlatList element itself. (The VirtualizedList below it gets the same `data` but not
+    // `numColumns` — FlatList destructures that prop out — so keep walking past it.)
+    if (props && 'numColumns' in props) {
+      return props;
     }
+    belowFlatList ??= props;
     fiber = fiber.return;
   }
   // A FlatList that never passes numColumns: fall back to the VirtualizedList's props.
-  if (belowFlatList) return belowFlatList;
+  if (belowFlatList) {
+    return belowFlatList;
+  }
   throw new Error(`No FlatList found for testID "${testID}"`);
 }
 
@@ -156,12 +231,13 @@ function listProps(testID: string): ListProps {
 export const listNumColumns = (testID: string): number => listProps(testID).numColumns ?? 1;
 
 /** Ids of every item the list holds (rendered or virtualized away). */
-export const listItemIds = (testID: string): string[] => (listProps(testID).data ?? []).map(item => item.id);
+export const listItemIds = (testID: string): string[] =>
+  (listProps(testID).data ?? []).map((item) => item.id);
 
 /** The user scrolls to the bottom of the list. */
 export async function reachListEnd(testID: string): Promise<void> {
   const { onEndReached } = listProps(testID);
-  await act(async () => {
+  await act(() => {
     onEndReached?.({ distanceFromEnd: 0 });
   });
 }
@@ -170,19 +246,19 @@ export async function reachListEnd(testID: string): Promise<void> {
 // Turnstile driver — stands in for the Cloudflare challenge inside the WebView.
 // ---------------------------------------------------------------------------
 
-const webView = () => {
+const webView = (): MockWebViewProps => {
   if (!mockWebViewState.props) throw new Error('Turnstile WebView has not mounted');
   return mockWebViewState.props;
 };
 
 export const turnstile = {
-  mounted: () => mockWebViewState.props !== null,
+  mounted: (): boolean => mockWebViewState.props !== null,
   /** How many times the challenge has been (re)mounted — the app remounts it after each failure. */
-  mounts: () => mockWebViewState.mounts,
-  html: () => webView().source?.html ?? '',
+  mounts: (): number => mockWebViewState.mounts,
+  html: (): string => webView().source?.html ?? '',
 
   async emit(message: unknown): Promise<void> {
-    await act(async () => {
+    await act(() => {
       webView().onMessage?.({ nativeEvent: { data: JSON.stringify(message) } });
     });
   },

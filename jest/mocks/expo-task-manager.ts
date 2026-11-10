@@ -8,12 +8,14 @@ export const mockTaskManager = {
   defined: new Map<string, TaskBody>(),
   registered: new Map<string, unknown>(),
   /** Run a defined task the way the OS would. */
-  async run(name: string): Promise<unknown> {
+  run(name: string): Promise<unknown> {
     const task = this.defined.get(name);
-    if (!task) throw new Error(`Task "${name}" is not defined`);
+    if (!task) {
+      return Promise.reject(new Error(`Task "${name}" is not defined`));
+    }
     return task({ data: null, error: null, executionInfo: {} });
   },
-  reset() {
+  reset(): void {
     this.defined.clear();
     this.registered.clear();
   },
@@ -25,8 +27,11 @@ export const defineTask = jest.fn((name: string, body: TaskBody) => {
 
 export const isTaskDefined = jest.fn((name: string) => mockTaskManager.defined.has(name));
 
-export const isTaskRegisteredAsync = jest.fn(async (name: string) => mockTaskManager.registered.has(name));
+export const isTaskRegisteredAsync = jest.fn((name: string) =>
+  Promise.resolve(mockTaskManager.registered.has(name)),
+);
 
-export const unregisterTaskAsync = jest.fn(async (name: string) => {
+export const unregisterTaskAsync = jest.fn((name: string): Promise<void> => {
   mockTaskManager.registered.delete(name);
+  return Promise.resolve();
 });

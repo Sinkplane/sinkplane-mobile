@@ -1,4 +1,10 @@
-import { FloatplaneSocket, SOCKET_CONNECT_PATH, SOCKET_URL, type SocketLike, type SocketState } from '@/notifications/floatplane-socket';
+import {
+  FloatplaneSocket,
+  SOCKET_CONNECT_PATH,
+  SOCKET_URL,
+  type SocketLike,
+  type SocketState,
+} from '@/notifications/floatplane-socket';
 
 class FakeSocket implements SocketLike {
   onopen: (() => void) | null = null;
@@ -32,13 +38,19 @@ let sockets: FakeSocket[];
 let events: [string, unknown][];
 let states: SocketState[];
 
-const latest = () => sockets[sockets.length - 1];
+const latest = (): FakeSocket => {
+  const socket = sockets.at(-1);
+  if (!socket) {
+    throw new Error('no socket was created');
+  }
+  return socket;
+};
 
 function create(options: Partial<ConstructorParameters<typeof FloatplaneSocket>[0]> = {}) {
   const client = new FloatplaneSocket({
     token: 'session-token',
     onSyncEvent: (event, data) => events.push([event, data]),
-    onStateChange: state => states.push(state),
+    onStateChange: (state) => states.push(state),
     createSocket: (url, headers) => {
       const socket = new FakeSocket(url, headers);
       sockets.push(socket);
@@ -54,7 +66,9 @@ function create(options: Partial<ConstructorParameters<typeof FloatplaneSocket>[
 function handshake(socket = latest(), status = 200) {
   socket.receive('0{"sid":"abc","pingInterval":25000,"pingTimeout":60000}');
   socket.receive('40');
-  socket.receive(`431[{"body":{"message":"User sync setup."},"headers":{},"statusCode":${status}}]`);
+  socket.receive(
+    `431[{"body":{"message":"User sync setup."},"headers":{},"statusCode":${String(status)}}]`,
+  );
 }
 
 beforeEach(() => {
@@ -74,16 +88,17 @@ describe('connecting', () => {
 
     expect(latest().url).toBe(SOCKET_URL);
     expect(latest().headers['User-Agent']).toMatch(/^Mozilla\/5\.0/);
-    expect(latest().headers.Origin).toBe('https://www.floatplane.com');
+    expect(latest().headers['Origin']).toBe('https://www.floatplane.com');
     expect(client.currentState).toBe('connecting');
 
     latest().receive('0{"sid":"abc","pingInterval":25000,"pingTimeout":60000}');
     latest().receive('40');
-    expect(JSON.parse(latest().sent[0].slice(3))).toEqual([
+    const [connectFrame = ''] = latest().sent;
+    expect(JSON.parse(connectFrame.slice(3))).toEqual([
       'post',
       { method: 'post', headers: {}, data: { token: 'session-token' }, url: SOCKET_CONNECT_PATH },
     ]);
-    expect(latest().sent[0].startsWith('421[')).toBe(true);
+    expect(connectFrame.startsWith('421[')).toBe(true);
 
     latest().receive('431[{"body":{"message":"User sync setup."},"statusCode":200}]');
     expect(client.currentState).toBe('connected');
@@ -97,7 +112,10 @@ describe('connecting', () => {
   });
 
   it('uses the native WebSocket by default', () => {
-    const ctor = jest.fn(() => new FakeSocket('', {}));
+    const ctor = jest.fn(
+      (_url: string, _protocols: null, _options: { headers: Record<string, string> }) =>
+        new FakeSocket('', {}),
+    );
     const original = globalThis.WebSocket;
     globalThis.WebSocket = ctor as unknown as typeof WebSocket;
     try {
@@ -105,7 +123,9 @@ describe('connecting', () => {
     } finally {
       globalThis.WebSocket = original;
     }
-    expect(ctor).toHaveBeenCalledWith(SOCKET_URL, null, { headers: expect.objectContaining({ Origin: 'https://www.floatplane.com' }) });
+    const [url, protocols, options] = ctor.mock.calls[0] ?? [];
+    expect([url, protocols]).toEqual([SOCKET_URL, null]);
+    expect(options?.headers['Origin']).toBe('https://www.floatplane.com');
   });
 });
 
@@ -159,10 +179,10 @@ describe('heartbeat', () => {
     handshake();
 
     jest.advanceTimersByTime(25_000);
-    expect(latest().sent.filter(frame => frame === '2')).toHaveLength(1);
+    expect(latest().sent.filter((frame) => frame === '2')).toHaveLength(1);
     latest().receive('3');
     jest.advanceTimersByTime(25_000);
-    expect(latest().sent.filter(frame => frame === '2')).toHaveLength(2);
+    expect(latest().sent.filter((frame) => frame === '2')).toHaveLength(2);
   });
 
   it('reconnects when the server stops answering', () => {

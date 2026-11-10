@@ -5,7 +5,11 @@ import { FIXED_NOW, makeVideo, techCreator, techMainChannel } from '@test/fixtur
 import type { VideoPost } from '@/shared';
 import type { usePostReaction } from '@/hooks/use-post-reaction';
 
-const video = makeVideo(techCreator, techMainChannel, { id: 'post-1', title: 'Home Lab Tour 2026', likes: 42 });
+const video = makeVideo(techCreator, techMainChannel, {
+  id: 'post-1',
+  title: 'Home Lab Tour 2026',
+  likes: 42,
+});
 const post = { ...video, videoAttachments: [] } as unknown as VideoPost;
 
 /** A reaction-hook result stand-in; only the fields VideoDetails reads. */
@@ -18,10 +22,13 @@ function reactionResult(state: Partial<ReturnType<typeof usePostReaction>> = {})
     error: null,
     toggle: jest.fn(),
     ...state,
-  } as ReturnType<typeof usePostReaction>;
+  };
 }
 
-async function renderDetails(reaction: ReturnType<typeof usePostReaction> = reactionResult(), activePost: VideoPost = post) {
+async function renderDetails(
+  reaction: ReturnType<typeof usePostReaction> = reactionResult(),
+  activePost: VideoPost = post,
+) {
   await render(<VideoDetails post={activePost} reaction={reaction} />);
   return { reaction };
 }
@@ -45,13 +52,22 @@ describe('VideoDetails', () => {
   });
 
   it('falls back to the creator when the post has no channel', async () => {
-    await renderDetails(undefined, { ...post, channel: undefined, comments: 7 } as unknown as VideoPost);
+    await renderDetails(undefined, {
+      ...post,
+      channel: undefined,
+      comments: 7,
+    } as unknown as VideoPost);
     expect(screen.getByText(techCreator.title)).toBeTruthy();
     expect(screen.getByText('Comments · 7')).toBeTruthy();
   });
 
   it('shows an empty icon slot when neither channel nor creator has an icon', async () => {
-    const bare = { ...post, channel: { title: 'Bare' }, creator: { title: 'Bare' }, comments: undefined };
+    const bare = {
+      ...post,
+      channel: { title: 'Bare' },
+      creator: { title: 'Bare' },
+      comments: undefined,
+    };
     await renderDetails(undefined, bare as unknown as VideoPost);
     expect(screen.getByText('Bare')).toBeTruthy();
     expect(screen.getByText('Comments · 0')).toBeTruthy();
@@ -61,13 +77,15 @@ describe('VideoDetails', () => {
     await renderDetails(undefined, {
       ...post,
       releaseDate: new Date(FIXED_NOW.getTime() - 2 * 3600_000).toISOString(),
-    } as unknown as VideoPost);
+    });
     expect(screen.getByText('2 hours ago')).toBeTruthy();
   });
 
   it('forwards the reaction state and toggles to the reaction bar', async () => {
     const toggle = jest.fn();
-    const { reaction } = await renderDetails(reactionResult({ reaction: 'like', likes: 43, toggle }));
+    const { reaction } = await renderDetails(
+      reactionResult({ reaction: 'like', likes: 43, toggle }),
+    );
 
     expect(screen.getByTestId('reaction-like-count')).toHaveTextContent('43');
     expect(screen.getByRole('button', { name: 'Like, 43' })).toBeSelected();

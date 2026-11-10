@@ -9,9 +9,19 @@ import {
   presentNotification,
   requestPermission,
 } from '@/notifications/local-notifications';
-import { mockNotifications, requestPermissionsAsync, scheduleNotificationAsync } from '@test/mocks/expo-notifications';
+import {
+  mockNotifications,
+  requestPermissionsAsync,
+  scheduleNotificationAsync,
+} from '@test/mocks/expo-notifications';
 
-const notification = { id: 'post:p1', title: 'New post from LTT', body: 'A video', creatorId: 'c1', postId: 'p1' };
+const notification = {
+  id: 'post:p1',
+  title: 'New post from LTT',
+  body: 'A video',
+  creatorId: 'c1',
+  postId: 'p1',
+};
 
 const withPlatform = async (os: typeof Platform.OS, run: () => Promise<void>) => {
   const original = Platform.OS;
@@ -26,17 +36,21 @@ const withPlatform = async (os: typeof Platform.OS, run: () => Promise<void>) =>
 describe('configureNotifications', () => {
   it('shows notifications in the foreground', async () => {
     await configureNotifications();
-    await expect(mockNotifications.handler?.handleNotification({} as never)).resolves.toMatchObject({
-      shouldShowBanner: true,
-      shouldShowList: true,
-    });
+    await expect(mockNotifications.handler?.handleNotification({} as never)).resolves.toMatchObject(
+      {
+        shouldShowBanner: true,
+        shouldShowList: true,
+      },
+    );
     expect(mockNotifications.channels.size).toBe(0);
   });
 
   it('creates the Android channel', async () => {
     await withPlatform('android', async () => {
       await configureNotifications();
-      expect(mockNotifications.channels.get(NEW_POSTS_CHANNEL_ID)).toMatchObject({ name: 'New posts' });
+      expect(mockNotifications.channels.get(NEW_POSTS_CHANNEL_ID)).toMatchObject({
+        name: 'New posts',
+      });
     });
   });
 });
@@ -52,7 +66,12 @@ describe('permission', () => {
     mockNotifications.setPermission('undetermined', false);
     expect(await getPermissionState()).toBe('denied');
     // iOS provisional authorization delivers quietly: counts as granted.
-    mockNotifications.permission = { granted: false, status: 'undetermined' as never, canAskAgain: true, ios: { status: 3 } };
+    mockNotifications.permission = {
+      granted: false,
+      status: 'undetermined',
+      canAskAgain: true,
+      ios: { status: 3 },
+    };
     expect(await getPermissionState()).toBe('granted');
   });
 
@@ -87,9 +106,10 @@ describe('presenting', () => {
     await withPlatform('android', async () => {
       await presentNotification({ ...notification, creatorId: null, postId: null });
     });
-    expect(mockNotifications.presented[0].trigger).toEqual({ channelId: NEW_POSTS_CHANNEL_ID });
-    expect(mockNotifications.presented[0].content).not.toHaveProperty('threadIdentifier');
-    expect(mockNotifications.presented[0].content.data).toMatchObject({ url: null });
+    const [presented] = mockNotifications.presented;
+    expect(presented?.trigger).toEqual({ channelId: NEW_POSTS_CHANNEL_ID });
+    expect(presented?.content).not.toHaveProperty('threadIdentifier');
+    expect(presented?.content.data).toMatchObject({ url: null });
   });
 
   it('notifyOnce shows each id once', async () => {
@@ -99,7 +119,10 @@ describe('presenting', () => {
   });
 
   it('notifyOnce shows simultaneous copies of an event once', async () => {
-    expect(await Promise.all([notifyOnce(notification), notifyOnce(notification)])).toEqual([true, false]);
+    expect(await Promise.all([notifyOnce(notification), notifyOnce(notification)])).toEqual([
+      true,
+      false,
+    ]);
     expect(mockNotifications.presented).toHaveLength(1);
   });
 

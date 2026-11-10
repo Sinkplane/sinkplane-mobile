@@ -2,13 +2,13 @@
  * E2E: the Settings tab — profile + subscriptions, the System/Light/Dark switcher (persisted, and
  * applied to both the React tree and the native appearance), and signing out.
  */
-import { StyleSheet } from 'react-native';
 
 import { Colors } from '@/shared';
 import { fixtureUser, gamingCreator, techCreator } from '@test/fixtures';
 
 import { NETWORK_ERROR } from './helpers/mock-floatplane-api';
 import { loadRuntime, type Runtime } from './helpers/runtime';
+import type { TestInstance } from './helpers/test-utils';
 
 let rt: Runtime;
 
@@ -17,18 +17,23 @@ beforeEach(() => {
 });
 
 const settingsTab = () => rt.inTab('settings');
-const colorOf = (element: { props: { style?: unknown } }) => StyleSheet.flatten(element.props.style as never)?.color;
+const colorOf = (element: TestInstance) => rt.styleOf(element).color;
 /** Background of the Videos screen (the view wrapping its list). */
-const videosBackground = () => StyleSheet.flatten(rt.screen.getByTestId('videos-list').parent?.props.style)?.backgroundColor;
+const videosBackground = () =>
+  rt.styleOf(rt.defined(rt.screen.getByTestId('videos-list').parent)).backgroundColor;
 
 async function openSettings(options?: Parameters<Runtime['seedSession']>[0]) {
   // Notifications stay off here (their section, and its per-creator list, has its own suite).
   rt.notifications.mockNotifications.promptAnswer = 'denied';
   const token = rt.seedSession(options);
   await rt.renderApp();
-  await rt.until(() => expect(rt.inTab('index').getByText('Main Channel Video 01')).toBeTruthy());
+  await rt.until(() => {
+    expect(rt.inTab('index').getByText('Main Channel Video 01')).toBeTruthy();
+  });
   await rt.selectTab('settings');
-  await rt.until(() => expect(rt.selectedTab()).toBe('settings'));
+  await rt.until(() => {
+    expect(rt.selectedTab()).toBe('settings');
+  });
   return token;
 }
 
@@ -45,7 +50,11 @@ describe('profile', () => {
   });
 
   it('falls back to an initial avatar and the username when the profile is sparse', async () => {
-    const sparseUser = { ...fixtureUser, profileImage: undefined, displayName: undefined } as unknown as typeof fixtureUser;
+    const sparseUser = {
+      ...fixtureUser,
+      profileImage: undefined,
+      displayName: undefined,
+    } as unknown as typeof fixtureUser;
     await openSettings({ user: sparseUser });
 
     expect(settingsTab().getByText('T')).toBeTruthy();
@@ -55,8 +64,10 @@ describe('profile', () => {
   it('labels subscriptions whose creator or plan details are missing', async () => {
     // The creator list only returns Tech; the Gaming subscription has no plan title.
     rt.api.creators = [techCreator];
-    rt.api.subscriptions = rt.api.subscriptions.map(sub =>
-      sub.creator === gamingCreator.id ? { ...sub, plan: undefined as unknown as typeof sub.plan } : sub,
+    rt.api.subscriptions = rt.api.subscriptions.map((sub) =>
+      sub.creator === gamingCreator.id
+        ? { ...sub, plan: undefined as unknown as typeof sub.plan }
+        : sub,
     );
     await openSettings();
 
@@ -69,8 +80,22 @@ describe('profile', () => {
     rt.seedSession();
     await rt.renderApp();
 
-    await rt.until(() => expect(settingsTab().getByText('Loading your profile...')).toBeTruthy(), { maxFakeMs: 500 });
-    await rt.until(() => expect(settingsTab().getByText('Test User')).toBeTruthy(), { maxFakeMs: 10_000 });
+    await rt.until(
+      () => {
+        expect(settingsTab().getByText('Loading your profile...')).toBeTruthy();
+      },
+      {
+        maxFakeMs: 500,
+      },
+    );
+    await rt.until(
+      () => {
+        expect(settingsTab().getByText('Test User')).toBeTruthy();
+      },
+      {
+        maxFakeMs: 10_000,
+      },
+    );
   });
 });
 
@@ -94,7 +119,9 @@ describe('theme switcher', () => {
     expect(rt.setColorScheme).toHaveBeenLastCalledWith('dark');
     expect(videosBackground()).toBe(Colors.dark.background);
     expect(colorOf(settingsTab().getByText('Appearance'))).toBe(Colors.dark.text);
-    await rt.until(() => expect(rt.secureStore.get('themeMode')).toBe(JSON.stringify('dark')));
+    await rt.until(() => {
+      expect(rt.secureStore.get('themeMode')).toBe(JSON.stringify('dark'));
+    });
   });
 
   it('switches to light mode and back to system', async () => {
@@ -106,7 +133,9 @@ describe('theme switcher', () => {
 
     await rt.fireEvent.press(radio('System'));
     expect(rt.setColorScheme).toHaveBeenLastCalledWith('auto');
-    await rt.until(() => expect(rt.secureStore.get('themeMode')).toBe(JSON.stringify('system')));
+    await rt.until(() => {
+      expect(rt.secureStore.get('themeMode')).toBe(JSON.stringify('system'));
+    });
   });
 
   it('restores the saved theme on launch', async () => {
@@ -121,10 +150,14 @@ describe('theme switcher', () => {
   it('keeps the sign-in screen light-on-dark in either theme', async () => {
     rt.secureStore.set('themeMode', JSON.stringify('light'));
     await rt.renderApp();
-    await rt.until(() => expect(rt.screen.getByText('Sign in to Floatplane')).toBeTruthy());
+    await rt.until(() => {
+      expect(rt.screen.getByText('Sign in to Floatplane')).toBeTruthy();
+    });
 
     expect(colorOf(rt.screen.getByText('Sign in to Floatplane'))).toBe('#fff');
-    await rt.until(() => expect(rt.turnstile.mounted()).toBe(true));
+    await rt.until(() => {
+      expect(rt.turnstile.mounted()).toBe(true);
+    });
     expect(rt.turnstile.html()).toContain('theme: "dark"');
   });
 });
@@ -135,9 +168,11 @@ describe('sign out', () => {
 
     await rt.fireEvent.press(settingsTab().getByText('Sign Out'));
 
-    await rt.until(() => expect(rt.screen.getByText('Sign in to Floatplane')).toBeTruthy());
+    await rt.until(() => {
+      expect(rt.screen.getByText('Sign in to Floatplane')).toBeTruthy();
+    });
     expect(rt.api.revokedSessions).toEqual([token]);
-    expect(rt.api.requestsTo('/api/v3/auth/logout', 'POST')[0].bearer).toBe(token);
+    expect(rt.defined(rt.api.requestsTo('/api/v3/auth/logout', 'POST')[0]).bearer).toBe(token);
     expect(rt.secureStore.has('fptoken')).toBe(false);
     expect(rt.secureStore.has('fpuser')).toBe(false);
   });
@@ -150,16 +185,20 @@ describe('sign out', () => {
     expect(settingsTab().getByText('Signing Out...')).toBeTruthy();
     expect(rt.api.revokedSessions).toHaveLength(0);
 
-    await rt.until(() => expect(rt.screen.getByText('Sign in to Floatplane')).toBeTruthy());
+    await rt.until(() => {
+      expect(rt.screen.getByText('Sign in to Floatplane')).toBeTruthy();
+    });
   });
 
   it('still signs out locally when the server cannot be reached', async () => {
     await openSettings();
-    rt.api.failRequests('POST', '/api/v3/auth/logout', NETWORK_ERROR);
+    rt.api.failRequests('POST /api/v3/auth/logout', NETWORK_ERROR);
 
     await rt.fireEvent.press(settingsTab().getByText('Sign Out'));
 
-    await rt.until(() => expect(rt.screen.getByText('Sign in to Floatplane')).toBeTruthy());
+    await rt.until(() => {
+      expect(rt.screen.getByText('Sign in to Floatplane')).toBeTruthy();
+    });
     expect(rt.secureStore.has('fptoken')).toBe(false);
   });
 });

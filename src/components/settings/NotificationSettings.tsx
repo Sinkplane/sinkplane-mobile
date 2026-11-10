@@ -1,13 +1,41 @@
-import { ActivityIndicator, Linking, Pressable, StyleSheet, Switch, Text, View } from 'react-native';
+import type { ReactElement } from 'react';
+import {
+  ActivityIndicator,
+  Linking,
+  Pressable,
+  StyleSheet,
+  Switch,
+  Text,
+  View,
+} from 'react-native';
 import { Image } from 'expo-image';
 
 import { useCreatorNotificationSettings } from '@/hooks/use-creator-notification-settings';
-import { notificationsActive, useNotificationPreferences } from '@/hooks/use-notification-preferences';
+import {
+  notificationsActive,
+  useNotificationPreferences,
+} from '@/hooks/use-notification-preferences';
 import type { CreatorNotificationSettings } from '@/notifications/notification-settings-api';
 import { useThemeColor } from '@/shared';
 
 interface Props {
-  token: string | null | undefined;
+  readonly token: string | null | undefined;
+}
+
+/** Shown when the OS has notifications turned off for the app. */
+function BlockedNotice(): ReactElement {
+  const mutedColor = useThemeColor({}, 'icon');
+  const linkColor = useThemeColor({}, 'link');
+  return (
+    <View style={styles.notice}>
+      <Text style={[styles.hint, { color: mutedColor }]}>
+        Notifications are turned off for Sinkplane in system settings.
+      </Text>
+      <Pressable accessibilityRole="button" onPress={() => void Linking.openSettings()} hitSlop={8}>
+        <Text style={[styles.link, { color: linkColor }]}>Open Settings</Text>
+      </Pressable>
+    </View>
+  );
 }
 
 /**
@@ -15,10 +43,9 @@ interface Props {
  * Floatplane's per-creator switches — "Notify me" (the push setting the app follows) and "Email"
  * (Floatplane's new-content email). Both per-creator switches are the same ones floatplane.com shows.
  */
-export function NotificationSettings({ token }: Props) {
+export function NotificationSettings({ token }: Props): ReactElement {
   const textColor = useThemeColor({}, 'text');
   const mutedColor = useThemeColor({}, 'icon');
-  const linkColor = useThemeColor({}, 'link');
   const { preferences, isLoading, isUpdating, setEnabled } = useNotificationPreferences();
   const active = notificationsActive(preferences);
   const blocked = preferences?.permission === 'denied';
@@ -37,63 +64,83 @@ export function NotificationSettings({ token }: Props) {
           accessibilityLabel="New post notifications"
           value={active}
           disabled={isLoading || isUpdating}
-          onValueChange={value => void setEnabled(value).catch(() => undefined)}
+          onValueChange={(value) => void setEnabled(value).catch(() => undefined)}
         />
       </View>
-
-      {blocked ? (
-        <View style={styles.notice}>
-          <Text style={[styles.hint, { color: mutedColor }]}>Notifications are turned off for Sinkplane in system settings.</Text>
-          <Pressable accessibilityRole="button" onPress={() => void Linking.openSettings()} hitSlop={8}>
-            <Text style={[styles.link, { color: linkColor }]}>Open Settings</Text>
-          </Pressable>
-        </View>
-      ) : null}
-
+      {blocked ? <BlockedNotice /> : null}
       {active ? <CreatorSwitches token={token} /> : null}
     </View>
   );
 }
 
-function CreatorSwitches({ token }: Props) {
+function ColumnHeader(): ReactElement {
+  const mutedColor = useThemeColor({}, 'icon');
+  return (
+    <View style={styles.columns}>
+      <Text style={[styles.switchCell, styles.columnLabel, { color: mutedColor }]}>Notify me</Text>
+      <Text style={[styles.switchCell, styles.columnLabel, { color: mutedColor }]}>Email</Text>
+    </View>
+  );
+}
+
+function CreatorSwitches({ token }: Props): ReactElement | null {
   const textColor = useThemeColor({}, 'text');
   const mutedColor = useThemeColor({}, 'icon');
-  const { settings, isLoading, isError, refetch, update, updateError } = useCreatorNotificationSettings(token);
+  const { settings, isLoading, isError, refetch, update, updateError } =
+    useCreatorNotificationSettings(token);
 
-  if (isLoading) return <ActivityIndicator style={styles.loading} />;
+  if (isLoading) {
+    return <ActivityIndicator style={styles.loading} />;
+  }
   if (isError) {
     return (
       <Pressable accessibilityRole="button" onPress={() => void refetch()} style={styles.notice}>
-        <Text style={[styles.hint, { color: mutedColor }]}>Couldn’t load creator settings. Tap to retry.</Text>
+        <Text style={[styles.hint, { color: mutedColor }]}>
+          Couldn’t load creator settings. Tap to retry.
+        </Text>
       </Pressable>
     );
   }
-  if (!settings?.length) return null;
+  if (settings === undefined || settings.length === 0) {
+    return null;
+  }
 
   return (
     <View style={styles.creators}>
-      <View style={styles.columns}>
-        <Text style={[styles.switchCell, styles.columnLabel, { color: mutedColor }]}>Notify me</Text>
-        <Text style={[styles.switchCell, styles.columnLabel, { color: mutedColor }]}>Email</Text>
-      </View>
-      {settings.map(creator => (
-        <CreatorRow key={creator.creatorId} creator={creator} textColor={textColor} onChange={update} />
+      <ColumnHeader />
+      {settings.map((creator) => (
+        <CreatorRow
+          key={creator.creatorId}
+          creator={creator}
+          textColor={textColor}
+          onChange={update}
+        />
       ))}
-      {updateError ? <Text style={[styles.hint, { color: mutedColor }]}>Couldn’t save that change. Please try again.</Text> : null}
+      {updateError === null ? null : (
+        <Text style={[styles.hint, { color: mutedColor }]}>
+          Couldn’t save that change. Please try again.
+        </Text>
+      )}
     </View>
   );
 }
 
 interface CreatorRowProps {
-  creator: CreatorNotificationSettings;
-  textColor: string;
-  onChange: (creatorId: string, property: 'contentFirebase' | 'contentEmail', value: boolean) => void;
+  readonly creator: CreatorNotificationSettings;
+  readonly textColor: string;
+  readonly onChange: (
+    creatorId: string,
+    property: 'contentFirebase' | 'contentEmail',
+    value: boolean,
+  ) => void;
 }
 
-function CreatorRow({ creator, textColor, onChange }: CreatorRowProps) {
+function CreatorRow({ creator, textColor, onChange }: CreatorRowProps): ReactElement {
   return (
     <View style={styles.creatorRow} testID={`creator-notifications-${creator.creatorId}`}>
-      {creator.iconUrl ? <Image source={{ uri: creator.iconUrl }} style={styles.icon} contentFit="cover" /> : null}
+      {creator.iconUrl === null || creator.iconUrl === '' ? null : (
+        <Image source={{ uri: creator.iconUrl }} style={styles.icon} contentFit="cover" />
+      )}
       <Text style={[styles.creatorTitle, { color: textColor }]} numberOfLines={1}>
         {creator.title}
       </Text>
@@ -101,14 +148,18 @@ function CreatorRow({ creator, textColor, onChange }: CreatorRowProps) {
         <Switch
           accessibilityLabel={`Notifications for ${creator.title}`}
           value={creator.contentFirebase}
-          onValueChange={value => onChange(creator.creatorId, 'contentFirebase', value)}
+          onValueChange={(value) => {
+            onChange(creator.creatorId, 'contentFirebase', value);
+          }}
         />
       </View>
       <View style={styles.switchCell}>
         <Switch
           accessibilityLabel={`Emails for ${creator.title}`}
           value={creator.contentEmail}
-          onValueChange={value => onChange(creator.creatorId, 'contentEmail', value)}
+          onValueChange={(value) => {
+            onChange(creator.creatorId, 'contentEmail', value);
+          }}
         />
       </View>
     </View>

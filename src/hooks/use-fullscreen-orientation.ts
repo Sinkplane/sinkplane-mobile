@@ -4,13 +4,135 @@ import * as ScreenOrientation from 'expo-screen-orientation';
 
 const { Orientation, OrientationLock } = ScreenOrientation;
 
+const ignoreLockError = (): void => undefined;
+
 /**
  * The app-wide orientation outside a player page: phones are portrait-only, tablets (large
  * windows) rotate freely. `DEFAULT` lets the OS follow the orientations app.json allows.
  */
-export function lockAppOrientation(largeScreen: boolean) {
-  if (Platform.OS === 'web') return;
-  ScreenOrientation.lockAsync(largeScreen ? OrientationLock.DEFAULT : OrientationLock.PORTRAIT_UP).catch(() => {});
+export function lockAppOrientation(largeScreen: boolean): void {
+  if (Platform.OS === 'web') {
+    return;
+  }
+  ScreenOrientation.lockAsync(
+    largeScreen ? OrientationLock.DEFAULT : OrientationLock.PORTRAIT_UP,
+  ).catch(ignoreLockError);
+}
+
+export interface FullscreenOrientation {
+  fullscreen: boolean;
+  setFullscreen: (next: boolean) => void;
+}
+
+interface OrientationPolicy {
+  followDevice: boolean;
+  fullscreen: boolean;
+  largeScreen: boolean;
+}
+
+/** The phone lock while on a player page: free while following the device, else the chosen one. */
+function phoneLock({
+  followDevice,
+  fullscreen,
+}: OrientationPolicy): ScreenOrientation.OrientationLock {
+  if (followDevice) {
+    return OrientationLock.DEFAULT;
+  }
+  return fullscreen ? OrientationLock.LANDSCAPE : OrientationLock.PORTRAIT_UP;
+}
+
+/** Applies the page's orientation lock, and hands the app-wide one back when leaving the page. */
+function useOrientationLock(policy: OrientationPolicy): void {
+  const { followDevice, fullscreen, largeScreen } = policy;
+
+  useEffect(() => {
+    if (Platform.OS === 'web') {
+      return;
+    }
+    if (largeScreen) {
+      lockAppOrientation(true);
+      return;
+    }
+    ScreenOrientation.lockAsync(phoneLock({ followDevice, fullscreen, largeScreen })).catch(
+      ignoreLockError,
+    );
+  }, [followDevice, fullscreen, largeScreen]);
+
+  // Leaving the page hands the orientation back to the app-wide policy.
+  useEffect(
+    () => () => {
+      lockAppOrientation(largeScreen);
+    },
+    [largeScreen],
+  );
+}
+
+const isLandscape = (orientation: ScreenOrientation.Orientation): boolean =>
+  orientation === Orientation.LANDSCAPE_LEFT || orientation === Orientation.LANDSCAPE_RIGHT;
+
+/** While `followDevice`, turning the device sideways / upright sets fullscreen on / off. */
+function useFollowDeviceRotation(
+  followDevice: boolean,
+  setFullscreen: (next: boolean) => void,
+): void {
+  useEffect(() => {
+    if (!followDevice) {
+      return;
+    }
+    let rotated = false;
+    const follow = (orientation: ScreenOrientation.Orientation) => {
+      if (orientation !== Orientation.UNKNOWN) {
+        setFullscreen(isLandscape(orientation));
+      }
+    };
+    const subscription = ScreenOrientation.addOrientationChangeListener(
+      ({ orientationInfo: { orientation } }) => {
+        rotated = true;
+        follow(orientation);
+      },
+    );
+    // Start from the current orientation: rotations went unheard while not following (e.g. a
+    // foldable that was unfolded into a large window, rotated, then folded again).
+    ScreenOrientation.getOrientationAsync()
+      .then((orientation) => {
+        if (!rotated) {
+          follow(orientation);
+        }
+      })
+      .catch(ignoreLockError);
+    return () => {
+      rotated = true;
+      subscription.remove();
+    };
+  }, [followDevice, setFullscreen]);
+}
+
+/** Android back leaves fullscreen instead of the page. */
+function useBackLeavesFullscreen(
+  fullscreen: boolean,
+  setFullscreen: (next: boolean) => void,
+): void {
+  useEffect(() => {
+    if (!fullscreen) {
+      return;
+    }
+    const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
+      setFullscreen(false);
+      return true;
+    });
+    return () => {
+      subscription.remove();
+    };
+  }, [fullscreen, setFullscreen]);
+}
+
+/** Rotation drives fullscreen only on phones (not web), until the user picks it themselves. */
+function shouldFollowDevice(
+  autoRotate: boolean,
+  userChose: boolean,
+  largeScreen: boolean,
+): boolean {
+  return autoRotate && !userChose && !largeScreen && Platform.OS !== 'web';
 }
 
 /**
@@ -25,63 +147,24 @@ export function lockAppOrientation(largeScreen: boolean) {
  * On large screens the page lays itself out for either orientation, so rotating never toggles
  * fullscreen and fullscreen never locks the orientation.
  */
-export function useFullscreenOrientation(autoRotate: boolean, largeScreen = false) {
+export function useFullscreenOrientation(
+  autoRotate: boolean,
+  largeScreen = false,
+): FullscreenOrientation {
   const [rotatedOrChosen, setFullscreenState] = useState(false);
   const [userChose, setUserChose] = useState(false);
-  const followDevice = autoRotate && !userChose && !largeScreen && Platform.OS !== 'web';
+  const followDevice = shouldFollowDevice(autoRotate, userChose, largeScreen);
   // Rotation-driven fullscreen doesn't carry over to a large window (a phone unfolding into a tablet).
-  const fullscreen = largeScreen && !userChose ? false : rotatedOrChosen;
+  const fullscreen = rotatedOrChosen && (userChose || !largeScreen);
 
   const setFullscreen = useCallback((next: boolean) => {
     setUserChose(true);
     setFullscreenState(next);
   }, []);
 
-  useEffect(() => {
-    if (Platform.OS === 'web') return;
-    if (largeScreen) {
-      lockAppOrientation(true);
-      return;
-    }
-    const lock = followDevice ? OrientationLock.DEFAULT : fullscreen ? OrientationLock.LANDSCAPE : OrientationLock.PORTRAIT_UP;
-    ScreenOrientation.lockAsync(lock).catch(() => {});
-  }, [followDevice, fullscreen, largeScreen]);
-
-  // Leaving the page hands the orientation back to the app-wide policy.
-  useEffect(() => () => lockAppOrientation(largeScreen), [largeScreen]);
-
-  useEffect(() => {
-    if (!followDevice) return;
-    let rotated = false;
-    const follow = (orientation: ScreenOrientation.Orientation) => {
-      if (orientation === Orientation.UNKNOWN) return;
-      setFullscreenState(orientation === Orientation.LANDSCAPE_LEFT || orientation === Orientation.LANDSCAPE_RIGHT);
-    };
-    const subscription = ScreenOrientation.addOrientationChangeListener(({ orientationInfo: { orientation } }) => {
-      rotated = true;
-      follow(orientation);
-    });
-    // Start from the current orientation: rotations went unheard while not following (e.g. a
-    // foldable that was unfolded into a large window, rotated, then folded again).
-    ScreenOrientation.getOrientationAsync()
-      .then(orientation => {
-        if (!rotated) follow(orientation);
-      })
-      .catch(() => {});
-    return () => {
-      rotated = true;
-      subscription.remove();
-    };
-  }, [followDevice]);
-
-  useEffect(() => {
-    if (!fullscreen) return;
-    const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
-      setFullscreen(false);
-      return true;
-    });
-    return () => subscription.remove();
-  }, [fullscreen, setFullscreen]);
+  useOrientationLock({ followDevice, fullscreen, largeScreen });
+  useFollowDeviceRotation(followDevice, setFullscreenState);
+  useBackLeavesFullscreen(fullscreen, setFullscreen);
 
   return { fullscreen, setFullscreen };
 }

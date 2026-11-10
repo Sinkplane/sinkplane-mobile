@@ -12,19 +12,33 @@
  *   await rt.until(() => rt.screen.getByText('…'));
  */
 
-type TestUtils = typeof import('./test-utils');
-type ApiModule = typeof import('./mock-floatplane-api');
-type NativeMocks = typeof import('./native-mocks');
-type SecureStoreMock = typeof import('@test/mocks/expo-secure-store');
-type VideoMock = typeof import('@test/mocks/expo-video');
-type OrientationMock = typeof import('@test/mocks/expo-screen-orientation');
-type NotificationsMock = typeof import('@test/mocks/expo-notifications');
-type TaskManagerMock = typeof import('@test/mocks/expo-task-manager');
-type BackgroundTaskMock = typeof import('@test/mocks/expo-background-task');
-type FoldPostureMock = typeof import('@test/mocks/fold-posture');
-type WindowSizeHelper = typeof import('@test/window-size');
-type SocketModule = typeof import('./mock-floatplane-socket');
-type ReactNative = typeof import('react-native');
+import type * as TestUtilsModule from './test-utils';
+import type * as ApiExports from './mock-floatplane-api';
+import type * as NativeMocksModule from './native-mocks';
+import type * as SecureStoreMockModule from '@test/mocks/expo-secure-store';
+import type * as VideoMockModule from '@test/mocks/expo-video';
+import type * as OrientationMockModule from '@test/mocks/expo-screen-orientation';
+import type * as NotificationsMockModule from '@test/mocks/expo-notifications';
+import type * as TaskManagerMockModule from '@test/mocks/expo-task-manager';
+import type * as BackgroundTaskMockModule from '@test/mocks/expo-background-task';
+import type * as FoldPostureMockModule from '@test/mocks/fold-posture';
+import type * as WindowSizeHelperModule from '@test/window-size';
+import type * as SocketExports from './mock-floatplane-socket';
+import type * as ReactNativeModule from 'react-native';
+
+type TestUtils = typeof TestUtilsModule;
+type ApiModule = typeof ApiExports;
+type NativeMocks = typeof NativeMocksModule;
+type SecureStoreMock = typeof SecureStoreMockModule;
+type VideoMock = typeof VideoMockModule;
+type OrientationMock = typeof OrientationMockModule;
+type NotificationsMock = typeof NotificationsMockModule;
+type TaskManagerMock = typeof TaskManagerMockModule;
+type BackgroundTaskMock = typeof BackgroundTaskMockModule;
+type FoldPostureMock = typeof FoldPostureMockModule;
+type WindowSizeHelper = typeof WindowSizeHelperModule;
+type SocketModule = typeof SocketExports;
+type ReactNative = typeof ReactNativeModule;
 
 export type Runtime = TestUtils & {
   api: ApiModule['api'];
@@ -47,7 +61,7 @@ export type Runtime = TestUtils & {
   /** The foldable hinge (`set(...)` a posture to fold / unfold the device). */
   foldPosture: FoldPostureMock['mockFoldPosture'];
   /** Android hardware-back subscriptions captured while the app runs (press them to exit fullscreen). */
-  backHandlers: Array<(event?: unknown) => boolean | null | undefined>;
+  backHandlers: ((event?: unknown) => boolean | null | undefined)[];
   /**
    * Resize the window (dp) every `useWindowDimensions` in the app under test reports — phone,
    * tablet, rotation. Call before `renderApp` to boot at that size; inside `rt.act(...)` mid-test
@@ -61,7 +75,7 @@ export function loadRuntime(): Runtime {
   jest.resetModules();
 
   /** Hardware-back subscriptions the app registered (iOS's BackHandler is a stub, so capture here). */
-  const backHandlers: Array<() => boolean | null | undefined> = [];
+  const backHandlers: (() => boolean | null | undefined)[] = [];
 
   // Order matters: native mocks register their factories first, then the fetch mock installs,
   // then test-utils pulls in expo-router/testing-library (the instance every helper shares).
@@ -71,17 +85,21 @@ export function loadRuntime(): Runtime {
   const utils = jest.requireActual<TestUtils>('./test-utils');
   const secureStore = jest.requireActual<SecureStoreMock>('@test/mocks/expo-secure-store');
   const videoMock = jest.requireActual<VideoMock>('@test/mocks/expo-video');
-  const orientationMock = jest.requireActual<OrientationMock>('@test/mocks/expo-screen-orientation');
+  const orientationMock = jest.requireActual<OrientationMock>(
+    '@test/mocks/expo-screen-orientation',
+  );
   const reactNative = jest.requireActual<ReactNative>('react-native');
   const notificationsMock = jest.requireActual<NotificationsMock>('@test/mocks/expo-notifications');
   const taskManagerMock = jest.requireActual<TaskManagerMock>('@test/mocks/expo-task-manager');
-  const backgroundTaskMock = jest.requireActual<BackgroundTaskMock>('@test/mocks/expo-background-task');
+  const backgroundTaskMock = jest.requireActual<BackgroundTaskMock>(
+    '@test/mocks/expo-background-task',
+  );
   const foldPostureMock = jest.requireActual<FoldPostureMock>('@test/mocks/fold-posture');
   const windowSize = jest.requireActual<WindowSizeHelper>('@test/window-size');
 
   jest.spyOn(reactNative.BackHandler, 'addEventListener').mockImplementation((_event, handler) => {
     backHandlers.push(handler as () => boolean | null | undefined);
-    return { remove: () => {} };
+    return { remove: () => undefined };
   });
 
   apiModule.api.reset();
@@ -117,6 +135,10 @@ export function loadRuntime(): Runtime {
   } as Runtime;
   // RNTL reassigns `screen` on every render, so read it live. (A getter in the object literal
   // would be flattened by babel's spread downleveling; defineProperty keeps a real accessor.)
-  Object.defineProperty(runtime, 'screen', { get: () => utils.screen, enumerable: true, configurable: true });
+  Object.defineProperty(runtime, 'screen', {
+    get: () => utils.screen,
+    enumerable: true,
+    configurable: true,
+  });
   return runtime;
 }

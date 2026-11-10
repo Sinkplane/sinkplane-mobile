@@ -1,4 +1,4 @@
-import { StyleSheet } from 'react-native';
+import { StyleSheet, type StyleProp, type ViewStyle } from 'react-native';
 import { fireEvent, render, screen, userEvent } from '@testing-library/react-native';
 
 import { VideoListItem } from '@/components/videos/VideoListItem';
@@ -14,7 +14,8 @@ const video = makeVideo(techCreator, techMainChannel, {
   likes: 1500,
 });
 
-const widthOf = (testID: string) => StyleSheet.flatten(screen.getByTestId(testID).props.style).width;
+const widthOf = (testID: string) =>
+  StyleSheet.flatten(screen.getByTestId(testID).props['style'] as StyleProp<ViewStyle>)?.width;
 
 describe('VideoListItem', () => {
   beforeEach(() => {
@@ -50,7 +51,11 @@ describe('VideoListItem', () => {
   });
 
   it('hides the duration badge and progress for posts without video', async () => {
-    const textPost = makeVideo(techCreator, techMainChannel, { id: 'text-post', title: 'Text only', duration: 0 });
+    const textPost = makeVideo(techCreator, techMainChannel, {
+      id: 'text-post',
+      title: 'Text only',
+      duration: 0,
+    });
     await render(<VideoListItem video={textPost} progress={30} />);
 
     expect(screen.queryByText('0:00')).toBeNull();
@@ -58,7 +63,14 @@ describe('VideoListItem', () => {
   });
 
   it('omits missing metadata parts instead of rendering empty separators', async () => {
-    const bare = { ...makeVideo(techCreator, techMainChannel, { id: 'bare', title: 'Bare', likes: 2, releaseDate: null }) };
+    const bare = {
+      ...makeVideo(techCreator, techMainChannel, {
+        id: 'bare',
+        title: 'Bare',
+        likes: 2,
+        releaseDate: null,
+      }),
+    };
     // Some API payloads omit the embedded channel entirely.
     const withoutChannel = { ...bare, channel: undefined } as unknown as typeof bare;
     await render(<VideoListItem video={withoutChannel} />);
@@ -79,6 +91,8 @@ describe('VideoListItem', () => {
 
   it('is inert without an onPress handler', async () => {
     await render(<VideoListItem video={video} />);
-    await expect(fireEvent.press(screen.getByTestId('video-list-item-video-1'))).resolves.toBeUndefined();
+    await expect(
+      fireEvent.press(screen.getByTestId('video-list-item-video-1')),
+    ).resolves.toBeUndefined();
   });
 });

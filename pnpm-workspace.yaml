@@ -1,0 +1,18 @@
+# pnpm settings (pnpm 11+ reads these from here, not from .npmrc). Registry and auth stay in .npmrc.
+
+# @sinkplane/shared declares Expo SDK ~57 / react-native-tvos peers (it is built against the TV
+# app), while this app is on SDK 58. Auto-installing peers would pull in native modules this app
+# does not include (zeroconf, tcp-socket, cookie-manager). The modules shared's dist actually
+# imports here (react, @tanstack/react-query, expo-secure-store) are direct dependencies instead.
+autoInstallPeers: false
+strictPeerDependencies: false
+
+# Native-source patches (replaces patch-package). Regenerate with `pnpm patch <pkg>@<version>`.
+# iOS: see `expo.autolinking.ios.buildFromSource` in package.json — precompiled modules ignore it.
+patchedDependencies:
+  expo-video@58.0.13: patches/expo-video@58.0.13.patch
+
+# Dependency install scripts are blocked unless listed here. @parcel/watcher (via jest-haste-map)
+# ships prebuilt binaries, so its node-gyp fallback is not needed.
+allowBuilds:
+  '@parcel/watcher': false

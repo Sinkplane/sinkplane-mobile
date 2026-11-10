@@ -1,5 +1,7 @@
 import * as SecureStore from 'expo-secure-store';
 
+import { arrayField, isJsonObject, numberField } from './json-fields';
+
 /**
  * Persistent notification state (expo-secure-store, the only storage this app ships).
  *
@@ -15,7 +17,9 @@ const KEYS = {
   seen: 'sinkplane.notifications.seen',
 } as const;
 
-const OPTIONS: SecureStore.SecureStoreOptions = { keychainAccessible: SecureStore.AFTER_FIRST_UNLOCK };
+const OPTIONS: SecureStore.SecureStoreOptions = {
+  keychainAccessible: SecureStore.AFTER_FIRST_UNLOCK,
+};
 
 /** How many delivered ids to remember (each ~30 bytes; keeps the entry well under 2 KB). */
 export const SEEN_LIMIT = 50;
@@ -58,8 +62,11 @@ async function read(key: string): Promise<string | null> {
 }
 
 async function write(key: string, value: string | null): Promise<void> {
-  if (value === null) await SecureStore.deleteItemAsync(key, OPTIONS);
-  else await SecureStore.setItemAsync(key, value, OPTIONS);
+  if (value === null) {
+    await SecureStore.deleteItemAsync(key, OPTIONS);
+  } else {
+    await SecureStore.setItemAsync(key, value, OPTIONS);
+  }
 }
 
 /** The user's choice: true/false, or null when they haven't been asked yet. */
@@ -68,30 +75,54 @@ export async function getNotificationsEnabled(): Promise<boolean | null> {
   return value === null ? null : value === 'true';
 }
 
-export const setNotificationsEnabled = (enabled: boolean | null) => write(KEYS.enabled, enabled === null ? null : String(enabled));
+export const setNotificationsEnabled = (enabled: boolean | null): Promise<void> =>
+  write(KEYS.enabled, enabled === null ? null : String(enabled));
 
 /** Session token for the background check (null after sign-out). */
-export const getBackgroundSession = () => read(KEYS.session);
+export const getBackgroundSession = (): Promise<string | null> => read(KEYS.session);
 
-export const setBackgroundSession = (token: string | null) => write(KEYS.session, token);
+export const setBackgroundSession = (token: string | null): Promise<void> =>
+  write(KEYS.session, token);
 
 const isTimestampMap = (value: unknown): value is Record<string, number> =>
-  !!value && typeof value === 'object' && !Array.isArray(value) && Object.values(value).every(v => typeof v === 'number');
+  isJsonObject(value) &&
+  !Array.isArray(value) &&
+  Object.values(value).every((v) => typeof v === 'number');
+
+const isString = (value: unknown): value is string => typeof value === 'string';
+
+/** Validates stored JSON; null when it isn't (or no longer is) a seen state. Throws on bad JSON. */
+function parseSeenState(json: string): SeenState | null {
+  const parsed: unknown = JSON.parse(json);
+  if (!isJsonObject(parsed)) {
+    return null;
+  }
+  const checkedAt = numberField(parsed, 'checkedAt');
+  if (checkedAt === undefined || !Array.isArray(parsed['ids'])) {
+    return null;
+  }
+  return toSeenState(parsed, checkedAt);
+}
+
+function toSeenState(parsed: Record<string, unknown>, checkedAt: number): SeenState {
+  const pending = parsed['pending'];
+  return {
+    // State written before `since` existed: no lower bound beyond the checked-at window.
+    since: numberField(parsed, 'since') ?? 0,
+    checkedAt,
+    pending: isTimestampMap(pending) ? pending : {},
+    ids: arrayField(parsed, 'ids').filter(isString),
+  };
+}
 
 /** Unlocked read; use inside withSeenLock when the result feeds a write. */
 export async function loadSeenState(): Promise<SeenState | null> {
   const value = await read(KEYS.seen);
-  if (!value) return null;
+  if (value === null || value === '') {
+    return null;
+  }
   try {
-    const parsed = JSON.parse(value) as Partial<SeenState>;
-    if (typeof parsed.checkedAt !== 'number' || !Array.isArray(parsed.ids)) return null;
-    return {
-      // State written before `since` existed: no lower bound beyond the checked-at window.
-      since: typeof parsed.since === 'number' ? parsed.since : 0,
-      checkedAt: parsed.checkedAt,
-      pending: isTimestampMap(parsed.pending) ? parsed.pending : {},
-      ids: parsed.ids.filter((id): id is string => typeof id === 'string'),
-    };
+    return parseSeenState(value);
   } catch {
     return null;
   }
@@ -99,25 +130,39 @@ export async function loadSeenState(): Promise<SeenState | null> {
 
 /** Unlocked write; use inside withSeenLock. */
 export async function saveSeenState(state: SeenState | null): Promise<void> {
-  if (!state) {
+  if (state === null) {
     await write(KEYS.seen, null);
     return;
   }
   const ids = [...new Set(state.ids)].slice(0, SEEN_LIMIT);
-  await write(KEYS.seen, JSON.stringify({ since: state.since, checkedAt: state.checkedAt, pending: state.pending, ids }));
+  await write(
+    KEYS.seen,
+    JSON.stringify({ since: state.since, checkedAt: state.checkedAt, pending: state.pending, ids }),
+  );
 }
 
-const freshState = (now: number, ids: string[] = []): SeenState => ({ since: now, checkedAt: now, pending: {}, ids });
+const freshState = (now: number, ids: string[] = []): SeenState => ({
+  since: now,
+  checkedAt: now,
+  pending: {},
+  ids,
+});
 
 /**
  * Show `id` once: runs `present` unless the id was already delivered (the live socket and the
  * background check can both learn about the same post), and records it only after `present`
  * succeeds, so a failed presentation is retried. Returns whether it was presented.
  */
-export function deliverOnce(id: string, present: () => Promise<void>, now = Date.now()): Promise<boolean> {
+export function deliverOnce(
+  id: string,
+  present: () => Promise<void>,
+  now = Date.now(),
+): Promise<boolean> {
   return withSeenLock(async () => {
     const state = await loadSeenState();
-    if (state?.ids.includes(id)) return false;
+    if (state?.ids.includes(id) === true) {
+      return false;
+    }
     await present();
     await saveSeenState(state ? { ...state, ids: [id, ...state.ids] } : freshState(now, [id]));
     return true;
@@ -125,7 +170,8 @@ export function deliverOnce(id: string, present: () => Promise<void>, now = Date
 }
 
 /** Record `id` as delivered without presenting it. Returns false when it already was. */
-export const markSeen = (id: string, now = Date.now()) => deliverOnce(id, async () => undefined, now);
+export const markSeen = (id: string, now = Date.now()): Promise<boolean> =>
+  deliverOnce(id, () => Promise.resolve(), now);
 
 /**
  * Start the "new since" clock if it isn't running yet, so the first background run already
@@ -133,7 +179,9 @@ export const markSeen = (id: string, now = Date.now()) => deliverOnce(id, async 
  */
 export function ensureSeenBaseline(now = Date.now()): Promise<void> {
   return withSeenLock(async () => {
-    if (!(await loadSeenState())) await saveSeenState(freshState(now));
+    if ((await loadSeenState()) === null) {
+      await saveSeenState(freshState(now));
+    }
   });
 }
 

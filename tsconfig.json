@@ -2,28 +2,39 @@
   "extends": "expo/tsconfig.base",
   "compilerOptions": {
     "strict": true,
-    "preserveSymlinks": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+    "noImplicitOverride": true,
+    "noImplicitReturns": true,
+    "noFallthroughCasesInSwitch": true,
+    "noPropertyAccessFromIndexSignature": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "allowUnreachableCode": false,
+    "allowUnusedLabels": false,
+    "forceConsistentCasingInFileNames": true,
+    "isolatedModules": true,
+    "verbatimModuleSyntax": true,
+    "skipLibCheck": true,
     // TS 6 no longer auto-includes @types/*; jest globals are needed by the test suites.
     "types": ["jest"],
     "paths": {
-      "@/*": [
-        "./src/*"
-      ],
-      "@/assets/*": [
-        "./assets/*"
-      ],
-      "@test/*": [
-        "./jest/*"
-      ],
-      "@modules/*": [
-        "./modules/*"
-      ]
+      "@/*": ["./src/*"],
+      "@/assets/*": ["./assets/*"],
+      "@test/*": ["./jest/*"],
+      "@modules/*": ["./modules/*"]
     }
   },
-  "include": [
-    "**/*.ts",
-    "**/*.tsx",
-    ".expo/types/**/*.ts",
-    "expo-env.d.ts"
-  ]
+  // scripts/ runs on Node (type stripping) and has its own tsconfig with Node types.
+  "exclude": [
+    "scripts",
+    "node_modules",
+    "android",
+    "ios",
+    "dist",
+    "coverage",
+    "reports",
+    ".stryker-tmp"
+  ],
+  "include": ["**/*.ts", "**/*.tsx", ".expo/types/**/*.ts", "expo-env.d.ts"]
 }

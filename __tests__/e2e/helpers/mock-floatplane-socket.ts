@@ -9,6 +9,34 @@ import type { CreatorNotificationPayload } from '@/notifications/creator-notific
 
 import { api } from './mock-floatplane-api';
 
+interface SailsRequest {
+  url?: string;
+  data?: { token?: string };
+}
+
+const SAILS_REQUEST_FRAME = /^42(\d+)(\[.*)$/s;
+
+/** A client Sails request frame `42<ackId>["<method>",{ url, data }]`, or null for other frames. */
+function parseSailsRequest(
+  frame: string,
+): { ackId: string; method: string; request: SailsRequest } | null {
+  const match = SAILS_REQUEST_FRAME.exec(frame);
+  if (!match) {
+    return null;
+  }
+  const [method, request] = JSON.parse(match[2] ?? '[]') as [string, SailsRequest];
+  return { ackId: match[1] ?? '', method, request };
+}
+
+/** A `post /api/v3/socket/tk/connect` request frame, or null for anything else. */
+function parseConnectRequest(frame: string): { ackId: string; token: string } | null {
+  const parsed = parseSailsRequest(frame);
+  if (parsed?.method !== 'post' || parsed.request.url !== '/api/v3/socket/tk/connect') {
+    return null;
+  }
+  return { ackId: parsed.ackId, token: parsed.request.data?.token ?? '' };
+}
+
 export class MockServerSocket {
   onopen: (() => void) | null = null;
   onmessage: ((event: { data: unknown }) => void) | null = null;
@@ -43,22 +71,35 @@ export class MockServerSocket {
   send(data: string): void {
     this.sent.push(data);
     if (data === '2') {
-      if (!socketServer.silent) this.receive('3');
+      if (!socketServer.silent) {
+        this.receive('3');
+      }
       return;
     }
-    const match = /^42(\d+)(\[.*)$/s.exec(data);
-    if (!match) return;
-    const [method, request] = JSON.parse(match[2]) as [string, { url?: string; data?: { token?: string } }];
-    if (method !== 'post' || request.url !== '/api/v3/socket/tk/connect') return;
-    const token = request.data?.token ?? '';
+    const request = parseConnectRequest(data);
+    if (request) {
+      this.answerConnect(request.ackId, request.token);
+    }
+  }
+
+  /** Answer a `tk/connect` request (ack `ackId`): authenticate `token` against the API's sessions. */
+  private answerConnect(ackId: string, token: string): void {
     if (socketServer.connectStatus !== null) {
-      this.receive(`43${match[1]}${JSON.stringify([{ body: {}, headers: {}, statusCode: socketServer.connectStatus }])}`);
+      this.ack(ackId, {}, socketServer.connectStatus);
       return;
     }
     const ok = api.sessions.has(token) && !socketServer.rejectTokens;
-    if (ok) this.token = token;
-    const body = ok ? { message: 'User sync setup.' } : { message: 'You must be logged-in to access this resource.' };
-    this.receive(`43${match[1]}${JSON.stringify([{ body, headers: {}, statusCode: ok ? 200 : 403 }])}`);
+    if (ok) {
+      this.token = token;
+      this.ack(ackId, { message: 'User sync setup.' }, 200);
+    } else {
+      this.ack(ackId, { message: 'You must be logged-in to access this resource.' }, 403);
+    }
+  }
+
+  /** Server → client Sails response to the request acknowledged as `ackId`. */
+  private ack(ackId: string, body: object, statusCode: number): void {
+    this.receive(`43${ackId}${JSON.stringify([{ body, headers: {}, statusCode }])}`);
   }
 
   close(): void {
@@ -89,17 +130,23 @@ export const socketServer = {
 
   /** Send a raw frame to every open client. */
   broadcast(frame: string): void {
-    this.sockets.filter(socket => !socket.closed).forEach(socket => socket.receive(frame));
+    this.sockets
+      .filter((socket) => !socket.closed)
+      .forEach((socket) => {
+        socket.receive(frame);
+      });
   },
 
   /** Sockets that are open and authenticated. */
   connected(): MockServerSocket[] {
-    return this.sockets.filter(socket => !socket.closed && socket.token !== null);
+    return this.sockets.filter((socket) => !socket.closed && socket.token !== null);
   },
 
   /** Push a `syncEvent` to every authenticated client. */
   emit(event: string, data: unknown): void {
-    this.connected().forEach(socket => socket.receive(`42${JSON.stringify(['syncEvent', { event, data }])}`));
+    this.connected().forEach((socket) => {
+      socket.receive(`42${JSON.stringify(['syncEvent', { event, data }])}`);
+    });
   },
 
   /** Floatplane announces a new post (the `creatorNotification` floatplane.com receives). */
@@ -115,4 +162,8 @@ export const socketServer = {
   },
 };
 
-Object.defineProperty(globalThis, 'WebSocket', { value: MockServerSocket, writable: true, configurable: true });
+Object.defineProperty(globalThis, 'WebSocket', {
+  value: MockServerSocket,
+  writable: true,
+  configurable: true,
+});

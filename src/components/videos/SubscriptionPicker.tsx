@@ -1,90 +1,190 @@
-import { useState } from 'react';
-import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
+import { useState, type ReactElement } from 'react';
+import {
+  Modal,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+  type ImageStyle,
+  type StyleProp,
+} from 'react-native';
 import { Image } from 'expo-image';
 import { SymbolView } from 'expo-symbols';
 
+import { imagePath } from '@/components/image-path';
 import { useThemeColor, type Creator } from '@/shared';
 
 const ALL_LABEL = 'All Subscriptions';
 const GLOBE_ICON = { ios: 'globe', android: 'public', web: 'public' } as const;
 
 interface SubscriptionPickerProps {
-  creators: Creator[];
+  readonly creators: Creator[];
   /** Undefined = the merged feed across every subscription. */
-  selectedCreatorId?: string;
-  onSelect: (creatorId: string | undefined) => void;
+  readonly selectedCreatorId?: string | undefined;
+  readonly onSelect: (creatorId: string | undefined) => void;
+}
+
+const PICKER_GLOBE_SIZE = 16;
+const OPTION_GLOBE_SIZE = 22;
+
+interface CreatorIconProps {
+  /** The creator, or undefined for "All Subscriptions" (the globe). */
+  readonly creator: Creator | undefined;
+  readonly imageStyle: StyleProp<ImageStyle>;
+  readonly globeSize: number;
+}
+
+/** The creator's icon, or a globe when there is none. */
+function CreatorIcon({ creator, imageStyle, globeSize }: CreatorIconProps): ReactElement {
+  const mutedColor = useThemeColor({}, 'icon');
+  const iconPath = imagePath(creator?.icon);
+  if (iconPath === undefined) {
+    return <SymbolView name={GLOBE_ICON} size={globeSize} tintColor={mutedColor} />;
+  }
+  return <Image source={iconPath} style={imageStyle} />;
+}
+
+interface PickerButtonProps {
+  readonly selected: Creator | undefined;
+  readonly label: string;
+  readonly onPress: () => void;
+}
+
+function PickerButton({ selected, label, onPress }: PickerButtonProps): ReactElement {
+  const textColor = useThemeColor({}, 'text');
+  const mutedColor = useThemeColor({}, 'icon');
+  const idleColor = useThemeColor({ light: '#f2f2f2', dark: '#222' }, 'background');
+  return (
+    <Pressable
+      testID="subscription-picker"
+      onPress={onPress}
+      style={({ pressed }) => [
+        styles.picker,
+        { backgroundColor: idleColor },
+        pressed && styles.pressed,
+      ]}
+      accessibilityRole="button"
+      accessibilityLabel={`Subscription: ${label}. Tap to change.`}
+    >
+      <CreatorIcon
+        creator={selected}
+        imageStyle={styles.pickerIcon}
+        globeSize={PICKER_GLOBE_SIZE}
+      />
+      <Text style={[styles.pickerText, { color: textColor }]} numberOfLines={1}>
+        {label}
+      </Text>
+      <SymbolView
+        name={{ ios: 'chevron.down', android: 'expand_more', web: 'expand_more' }}
+        size={14}
+        tintColor={mutedColor}
+      />
+    </Pressable>
+  );
+}
+
+interface PickerSheetProps extends Pick<SubscriptionPickerProps, 'creators' | 'selectedCreatorId'> {
+  readonly visible: boolean;
+  readonly onClose: () => void;
+  readonly onChoose: (creatorId: string | undefined) => void;
+}
+
+function SheetOptions({
+  creators,
+  selectedCreatorId,
+  onChoose,
+}: Omit<PickerSheetProps, 'visible' | 'onClose'>): ReactElement {
+  return (
+    <>
+      <Option
+        testID="subscription-option-all"
+        label={ALL_LABEL}
+        selected={selectedCreatorId === undefined}
+        onPress={() => {
+          onChoose(undefined);
+        }}
+      />
+      {creators.map((creator) => (
+        <Option
+          key={creator.id}
+          testID={`subscription-option-${creator.id}`}
+          label={creator.title}
+          selected={creator.id === selectedCreatorId}
+          creator={creator}
+          onPress={() => {
+            onChoose(creator.id);
+          }}
+        />
+      ))}
+    </>
+  );
+}
+
+function PickerSheet({
+  creators,
+  selectedCreatorId,
+  visible,
+  onClose,
+  onChoose,
+}: PickerSheetProps): ReactElement {
+  const textColor = useThemeColor({}, 'text');
+  const sheetColor = useThemeColor({ light: '#ffffff', dark: '#1c1c1e' }, 'background');
+  return (
+    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
+      <Pressable style={styles.backdrop} onPress={onClose} testID="subscription-modal-backdrop">
+        <View style={[styles.sheet, { backgroundColor: sheetColor }]}>
+          <View style={styles.sheetHandle} />
+          <Text style={[styles.sheetTitle, { color: textColor }]}>Subscriptions</Text>
+          <SheetOptions
+            creators={creators}
+            selectedCreatorId={selectedCreatorId}
+            onChoose={onChoose}
+          />
+        </View>
+      </Pressable>
+    </Modal>
+  );
 }
 
 /**
  * Toolbar control that picks which subscription the Videos feed shows: one creator,
  * or "All Subscriptions" merged across all of them (the floatplane.com home view).
  */
-export function SubscriptionPicker({ creators, selectedCreatorId, onSelect }: SubscriptionPickerProps) {
+export function SubscriptionPicker({
+  creators,
+  selectedCreatorId,
+  onSelect,
+}: SubscriptionPickerProps): ReactElement {
   const [open, setOpen] = useState(false);
 
-  const textColor = useThemeColor({}, 'text');
-  const mutedColor = useThemeColor({}, 'icon');
-  const sheetColor = useThemeColor({ light: '#ffffff', dark: '#1c1c1e' }, 'background');
-  const idleColor = useThemeColor({ light: '#f2f2f2', dark: '#222' }, 'background');
-
-  const selected = creators.find(creator => creator.id === selectedCreatorId);
+  const selected = creators.find((creator) => creator.id === selectedCreatorId);
   const label = selected?.title ?? ALL_LABEL;
-    const choose = (creatorId: string | undefined) => {
+  const choose = (creatorId: string | undefined) => {
     setOpen(false);
-    if (creatorId !== selectedCreatorId) onSelect(creatorId);
+    if (creatorId !== selectedCreatorId) {
+      onSelect(creatorId);
+    }
+  };
+  const close = () => {
+    setOpen(false);
   };
 
   return (
     <>
-      <Pressable
-        testID="subscription-picker"
-        onPress={() => setOpen(true)}
-        style={({ pressed }) => [styles.picker, { backgroundColor: idleColor }, pressed && styles.pressed]}
-        accessibilityRole="button"
-        accessibilityLabel={`Subscription: ${label}. Tap to change.`}
-      >
-        {selected?.icon?.path ? (
-          <Image source={selected.icon.path} style={styles.pickerIcon} />
-        ) : (
-          <SymbolView name={GLOBE_ICON} size={16} tintColor={mutedColor} />
-        )}
-        <Text style={[styles.pickerText, { color: textColor }]} numberOfLines={1}>
-          {label}
-        </Text>
-        <SymbolView name={{ ios: 'chevron.down', android: 'expand_more', web: 'expand_more' }} size={14} tintColor={mutedColor} />
-      </Pressable>
-
-      <Modal visible={open} animationType="slide" transparent onRequestClose={() => setOpen(false)}>
-        <Pressable style={styles.backdrop} onPress={() => setOpen(false)} testID="subscription-modal-backdrop">
-          <View style={[styles.sheet, { backgroundColor: sheetColor }]}>
-            <View style={styles.sheetHandle} />
-            <Text style={[styles.sheetTitle, { color: textColor }]}>Subscriptions</Text>
-            <Option
-              testID="subscription-option-all"
-              label={ALL_LABEL}
-              selected={selectedCreatorId === undefined}
-              icon={<SymbolView name={GLOBE_ICON} size={22} tintColor={mutedColor} />}
-              onPress={() => choose(undefined)}
-            />
-            {creators.map(creator => (
-              <Option
-                key={creator.id}
-                testID={`subscription-option-${creator.id}`}
-                label={creator.title}
-                selected={creator.id === selectedCreatorId}
-                icon={
-                  creator.icon?.path ? (
-                    <Image source={creator.icon.path} style={styles.optionIcon} />
-                  ) : (
-                    <SymbolView name={GLOBE_ICON} size={22} tintColor={mutedColor} />
-                  )
-                }
-                onPress={() => choose(creator.id)}
-              />
-            ))}
-          </View>
-        </Pressable>
-      </Modal>
+      <PickerButton
+        selected={selected}
+        label={label}
+        onPress={() => {
+          setOpen(true);
+        }}
+      />
+      <PickerSheet
+        creators={creators}
+        selectedCreatorId={selectedCreatorId}
+        visible={open}
+        onClose={close}
+        onChoose={choose}
+      />
     </>
   );
 }
@@ -93,15 +193,16 @@ function Option({
   testID,
   label,
   selected,
-  icon,
+  creator,
   onPress,
-}: {
+}: Readonly<{
   testID: string;
   label: string;
   selected: boolean;
-  icon: React.ReactNode;
+  /** Whose icon to show; undefined for "All Subscriptions". */
+  creator?: Creator;
   onPress: () => void;
-}) {
+}>): ReactElement {
   const textColor = useThemeColor({}, 'text');
   const tintColor = useThemeColor({}, 'tint');
 
@@ -114,11 +215,17 @@ function Option({
       accessibilityState={{ selected }}
       style={({ pressed }) => [styles.option, pressed && styles.pressed]}
     >
-      {icon}
+      <CreatorIcon creator={creator} imageStyle={styles.optionIcon} globeSize={OPTION_GLOBE_SIZE} />
       <Text style={[styles.optionLabel, { color: textColor }]} numberOfLines={1}>
         {label}
       </Text>
-      {selected ? <SymbolView name={{ ios: 'checkmark', android: 'check', web: 'check' }} size={18} tintColor={tintColor} /> : null}
+      {selected ? (
+        <SymbolView
+          name={{ ios: 'checkmark', android: 'check', web: 'check' }}
+          size={18}
+          tintColor={tintColor}
+        />
+      ) : null}
     </Pressable>
   );
 }

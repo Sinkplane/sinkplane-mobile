@@ -1,4 +1,4 @@
-import { StyleSheet, Text } from 'react-native';
+import { StyleSheet, Text, type StyleProp, type TextStyle } from 'react-native';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 
 import { ThemeSwitcher } from '@/components/ThemeSwitcher';
@@ -21,7 +21,8 @@ async function renderSwitcher() {
 }
 
 const radio = (label: string) => screen.getByRole('radio', { name: `${label} theme` });
-const labelColor = (label: string) => StyleSheet.flatten(screen.getByText(label).props.style).color;
+const labelColor = (label: string) =>
+  StyleSheet.flatten(screen.getByText(label).props['style'] as StyleProp<TextStyle>)?.color;
 
 describe('ThemeSwitcher', () => {
   it('offers System, Light and Dark, with System selected by default', async () => {
@@ -43,7 +44,9 @@ describe('ThemeSwitcher', () => {
     expect(screen.getByTestId('theme-probe')).toHaveTextContent('dark:dark');
     expect(labelColor('Dark')).toBe(Colors.dark.text);
     expect(labelColor('Light')).toBe(Colors.dark.icon);
-    await waitFor(() => expect(secureStore.get('themeMode')).toBe(JSON.stringify('dark')));
+    await waitFor(() => {
+      expect(secureStore.get('themeMode')).toBe(JSON.stringify('dark'));
+    });
   });
 
   it('switches to light mode', async () => {
@@ -59,20 +62,26 @@ describe('ThemeSwitcher', () => {
   it('returns to following the system setting', async () => {
     secureStore.set('themeMode', JSON.stringify('dark'));
     await renderSwitcher();
-    await waitFor(() => expect(radio('Dark')).toBeSelected());
+    await waitFor(() => {
+      expect(radio('Dark')).toBeSelected();
+    });
 
     await fireEvent.press(radio('System'));
 
     expect(radio('System')).toBeSelected();
     expect(screen.getByTestId('theme-probe')).toHaveTextContent('system:system');
-    await waitFor(() => expect(secureStore.get('themeMode')).toBe(JSON.stringify('system')));
+    await waitFor(() => {
+      expect(secureStore.get('themeMode')).toBe(JSON.stringify('system'));
+    });
   });
 
   it('restores a previously saved choice on launch', async () => {
     secureStore.set('themeMode', JSON.stringify('light'));
     await renderSwitcher();
 
-    await waitFor(() => expect(radio('Light')).toBeSelected());
+    await waitFor(() => {
+      expect(radio('Light')).toBeSelected();
+    });
     expect(screen.getByTestId('theme-probe')).toHaveTextContent('light:light');
   });
 });

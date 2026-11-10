@@ -5,11 +5,17 @@
  * the renderer, PlaybackSession) keeps the one iOS-resolution instance the file shares.
  */
 import { Dimensions, Platform, type GestureResponderEvent } from 'react-native';
-import type { ReactElement } from 'react';
+import { useEffect, type ReactElement } from 'react';
 import { act, render, screen } from '@testing-library/react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
-import { PlaybackProvider, usePlaybackStore, type PlaybackMedia, type PlaybackStore } from '@/components/player/PlaybackSession';
+import {
+  PlaybackProvider,
+  usePlaybackStore,
+  type PlaybackMedia,
+  type PlaybackStore,
+} from '@/components/player/PlaybackSession';
+import type * as MiniPlayerModule from '@/components/player/MiniPlayer';
 import { MINI_PLAYER_MARGIN, miniPlayerSize } from '@/utils/mini-player-layout';
 
 const mockPush = jest.fn();
@@ -26,15 +32,30 @@ jest.mock('@/shared', () => ({
   useUpdateVideoProgress: () => ({ mutate: mockMutate }),
 }));
 
-const VIDEO: PlaybackMedia = { key: 'video:a', kind: 'video', id: 'a', title: 'Video A', subtitle: 'Tech' };
+const VIDEO: PlaybackMedia = {
+  key: 'video:a',
+  kind: 'video',
+  id: 'a',
+  title: 'Video A',
+  subtitle: 'Tech',
+};
 
 let store: PlaybackStore;
+/** Hands the provider's store to the test (captured after commit, before the test continues). */
 function CaptureStore() {
-  store = usePlaybackStore() as PlaybackStore;
+  const provided = usePlaybackStore();
+  useEffect(() => {
+    if (provided) {
+      store = provided;
+    }
+  }, [provided]);
   return null;
 }
 
-const METRICS = { frame: { x: 0, y: 0, width: 400, height: 800 }, insets: { top: 40, bottom: 20, left: 0, right: 0 } };
+const METRICS = {
+  frame: { x: 0, y: 0, width: 400, height: 800 },
+  insets: { top: 40, bottom: 20, left: 0, right: 0 },
+};
 const app = (MiniPlayerComponent: () => ReactElement | null) => (
   <SafeAreaProvider initialMetrics={METRICS}>
     <PlaybackProvider>
@@ -45,7 +66,30 @@ const app = (MiniPlayerComponent: () => ReactElement | null) => (
 );
 
 /** A single-touch responder event at (x, y): the `touchHistory` PanResponder computes gestures from. */
-function touch(x: number, y: number, timestamp: number, start = { x: 300, y: 100, timestamp: 0 }) {
+interface TouchPoint {
+  x: number;
+  y: number;
+  timestamp: number;
+}
+
+type TouchHandler<Result> = (event: GestureResponderEvent) => Result;
+
+/** The tile's responder handlers, called directly with synthetic touches. */
+interface TileResponder {
+  onMoveShouldSetResponderCapture: TouchHandler<boolean>;
+  onResponderGrant: TouchHandler<void>;
+  onResponderMove: TouchHandler<void>;
+  onResponderRelease: TouchHandler<void>;
+  onResponderTerminate: TouchHandler<void>;
+}
+
+const responderOf = (element: ReturnType<typeof screen.getByTestId>) =>
+  element.props as TileResponder;
+
+function touch(
+  { x, y, timestamp }: TouchPoint,
+  start: TouchPoint = { x: 300, y: 100, timestamp: 0 },
+) {
   const touchHistory = {
     numberActiveTouches: 1,
     indexOfSingleActiveTouch: 0,
@@ -84,11 +128,13 @@ describe('MiniPlayer on Android', () => {
   it('parks lower over the tab bar than on iOS (80pt clearance instead of 64)', async () => {
     jest.replaceProperty(Platform, 'OS', 'android');
     // First evaluation of the module body — under the override — picks the Android clearance.
-    const { MiniPlayer } = jest.requireActual<typeof import('@/components/player/MiniPlayer')>('@/components/player/MiniPlayer');
+    const { MiniPlayer } = jest.requireActual<typeof MiniPlayerModule>(
+      '@/components/player/MiniPlayer',
+    );
 
     await render(app(MiniPlayer));
     const { player } = store.acquire(VIDEO, { uri: 'https://edge.floatplane.test/a.m3u8' });
-    await act(async () => {
+    await act(() => {
       store.attach(player);
       store.minimize();
       store.detach(player);
@@ -97,9 +143,9 @@ describe('MiniPlayer on Android', () => {
     // Fling the tile into the bottom half; it snaps to the bottom-right corner.
     const tile = screen.getByTestId('mini-player');
     await act(async () => {
-      tile.props.onResponderGrant(touch(300, 100, 0));
-      tile.props.onResponderMove(touch(300, 500, 400));
-      tile.props.onResponderRelease(touch(300, 500, 400));
+      responderOf(tile).onResponderGrant(touch({ x: 300, y: 100, timestamp: 0 }));
+      responderOf(tile).onResponderMove(touch({ x: 300, y: 500, timestamp: 400 }));
+      responderOf(tile).onResponderRelease(touch({ x: 300, y: 500, timestamp: 400 }));
       await jest.advanceTimersByTimeAsync(2000);
     });
     expect(screen.getByLabelText('Mini player, corner bottom-right')).toBeTruthy();
@@ -107,9 +153,14 @@ describe('MiniPlayer on Android', () => {
     // The parked position proves the clearance: safe-area bottom (20) + tab bar (80) + margin (12).
     const window = Dimensions.get('window');
     const tileSize = miniPlayerSize(window.width);
-    const expectedY = window.height - (METRICS.insets.bottom + 80 + MINI_PLAYER_MARGIN) - tileSize.height;
-    const style = screen.getByTestId('mini-player').props.style as { transform?: ReadonlyArray<Record<string, unknown>> };
-    const translateY = (style.transform ?? []).find(entry => 'translateY' in entry)?.translateY;
+    const expectedY =
+      window.height - (METRICS.insets.bottom + 80 + MINI_PLAYER_MARGIN) - tileSize.height;
+    const style = screen.getByTestId('mini-player').props['style'] as {
+      transform?: readonly Record<string, unknown>[];
+    };
+    const translateY = (style.transform ?? []).find((entry) => 'translateY' in entry)?.[
+      'translateY'
+    ];
     expect(translateY).toBeCloseTo(expectedY, 0);
   });
 });
