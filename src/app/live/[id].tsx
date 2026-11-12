@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type ReactElement } from 'react';
-import { ScrollView, StyleSheet, View } from 'react-native';
+import { ScrollView, StyleSheet, useWindowDimensions, View } from 'react-native';
 import { Stack, useLocalSearchParams } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -205,18 +205,11 @@ function LivePlayer({
   );
 }
 
-function LiveDetailsPane({
-  stream,
-  style,
-}: Readonly<{
-  stream: CreatorLiveStream;
-  style: ReturnType<typeof playerPageLayout>['details'];
-}>): ReactElement {
+function LiveDetailsPane({ stream }: Readonly<{ stream: CreatorLiveStream }>): ReactElement {
   const insets = useSafeAreaInsets();
   const colorScheme = useColorScheme();
   return (
     <ScrollView
-      style={style}
       contentContainerStyle={[
         styles.content,
         { paddingBottom: insets.bottom + DETAILS_BOTTOM_PADDING },
@@ -259,12 +252,13 @@ function playerSlot(
 export default function LiveScreen(): ReactElement {
   const { id } = useLocalSearchParams<{ id: string }>();
   const insets = useSafeAreaInsets();
+  const window = useWindowDimensions();
   const backgroundColor = useThemeColor({}, 'background');
   const live = useLiveStream(id);
   const playable = live.placeholder === null;
   const page = usePlayerPage('live', id, playable);
   const { immersive } = page;
-  const layout = playerPageLayout({ immersive, sideBySide: page.sideBySide }, insets);
+  const layout = playerPageLayout({ immersive, wide: page.wide }, insets, window);
   useLeaveFullscreenWhenUnplayable(playable, page);
 
   return (
@@ -275,13 +269,10 @@ export default function LiveScreen(): ReactElement {
     >
       <Stack.Screen options={{ gestureEnabled: !immersive }} />
       <StatusBar hidden={immersive} {...(immersive ? { style: 'light' } : {})} />
-      {/* Large screens in landscape: the player on the left, the stream details beside it. */}
       <View testID="player-column" style={layout.player}>
         {playerSlot(id, live, page)}
       </View>
-      {immersive || !live.stream ? null : (
-        <LiveDetailsPane stream={live.stream} style={layout.details} />
-      )}
+      {immersive || !live.stream ? null : <LiveDetailsPane stream={live.stream} />}
     </View>
   );
 }

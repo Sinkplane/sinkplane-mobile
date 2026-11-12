@@ -156,38 +156,38 @@ describe('usePlayerPage', () => {
     });
   });
 
-  it('goes side-by-side on a landscape tablet, but not portrait, fullscreen, or tabletop', async () => {
+  it('is wide on a landscape tablet, but not portrait, fullscreen, or tabletop', async () => {
     setTestWindow(TABLET_LANDSCAPE_WINDOW);
     const { result, rerender } = await renderPage('video', 'a');
     expect(result.current.page).toMatchObject({
       fullscreen: false,
       immersive: false,
-      sideBySide: true,
+      wide: true,
     });
 
-    // A portrait tablet stacks player and details.
+    // A portrait tablet: the full-width player needs no cap.
     setTestWindow(TABLET_PORTRAIT_WINDOW);
     await rerender({ id: 'a', playable: true });
-    expect(result.current.page.sideBySide).toBe(false);
+    expect(result.current.page.wide).toBe(false);
 
-    // Back to landscape, fullscreen takes the whole screen instead of the split.
+    // Back to landscape, fullscreen takes the whole screen instead.
     setTestWindow(TABLET_LANDSCAPE_WINDOW);
     await rerender({ id: 'a', playable: true });
-    expect(result.current.page.sideBySide).toBe(true);
+    expect(result.current.page.wide).toBe(true);
     await act(() => {
       result.current.page.setFullscreen(true);
     });
     expect(result.current.page).toMatchObject({
       fullscreen: true,
       immersive: true,
-      sideBySide: false,
+      wide: false,
     });
 
-    // A half-opened fold (portrait, iOS-style posture) is also immersive, not side-by-side.
+    // A half-opened fold (portrait, iOS-style posture) is also immersive, not wide.
     setTestWindow(TABLET_PORTRAIT_WINDOW);
     mockFoldPosture.set({ state: 'halfOpened' });
     await act(() => Promise.resolve());
-    expect(result.current.page).toMatchObject({ immersive: true, sideBySide: false });
+    expect(result.current.page).toMatchObject({ immersive: true, wide: false });
 
     setTestWindow(PHONE_WINDOW);
   });

@@ -1,6 +1,6 @@
 /**
  * Mock Floatplane video page endpoints: post, delivery info (on-demand + live), comments,
- * like/dislike toggles, progress saving.
+ * like/dislike toggles, progress saving, related posts (the end screen's suggestions).
  */
 
 import { makeComments, makeLiveDelivery, makeVideoDelivery, makeVideoPost } from '@test/fixtures';
@@ -42,16 +42,21 @@ const post: RouteHandler = (store, req) => {
   return found ? ok(found) : apiError(404, 'notFoundError', 'No post with that id.');
 };
 
+/** Live delivery info: 404 while offline, unless the store hands it out anyway (like the real API). */
+function liveDeliveryInfo(store: FloatplaneApiStore, liveStreamId: string): MockResponse {
+  if (!store.liveNow.has(liveStreamId) && !store.liveDeliveryWhenOffline) {
+    return apiError(404, 'notFoundError', 'The livestream is not live.');
+  }
+  return ok(store.liveDeliveries.get(liveStreamId) ?? makeLiveDelivery(liveStreamId));
+}
+
 /** Playback info for a video attachment guid, or (`entityKind=livestream`) a livestream id. */
 const deliveryInfo: RouteHandler = (store, { params }) => {
   const entityId = params.get('entityId') ?? '';
-  if (params.get('entityKind') !== 'livestream') {
-    return ok(store.deliveries.get(entityId) ?? makeVideoDelivery(entityId));
+  if (params.get('entityKind') === 'livestream') {
+    return liveDeliveryInfo(store, entityId);
   }
-  if (!store.liveNow.has(entityId)) {
-    return apiError(404, 'notFoundError', 'The livestream is not live.');
-  }
-  return ok(store.liveDeliveries.get(entityId) ?? makeLiveDelivery(entityId));
+  return ok(store.deliveries.get(entityId) ?? makeVideoDelivery(entityId));
 };
 
 /** One page of a post's comments, continuing after `fetchAfter` (the last id already loaded). */
@@ -93,6 +98,23 @@ const saveProgress: RouteHandler = (store, req) => {
   return ok('OK');
 };
 
+/** Related posts: an override, else up to 5 other videos from the post's channel. */
+const relatedPosts: RouteHandler = (store, { params }) => {
+  const id = params.get('id') ?? '';
+  const override = store.related.get(id);
+  if (override) {
+    return ok(override);
+  }
+  const video = store.findVideo(id);
+  const channelId = video?.channel.id ?? '';
+  return ok(
+    store
+      .channelVideos(channelId)
+      .filter((other) => other.id !== id)
+      .slice(0, 5),
+  );
+};
+
 /** The video page's signed-in endpoints, by `METHOD /path`. */
 export const VIDEO_PAGE_ROUTES = new Map<string, RouteHandler>([
   ['GET /api/v3/content/post', post],
@@ -101,4 +123,5 @@ export const VIDEO_PAGE_ROUTES = new Map<string, RouteHandler>([
   ['POST /api/v3/content/like', (store, req) => toggleReaction(store, req, 'like')],
   ['POST /api/v3/content/dislike', (store, req) => toggleReaction(store, req, 'dislike')],
   ['POST /api/v3/content/progress', saveProgress],
+  ['GET /api/v3/content/related', relatedPosts],
 ]);

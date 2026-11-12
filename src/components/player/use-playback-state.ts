@@ -5,6 +5,8 @@ import type { PlayerError, VideoPlayer, VideoPlayerStatus } from 'expo-video';
 export interface PlaybackState {
   playing: boolean;
   ended: boolean;
+  /** Play-throughs so far: tells one ending from the next (the end screen's dismissal is per ending). */
+  endCount: number;
   status: VideoPlayerStatus;
   error: PlayerError | undefined;
   currentTime: number;
@@ -22,9 +24,11 @@ export function usePlaybackState(player: VideoPlayer): PlaybackState {
   });
   const { status, error } = useEvent(player, 'statusChange', { status: player.status });
   const [ended, setEnded] = useState(false);
+  const [endCount, setEndCount] = useState(0);
 
   useEventListener(player, 'playToEnd', () => {
     setEnded(true);
+    setEndCount((count) => count + 1);
   });
   useEventListener(player, 'playingChange', ({ isPlaying: nowPlaying }) => {
     if (nowPlaying) {
@@ -35,6 +39,7 @@ export function usePlaybackState(player: VideoPlayer): PlaybackState {
   return {
     playing: isPlaying,
     ended,
+    endCount,
     status,
     error,
     currentTime: time.currentTime,

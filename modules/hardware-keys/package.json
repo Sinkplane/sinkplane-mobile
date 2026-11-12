@@ -1,0 +1,10 @@
+{
+  "name": "hardware-keys",
+  "version": "0.1.0",
+  "description": "Hardware keyboard keys for the player (space bar play/pause) on iPad and Android",
+  "main": "index.tsx",
+  "license": "MIT",
+  "author": "Sinkplane",
+  "homepage": "https://github.com/Sinkplane/mobile",
+  "private": true
+}

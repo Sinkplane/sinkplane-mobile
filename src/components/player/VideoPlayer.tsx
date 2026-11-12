@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import type { VideoPlayer as NativeVideoPlayer, VideoSource } from 'expo-video';
+import { SpaceKeyListener } from '@modules/hardware-keys';
 
 import { SEEK_STEP_SECONDS } from '@/components/player/constants';
 import { useSessionPlayer, type PlaybackMedia } from '@/components/player/PlaybackSession';
@@ -8,6 +9,7 @@ import type { PlayerControlsProps } from '@/components/player/PlayerControls';
 import { applyPlayerSettings } from '@/components/player/player-settings';
 import { ControlsLayer, PlayerSurface } from '@/components/player/PlayerSurface';
 import { SpeedMenu } from '@/components/player/SpeedMenu';
+import { useEndScreen, type EndScreenRenderer } from '@/components/player/use-end-screen';
 import {
   useControlsVisibility,
   type ControlsVisibility,
@@ -56,6 +58,11 @@ interface VideoPlayerProps {
    * stay up on the screen below it (YouTube's "flex mode"). The player takes the whole screen.
    */
   tabletop?: TabletopLayout | null | undefined;
+  /**
+   * Shown when an on-demand video plays to the end (suggested videos): in the middle of the
+   * controls, in place of skip / replay, keeping their top and bottom bars.
+   */
+  endScreen?: EndScreenRenderer | undefined;
 }
 
 type Props = Readonly<VideoPlayerProps>;
@@ -230,7 +237,8 @@ function useVideoPlayer(props: Props) {
     inPictureInPicture,
     tabletop,
   );
-  const surface = { player, live, tabletop, gestures, seek, state, onRetry: retry };
+  const endScreen = useEndScreen(props.endScreen, live || inPictureInPicture, { state, actions });
+  const surface = { player, live, tabletop, gestures, seek, state, onRetry: retry, endScreen };
   return { speed, tabletop, surface, controlProps, hidden, setInPictureInPicture };
 }
 
@@ -254,7 +262,15 @@ export function VideoPlayer(props: Props): React.JSX.Element {
         onPictureInPictureChange={setInPictureInPicture}
       />
 
-      <ControlsLayer tabletop={tabletop} hidden={hidden} controlProps={controlProps} />
+      {/* Hardware keyboard (iPad, Android): space plays / pauses, like the center button. */}
+      <SpaceKeyListener onSpace={controlProps.onTogglePlay} active={!speed.menuOpen} />
+
+      <ControlsLayer
+        tabletop={tabletop}
+        hidden={hidden}
+        controlProps={controlProps}
+        endScreen={surface.endScreen}
+      />
 
       <SpeedMenu
         visible={speed.menuOpen}

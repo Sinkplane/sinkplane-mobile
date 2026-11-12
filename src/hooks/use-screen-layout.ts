@@ -35,18 +35,18 @@ export function gridColumns(width: number, padding: number, gap: number): GridCo
  * Window-driven layout for the current screen, live across rotation, split screen and folding:
  * - `large`: tablet-sized window. The app rotates freely, and rotating a player page doesn't force
  *   fullscreen.
- * - `sideBySide`: a large window in landscape, where the player pages put the details beside the
- *   player instead of under it.
+ * - `wide`: a large window in landscape, where the player pages cap the player's height so the
+ *   details below it keep room.
  */
 export interface ScreenLayout {
   large: boolean;
-  sideBySide: boolean;
+  wide: boolean;
 }
 
 export function useScreenLayout(): ScreenLayout {
   const window = useWindowDimensions();
   const large = isLargeScreen(window);
-  return { large, sideBySide: large && window.width > window.height };
+  return { large, wide: large && window.width > window.height };
 }
 
 /** Horizontal padding and gap of the tab lists (videos, history, live). */

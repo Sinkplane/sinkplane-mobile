@@ -104,8 +104,12 @@ export class FloatplaneApiStore {
   comments = new Map<string, PostComment[]>();
   /** Delivery overrides: attachment guid → payload (default: playable delivery). */
   deliveries = new Map<string, VideoDelivery>();
+  /** Related-posts overrides: post id → list (default: up to 5 other videos from its channel). */
+  related = new Map<string, Video[]>();
   /** Livestream ids currently broadcasting (delivery info answers 404 for the rest). */
   liveNow = new Set<string>();
+  /** Hand out live delivery info for offline streams too (only their playlist 404s), like the real API. */
+  liveDeliveryWhenOffline = false;
   /** Live delivery overrides: livestream id → payload (default: makeLiveDelivery). */
   liveDeliveries = new Map<string, VideoDelivery>();
   /** The signed-in user's reaction per post, as toggled through like/dislike. */
@@ -252,6 +256,8 @@ export class FloatplaneApiStore {
     this.comments.clear();
     this.deliveries.clear();
     this.liveNow.clear();
+    this.liveDeliveryWhenOffline = false;
+    this.related.clear();
     this.liveDeliveries.clear();
     this.interactions.clear();
     this.notificationSettings.clear();

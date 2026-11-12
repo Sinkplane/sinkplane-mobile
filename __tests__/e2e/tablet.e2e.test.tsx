@@ -3,7 +3,7 @@
  * the app locks DEFAULT everywhere (never PORTRAIT_UP), tab lists become multi-column grids, and
  * landscape player pages show the details beside the video instead of going fullscreen.
  */
-import { LIVESTREAM_ID, makeVideoPost, techCreator, techMainChannel } from '@test/fixtures';
+import { LIVESTREAM_ID, techCreator } from '@test/fixtures';
 import {
   PHONE_LANDSCAPE_WINDOW,
   PHONE_WINDOW,
@@ -173,9 +173,14 @@ describe('the video page in landscape', () => {
       rt.mockVideoPlayerState.lastPlayer().setStatus('readyToPlay');
     });
 
-  it('shows the player and the comments side by side; rotating never goes fullscreen', async () => {
+  it('stacks the comments under a height-capped player; rotating never goes fullscreen', async () => {
     await openVideoAt(TABLET_LANDSCAPE_WINDOW);
-    expect(rt.screen.getByTestId('player-column')).toBeTruthy();
+    // A column, not a row: the player on top (centered, 60% of the window tall at most), comments below.
+    expect(rt.styleOf(rt.screen.getByTestId('video-screen')).flexDirection).toBeUndefined();
+    expect(rt.styleOf(rt.screen.getByTestId('player-column'))).toMatchObject({
+      alignSelf: 'center',
+      width: (TABLET_LANDSCAPE_WINDOW.height * 0.6 * 16) / 9,
+    });
     expect(rt.screen.getByTestId('comment-list')).toBeTruthy();
     expect(rt.screen.queryByRole('button', { name: 'Exit fullscreen' })).toBeNull();
 
@@ -191,12 +196,13 @@ describe('the video page in landscape', () => {
     );
     expect(rt.orientation.orientationListenerCount()).toBe(0);
 
-    // Rotating "back" to portrait keeps the page stacked, still not fullscreen.
+    // Rotating "back" to portrait keeps the page stacked with a full-width player, not fullscreen.
     await rt.act(() => {
       rt.setWindow(TABLET_PORTRAIT_WINDOW);
     });
     await rt.advanceTime(100);
     expect(rt.screen.getByTestId('comment-list')).toBeTruthy();
+    expect(rt.styleOf(rt.screen.getByTestId('player-column')).alignSelf).toBeUndefined();
     expect(rt.screen.queryByRole('button', { name: 'Exit fullscreen' })).toBeNull();
   });
 
@@ -228,56 +234,10 @@ describe('the video page in landscape', () => {
       rt.orientation.OrientationLock.DEFAULT,
     );
   });
-
-  it('a text-only post stays stacked: full-width comments, no side-by-side split', async () => {
-    // Landscape tablet, but a post with neither video nor picture/thumbnail: there is nothing to
-    // put in the player column, so the page must not go side by side.
-    const video = rt.defined(rt.api.channelVideos(techMainChannel.id)[0]);
-    const post = makeVideoPost(video, { videoAttachments: false });
-    rt.api.posts.set(POST_ID, { ...post, thumbnail: null } as unknown as typeof post);
-    await launchAt(TABLET_LANDSCAPE_WINDOW);
-    await rt.fireEvent.press(rt.inTab('index').getByTestId(`video-list-item-${POST_ID}`));
-    await rt.until(() => {
-      expect(rt.screen.getByTestId('video-screen')).toBeTruthy();
-    });
-    await rt.until(() => {
-      expect(rt.screen.getByTestId('video-title')).toBeTruthy();
-    });
-
-    expect(rt.screen.queryByTestId('post-image')).toBeNull(); // truly text-only
-    // The page style has no flexDirection row, and the details take the full width (no column split).
-    expect(rt.styleOf(rt.screen.getByTestId('video-screen')).flexDirection).toBeUndefined();
-    expect(rt.styleOf(rt.screen.getByTestId('comment-list')).flexGrow).toBeUndefined();
-    expect(rt.styleOf(rt.screen.getByTestId('player-column')).flexGrow).toBeUndefined();
-
-    // The same landscape window with a picture post IS side by side (player beside the details).
-    const picture = {
-      id: 'pic-1',
-      type: 'picture',
-      thumbnail: { path: 'https://cdn.floatplane.test/pic-1.jpg' },
-    };
-    rt.api.posts.set(POST_ID, {
-      ...post,
-      thumbnail: video.thumbnail,
-      pictureAttachments: [picture],
-    } as unknown as typeof post);
-    await rt.act(() => {
-      rt.router.back();
-    });
-    await rt.until(() => {
-      expect(rt.screen.queryByTestId('video-screen')).toBeNull();
-    });
-    await rt.fireEvent.press(rt.inTab('index').getByTestId(`video-list-item-${POST_ID}`));
-    await rt.until(() => {
-      expect(rt.screen.getByTestId('post-image')).toBeTruthy();
-    });
-    expect(rt.styleOf(rt.screen.getByTestId('video-screen')).flexDirection).toBe('row');
-    expect(rt.styleOf(rt.screen.getByTestId('comment-list')).flexGrow).toBe(1);
-  });
 });
 
 describe('the live page in landscape', () => {
-  it('shows the stream details beside the player', async () => {
+  it('shows the stream details under the player', async () => {
     rt.api.liveNow.add(LIVESTREAM_ID);
     await launchAt(TABLET_LANDSCAPE_WINDOW);
     await rt.selectTab('live');
@@ -292,7 +252,10 @@ describe('the live page in landscape', () => {
     await rt.until(() => {
       expect(rt.screen.getByTestId('live-title')).toBeTruthy();
     });
-    expect(rt.screen.getByTestId('player-column')).toBeTruthy();
+    expect(rt.styleOf(rt.screen.getByTestId('live-screen')).flexDirection).toBeUndefined();
+    expect(rt.styleOf(rt.screen.getByTestId('player-column'))).toMatchObject({
+      alignSelf: 'center',
+    });
     expect(rt.orientation.lockAsync).toHaveBeenLastCalledWith(
       rt.orientation.OrientationLock.DEFAULT,
     );

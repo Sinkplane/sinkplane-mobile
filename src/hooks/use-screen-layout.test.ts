@@ -75,19 +75,19 @@ describe('useScreenLayout', () => {
     return useScreenLayout();
   };
 
-  it('reports a phone: not large, never side-by-side', async () => {
+  it('reports a phone: not large, never wide', async () => {
     const { result } = await renderHook(at(PHONE_WINDOW));
-    expect(result.current).toEqual({ large: false, sideBySide: false });
+    expect(result.current).toEqual({ large: false, wide: false });
   });
 
-  it('a portrait tablet is large but not side-by-side', async () => {
+  it('a portrait tablet is large but not wide', async () => {
     const { result } = await renderHook(at(TABLET_PORTRAIT_WINDOW));
-    expect(result.current).toEqual({ large: true, sideBySide: false });
+    expect(result.current).toEqual({ large: true, wide: false });
   });
 
-  it('a landscape tablet is large and side-by-side', async () => {
+  it('a landscape tablet is large and wide', async () => {
     const { result } = await renderHook(at(TABLET_LANDSCAPE_WINDOW));
-    expect(result.current).toEqual({ large: true, sideBySide: true });
+    expect(result.current).toEqual({ large: true, wide: true });
   });
 });
 

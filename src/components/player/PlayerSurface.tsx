@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import { VideoView, type VideoPlayer } from 'expo-video';
 
@@ -25,6 +26,8 @@ interface PlayerSurfaceProps {
   state: PlaybackState;
   onRetry: () => void;
   onPictureInPictureChange: (active: boolean) => void;
+  /** `null` while not showing; drawn here only in tabletop (see `EndScreenBackdrop`). */
+  endScreen: ReactNode;
 }
 
 /** The native video view; reports picture-in-picture starting and stopping. */
@@ -51,6 +54,24 @@ function PlayerVideo({
   );
 }
 
+/**
+ * Darkens the video behind the end screen. In tabletop it also holds the end screen itself (the
+ * controls live below the hinge); otherwise the end screen sits in the overlay controls on top.
+ */
+function EndScreenBackdrop({
+  endScreen,
+  tabletop,
+}: Readonly<Pick<PlayerSurfaceProps, 'endScreen' | 'tabletop'>>): React.JSX.Element | null {
+  if (endScreen === null) {
+    return null;
+  }
+  return (
+    <View testID="end-screen-backdrop" style={styles.endScreenBackdrop}>
+      {tabletop ? endScreen : null}
+    </View>
+  );
+}
+
 /** The video, the touch surface over it and the transient feedback; above the hinge in tabletop. */
 export function PlayerSurface({
   player,
@@ -62,6 +83,7 @@ export function PlayerSurface({
   state,
   onRetry,
   onPictureInPictureChange,
+  endScreen,
 }: Readonly<PlayerSurfaceProps>): React.JSX.Element {
   return (
     <View
@@ -88,6 +110,7 @@ export function PlayerSurface({
       {state.status === 'error' ? (
         <PlaybackError message={state.error?.message} onRetry={onRetry} />
       ) : null}
+      <EndScreenBackdrop endScreen={endScreen} tabletop={tabletop} />
     </View>
   );
 }
@@ -97,16 +120,19 @@ export function ControlsLayer({
   tabletop,
   hidden,
   controlProps,
+  endScreen,
 }: Readonly<{
   tabletop: TabletopLayout | null;
   hidden: boolean;
   controlProps: PlayerControlsProps;
+  /** Takes the middle of the overlay controls, keeping their top and bottom bars. */
+  endScreen: ReactNode;
 }>): React.JSX.Element | null {
   if (hidden) {
     return null;
   }
   if (!tabletop) {
-    return <PlayerControls {...controlProps} />;
+    return <PlayerControls {...controlProps} center={endScreen ?? undefined} />;
   }
   return (
     <View
@@ -124,6 +150,10 @@ const styles = StyleSheet.create({
     top: 0,
     left: 0,
     right: 0,
+  },
+  endScreenBackdrop: {
+    ...StyleSheet.absoluteFill,
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
   },
   tabletopPanel: {
     position: 'absolute',

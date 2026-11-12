@@ -1,6 +1,6 @@
 import { useCallback, useMemo, type ReactElement } from 'react';
-import { FlatList, StyleSheet, View } from 'react-native';
-import { Stack, useLocalSearchParams } from 'expo-router';
+import { FlatList, StyleSheet, useWindowDimensions, View } from 'react-native';
+import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -8,12 +8,16 @@ import type { PlaybackMedia } from '@/components/player/PlaybackSession';
 import { PlayerPlaceholder } from '@/components/player/PlayerPlaceholder';
 import { usePlayerPage } from '@/components/player/use-player-page';
 import { VideoPlayer } from '@/components/player/VideoPlayer';
+import type { EndScreenRenderer } from '@/components/player/use-end-screen';
 import { CommentItem } from '@/components/video-page/CommentItem';
 import { CommentsFooter } from '@/components/video-page/CommentsFooter';
-import { isTextOnly, PostImage } from '@/components/video-page/PostImage';
+import { PostImage } from '@/components/video-page/PostImage';
+import { SuggestedVideos } from '@/components/video-page/SuggestedVideos';
 import { VideoDetails } from '@/components/video-page/VideoDetails';
 import { usePostComments, type PostComment } from '@/hooks/use-post-comments';
 import { usePostReaction } from '@/hooks/use-post-reaction';
+import { useResumePosition } from '@/hooks/use-resume-position';
+import { useSuggestedVideos } from '@/hooks/use-suggested-videos';
 import {
   useColorScheme,
   useGetVideoDelivery,
@@ -59,7 +63,35 @@ function useVideoData(id: string) {
   const streamUrl = getStreamUrl(delivery.data);
   const comments = usePostComments(token, id);
   const reaction = usePostReaction(token, post.data);
-  return { token, post, attachment, delivery, streamUrl, comments, reaction };
+  const resume = useResumePosition(token, id, post.data);
+  const suggested = useSuggestedVideos(token, tokenExpiration, id);
+  return { token, post, attachment, delivery, streamUrl, comments, reaction, resume, suggested };
+}
+
+/**
+ * The end screen: Floatplane's related posts (none: the plain ended controls). Opening one
+ * replaces this page, so the finished video's page and player go away.
+ */
+function useSuggestedEndScreen(
+  data: ReturnType<typeof useVideoData>,
+  page: PlayerPage,
+): EndScreenRenderer | undefined {
+  const router = useRouter();
+  const { suggested } = data;
+  if (suggested.length === 0) {
+    return undefined;
+  }
+  return ({ replay, dismiss }) => (
+    <SuggestedVideos
+      videos={suggested}
+      onReplay={replay}
+      onDismiss={dismiss}
+      onSelect={(video) => {
+        page.setFullscreen(false);
+        router.replace({ pathname: '/video/[id]', params: { id: video.id } });
+      }}
+    />
+  );
 }
 
 /** Saves watch progress; the mutation also patches the cached post / list progress, so reopening the video resumes here. */
@@ -104,6 +136,7 @@ function PlayableVideo({
   onSaveProgress,
 }: PlayerSlotProps & { readonly post: VideoPost; readonly streamUrl: string }): ReactElement {
   const { channel, artwork } = nowPlaying(post);
+  const endScreen = useSuggestedEndScreen(data, page);
   return (
     <VideoPlayer
       source={buildVideoSource(streamUrl, data.token, {
@@ -112,7 +145,7 @@ function PlayableVideo({
         artwork,
       })}
       title={post.title}
-      initialTime={post.progress ?? undefined}
+      initialTime={data.resume.seconds}
       fallbackDuration={data.attachment?.duration}
       fullscreen={page.fullscreen}
       tabletop={page.tabletop}
@@ -120,6 +153,7 @@ function PlayableVideo({
       onBack={page.minimize}
       onSaveProgress={onSaveProgress}
       media={videoMedia(id, post.title, channel)}
+      endScreen={endScreen}
     />
   );
 }
@@ -160,16 +194,14 @@ function PlayerSlot(props: PlayerSlotProps): ReactElement {
   if (standIn !== undefined) {
     return standIn;
   }
-  if (!post.data || !hasStream(streamUrl)) {
+  // Wait for the resume position too: the player only reads `initialTime` when it mounts.
+  if (!post.data || !hasStream(streamUrl) || !props.data.resume.ready) {
     return <PlayerPlaceholder />;
   }
   return <PlayableVideo {...props} post={post.data} streamUrl={streamUrl} />;
 }
 
-function CommentList({
-  data,
-  style,
-}: Readonly<{ data: ReturnType<typeof useVideoData>; style: PlayerPageStyle }>): ReactElement {
+function CommentList({ data }: Readonly<{ data: ReturnType<typeof useVideoData> }>): ReactElement {
   const insets = useSafeAreaInsets();
   const colorScheme = useColorScheme();
   const { comments, reaction } = data;
@@ -184,7 +216,6 @@ function CommentList({
   return (
     <FlatList
       testID="comment-list"
-      style={style}
       data={commentList}
       keyExtractor={(comment: PostComment) => comment.id}
       renderItem={({ item }) => <CommentItem comment={item} />}
@@ -201,18 +232,15 @@ function CommentList({
   );
 }
 
-type PlayerPageStyle = ReturnType<typeof playerPageLayout>['details'];
-
 export default function VideoScreen(): ReactElement {
   const { id } = useLocalSearchParams<{ id: string }>();
   const insets = useSafeAreaInsets();
+  const window = useWindowDimensions();
   const backgroundColor = useThemeColor({}, 'background');
   const data = useVideoData(id);
   const page = usePlayerPage('video', id, hasStream(data.streamUrl));
   const { immersive } = page;
-  // Text-only posts have no media to put beside the details: they stay stacked (full-width details).
-  const sideBySide = page.sideBySide && !isTextOnly(data.post.data);
-  const layout = playerPageLayout({ immersive, sideBySide }, insets);
+  const layout = playerPageLayout({ immersive, wide: page.wide }, insets, window);
   const saveProgress = useSaveProgress(data.token, id);
 
   return (
@@ -223,11 +251,10 @@ export default function VideoScreen(): ReactElement {
     >
       <Stack.Screen options={{ gestureEnabled: !immersive }} />
       <StatusBar hidden={immersive} {...(immersive ? { style: 'light' } : {})} />
-      {/* Large screens in landscape: the player on the left, details and comments scrolling beside it. */}
       <View testID="player-column" style={layout.player}>
         <PlayerSlot id={id} data={data} page={page} onSaveProgress={saveProgress} />
       </View>
-      {immersive ? null : <CommentList data={data} style={layout.details} />}
+      {immersive ? null : <CommentList data={data} />}
     </View>
   );
 }
