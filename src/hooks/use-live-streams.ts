@@ -3,13 +3,19 @@ import { skipToken, useQueries, type UseQueryResult } from '@tanstack/react-quer
 
 import { isNonEmpty } from '@/hooks/is-non-empty';
 import { zip } from '@/hooks/zip';
-import { authenticatedFetch, type Creator, type LiveStream, type VideoDelivery } from '@/shared';
+import {
+  authenticatedFetch,
+  BROWSER_USER_AGENT,
+  type Creator,
+  type LiveStream,
+  type VideoDelivery,
+} from '@/shared';
 import { getStreamUrl } from '@/utils/stream-source';
 
 /** How often the tab bar re-checks whether a creator went live or ended their stream (TV app parity). */
 export const LIVE_POLL_MS = 60_000;
 
-/** The delivery endpoint's answer for a livestream that isn't broadcasting. */
+/** The delivery endpoint's (or the live playlist's) answer for a stream that isn't broadcasting. */
 const HTTP_NOT_FOUND = 404;
 
 export type LiveStatus = 'loading' | 'live' | 'offline' | 'error';
@@ -41,8 +47,26 @@ interface Answer {
 type PreviousAnswers = Map<string, Answer>;
 
 /**
+ * Whether the live playlist is actually being served. The delivery endpoint can hand out a signed
+ * playlist URL for a livestream that isn't broadcasting; that playlist then answers 404 (the TV app
+ * only finds out when its player fails). Same headers as the player sends.
+ */
+async function isPlaylistLive(token: string, url: string): Promise<boolean> {
+  const headers: Record<string, string> = { 'User-Agent': BROWSER_USER_AGENT };
+  headers['Authorization'] = `Bearer ${token}`;
+  const response = await fetch(url, { headers });
+  if (response.status === HTTP_NOT_FOUND) {
+    return false;
+  }
+  if (!response.ok) {
+    throw new Error(`Failed to check the live playlist: ${String(response.status)}`);
+  }
+  return true;
+}
+
+/**
  * Live delivery info for a livestream id, or `null` while it is offline: the delivery endpoint
- * answers 404 for a livestream that isn't broadcasting.
+ * answers 404 for a livestream that isn't broadcasting, or its playlist does (see `isPlaylistLive`).
  */
 async function fetchLiveDelivery(
   token: string,
@@ -62,7 +86,12 @@ async function fetchLiveDelivery(
       `Failed to check the live stream: ${String(response.status)} - ${await response.text()}`,
     );
   }
-  return (await response.json()) as VideoDelivery;
+  const delivery = (await response.json()) as VideoDelivery;
+  const streamUrl = getStreamUrl(delivery, { live: true });
+  if (streamUrl !== null && !(await isPlaylistLive(token, streamUrl))) {
+    return null;
+  }
+  return delivery;
 }
 
 function liveStatus(

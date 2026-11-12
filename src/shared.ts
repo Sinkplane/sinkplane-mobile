@@ -27,6 +27,7 @@ export { useColorScheme } from '@sinkplane/shared/theme/useColorScheme';
 export { useThemeColor } from '@sinkplane/shared/theme/useThemeColor';
 
 export { AssDass } from '@sinkplane/shared/videos/useGetVideos';
+export { useGetRelatedVideos } from '@sinkplane/shared/videos/useGetRelatedVideos';
 export { useGetVideoProgress } from '@sinkplane/shared/videos/useGetVideoProgress';
 export { useGetVideoPost } from '@sinkplane/shared/videos/useGetVideoPost';
 export { useGetVideoDelivery } from '@sinkplane/shared/videos/useGetVideoDelivery';

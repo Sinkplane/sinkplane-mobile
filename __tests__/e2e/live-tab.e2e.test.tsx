@@ -42,6 +42,25 @@ describe('the Live tab', () => {
     expect(rt.screen.queryByTestId('live-screen')).toBeNull();
   });
 
+  it('stays offline, with no badge, when the API hands out a playlist that 404s', async () => {
+    // The real delivery endpoint can answer for an offline stream; only its playlist reveals it.
+    rt.api.liveDeliveryWhenOffline = true;
+    await openLiveTab(rt);
+
+    await rt.until(() => {
+      expect(liveTab(rt).getByTestId('live-status-offline')).toBeTruthy();
+    });
+    expect(rt.tabBadge('live')).toBeUndefined();
+    expect(rt.api.requestsTo(`/${LIVESTREAM_ID}/live-abr.m3u8`).length).toBeGreaterThan(0);
+
+    // Once the creator broadcasts the playlist is served, and the next check badges the tab.
+    rt.api.liveNow.add(LIVESTREAM_ID);
+    await rt.advanceTime(POLL_MS);
+    await rt.until(() => {
+      expect(rt.tabBadge('live')).toBe('LIVE');
+    });
+  });
+
   it('checks the livestream with the live delivery scenario and the session token', async () => {
     const token = rt.seedSession();
     await rt.renderApp();

@@ -6,7 +6,8 @@
  *  - profile (/status), subscriptions, creator list
  *  - creator content listing (all channels or one), with pagination + sort
  *  - video page: post by id, delivery info, paged comments, like/dislike toggles
- *  - livestreams: live delivery info for streams in `liveNow`, 404 for offline ones (like the real API)
+ *  - livestreams: live delivery info for streams in `liveNow`, 404 for offline ones (like the real API);
+ *    their playlists on live.floatplane.test (404 while offline; see `liveDeliveryWhenOffline`)
  *  - watch progress (get + set) and watch history (offset-paged; POSTing progress moves the
  *    post to the front of the history, like the real backend)
  *  - per-creator notification settings (list + update; one entry per subscribed creator)
@@ -106,12 +107,26 @@ export class FloatplaneApiMock extends FloatplaneApiStore {
     if (failure) {
       return respond(failure);
     }
-    const url = requestUrl(input);
-    if (url.hostname !== 'www.floatplane.com') {
-      return respond({ status: 404, body: `No mock for ${url.href}` });
-    }
-    return respond(this.route(request));
+    return respond(this.routeByHost(requestUrl(input), request));
   };
+
+  private routeByHost(url: URL, request: RecordedRequest): MockResponse {
+    if (url.hostname === 'live.floatplane.test') {
+      return this.livePlaylist(url.pathname);
+    }
+    if (url.hostname !== 'www.floatplane.com') {
+      return { status: 404, body: `No mock for ${url.href}` };
+    }
+    return this.route(request);
+  }
+
+  /** A live HLS playlist (`/<liveStreamId>/<variant>.m3u8`): served while live, else 404 like the CDN. */
+  private livePlaylist(pathname: string): MockResponse {
+    const liveStreamId = pathname.split('/')[1] ?? '';
+    return this.liveNow.has(liveStreamId)
+      ? { status: 200, body: '#EXTM3U' }
+      : { status: 404, body: 'Not Found' };
+  }
 
   // -- routing ----------------------------------------------------------------------------
 

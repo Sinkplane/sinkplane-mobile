@@ -9,6 +9,10 @@ import { gamingCreator, LIVESTREAM_ID, makeLiveDelivery, techCreator } from '@te
 // In-memory /api/v3/delivery/info: liveStreamId → response (404 when absent, like an offline stream).
 let responses: Map<string, { status: number; body: unknown }>;
 
+// Live playlist URL → status (200 when absent: the stream is broadcasting).
+let playlists: Map<string, number>;
+const PLAYLIST_URL = `https://live.floatplane.test/${LIVESTREAM_ID}/live-abr.m3u8?token=signed`;
+
 function urlOf(input: RequestInfo | URL): string {
   if (typeof input === 'string') {
     return input;
@@ -25,8 +29,11 @@ function fakeResponse(status: number, body: unknown) {
   };
 }
 
-const fetchMock = jest.fn((input: RequestInfo | URL) => {
+const fetchMock = jest.fn((input: RequestInfo | URL, _init?: RequestInit) => {
   const url = new URL(urlOf(input));
+  if (url.pathname !== '/api/v3/delivery/info') {
+    return Promise.resolve(fakeResponse(playlists.get(url.href) ?? 200, '#EXTM3U'));
+  }
   const response = responses.get(url.searchParams.get('entityId') ?? '') ?? {
     status: 404,
     body: { message: 'Not live' },
@@ -45,6 +52,7 @@ function firstFetchUrl(): URL {
 
 beforeEach(() => {
   responses = new Map();
+  playlists = new Map();
   fetchMock.mockClear();
   globalThis.fetch = fetchMock as unknown as typeof globalThis.fetch;
 });
@@ -149,6 +157,34 @@ describe('useLiveStreams', () => {
     await waitFor(() => {
       expect(result.current[0]?.status).toBe('offline');
     });
+  });
+
+  it("treats a delivery whose playlist isn't served (404) as offline", async () => {
+    // Floatplane can hand out a signed playlist URL while the creator isn't broadcasting.
+    responses.set(LIVESTREAM_ID, { status: 200, body: makeLiveDelivery() });
+    playlists.set(PLAYLIST_URL, 404);
+
+    const { result } = await renderStreams();
+
+    await waitFor(() => {
+      expect(result.current[0]?.status).toBe('offline');
+    });
+    expect(result.current[0]?.streamUrl).toBeNull();
+    const probe = fetchMock.mock.calls.find(([input]) => urlOf(input) === PLAYLIST_URL);
+    const headers = probe?.[1]?.headers as Record<string, string> | undefined;
+    expect(headers?.['Authorization']).toBe('Bearer session-token');
+  });
+
+  it('reports a playlist that fails some other way as an error', async () => {
+    responses.set(LIVESTREAM_ID, { status: 200, body: makeLiveDelivery() });
+    playlists.set(PLAYLIST_URL, 503);
+
+    const { result } = await renderStreams();
+
+    await waitFor(() => {
+      expect(result.current[0]?.status).toBe('error');
+    });
+    expect(result.current[0]?.error?.message).toBe('Failed to check the live playlist: 503');
   });
 
   it('reports other failures as errors', async () => {
@@ -282,7 +318,7 @@ describe('useLiveStreams', () => {
       await advance(LIVE_POLL_MS);
       await advance(10); // react-query notifies observers on a later tick
 
-      expect(fetchMock).toHaveBeenCalledTimes(2);
+      expect(fetchMock).toHaveBeenCalledTimes(3); // delivery + its playlist
       expect(result.current[0]?.status).toBe('live');
     });
 

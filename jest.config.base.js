@@ -28,6 +28,8 @@ module.exports = {
     '^expo-background-task$': '<rootDir>/jest/mocks/expo-background-task.ts',
     // Local native module (modules/fold-posture): a posture the tests set and broadcast.
     '^@modules/fold-posture$': '<rootDir>/jest/mocks/fold-posture.ts',
+    // Local native view (modules/hardware-keys): a host View whose `space` event is the space bar.
+    '^@modules/hardware-keys$': '<rootDir>/jest/mocks/hardware-keys.tsx',
   },
   // With `pnpm link:shared`, @sinkplane/shared resolves (by realpath) into the sibling clone,
   // whose own node_modules is not this app's. Fall back to this app's node_modules so bare

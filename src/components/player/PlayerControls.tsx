@@ -1,8 +1,9 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { SymbolView, type SymbolViewProps } from 'expo-symbols';
+import { SymbolView } from 'expo-symbols';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { SEEK_STEP_SECONDS } from '@/components/player/constants';
+import { ICONS, type IconName } from '@/components/player/player-icons';
 import { SeekBar } from '@/components/player/SeekBar';
 import { formatRate } from '@/components/player/SpeedMenu';
 import { formatDuration } from '@/utils/format-video';
@@ -30,35 +31,17 @@ export interface PlayerControlsProps {
    * always the close arrow and the title, no fullscreen toggle (the posture decides the layout).
    */
   variant?: 'overlay' | 'panel';
+  /**
+   * Replaces the skip / play row between the top and bottom bars (overlay only): the end screen's
+   * suggested videos (the player darkens the video behind them).
+   */
+  center?: React.ReactNode;
 }
-
-type IconName = SymbolViewProps['name'];
 
 const DEFAULT_ICON_SIZE = 24;
 const PANEL_TITLE_LINES = 2;
 /** Padding around the controls when they span the screen (fullscreen / tabletop panel). */
 const SCREEN_EDGE_PADDING = 12;
-
-const ICONS = {
-  close: { ios: 'chevron.down', android: 'keyboard_arrow_down', web: 'keyboard_arrow_down' },
-  back: { ios: 'chevron.left', android: 'arrow_back', web: 'arrow_back' },
-  play: { ios: 'play.fill', android: 'play_arrow', web: 'play_arrow' },
-  pause: { ios: 'pause.fill', android: 'pause', web: 'pause' },
-  replay: { ios: 'arrow.counterclockwise', android: 'replay', web: 'replay' },
-  skipBack: { ios: 'gobackward.15', android: 'fast_rewind', web: 'fast_rewind' },
-  skipForward: { ios: 'goforward.15', android: 'fast_forward', web: 'fast_forward' },
-  speed: { ios: 'gauge.with.dots.needle.67percent', android: 'speed', web: 'speed' },
-  enterFullscreen: {
-    ios: 'arrow.up.left.and.arrow.down.right',
-    android: 'fullscreen',
-    web: 'fullscreen',
-  },
-  exitFullscreen: {
-    ios: 'arrow.down.right.and.arrow.up.left',
-    android: 'fullscreen_exit',
-    web: 'fullscreen_exit',
-  },
-} satisfies Record<string, IconName>;
 
 function IconButton({
   icon,
@@ -165,8 +148,11 @@ function SkipButton({
   );
 }
 
-/** Skip back, play/pause/replay, skip forward (live: play/pause only). */
-function CenterRow({ playing, ended, live, onTogglePlay, onSkip }: ControlsProps) {
+/** Skip back, play/pause/replay, skip forward (live: play/pause only), or `center` instead. */
+function CenterRow({ playing, ended, live, onTogglePlay, onSkip, center }: ControlsProps) {
+  if (center !== undefined) {
+    return <>{center}</>;
+  }
   const play = playButton(ended, playing);
   const seekable = live !== true;
   return (
