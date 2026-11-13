@@ -5,6 +5,9 @@ import { FIXED_NOW, makeVideo, techCreator, techMainChannel } from '@test/fixtur
 import type { VideoPost } from '@/shared';
 import type { usePostReaction } from '@/hooks/use-post-reaction';
 
+const mockRouter = { push: jest.fn() };
+jest.mock('expo-router', () => ({ useRouter: () => mockRouter }));
+
 const video = makeVideo(techCreator, techMainChannel, {
   id: 'post-1',
   title: 'Home Lab Tour 2026',
@@ -128,6 +131,23 @@ describe('VideoDetails', () => {
     it('collapses a description with many short paragraphs', async () => {
       await renderDetails(undefined, withText('<p>a</p><p>b</p><p>c</p><p>d</p>'));
       expect(screen.getByRole('button', { name: 'Show more' })).toBeTruthy();
+    });
+
+    it('opens a linked Floatplane post when its link is tapped', async () => {
+      await renderDetails(
+        undefined,
+        withText(
+          '<p>Watch <a href="https://www.floatplane.com/post/Part0ne1">part 1</a> first</p>',
+        ),
+      );
+      expect(screen.getByTestId('post-description')).toHaveTextContent('Watch part 1 first');
+
+      await fireEvent.press(screen.getByRole('link', { name: 'part 1' }));
+
+      expect(mockRouter.push).toHaveBeenCalledWith({
+        pathname: '/video/[id]',
+        params: { id: 'Part0ne1' },
+      });
     });
 
     it('renders nothing for an empty body', async () => {

@@ -15,6 +15,9 @@ const HEX_RADIX = 16;
 const DECIMAL_RADIX = 10;
 /** Length of the `#x` prefix of a hex character reference. */
 const HEX_PREFIX_LENGTH = 2;
+/** Character references below tab (control characters, incl. the link markers) stay undecoded. */
+const FIRST_DECODED_CODE_POINT = 0x09;
+const MAX_CODE_POINT = 0x10ffff;
 /** Minutes and seconds are always shown with two digits. */
 const CLOCK_FIELD_WIDTH = 2;
 
@@ -51,16 +54,22 @@ const ENTITIES: Partial<Record<string, string>> = {
   nbsp: ' ',
 };
 
+/** `#169` / `#x1F383` → the code point (`NaN` when malformed). */
+function codePoint(code: string): number {
+  return code[1]?.toLowerCase() === 'x'
+    ? parseInt(code.slice(HEX_PREFIX_LENGTH), HEX_RADIX)
+    : parseInt(code.slice(1), DECIMAL_RADIX);
+}
+
 /** `&amp;` / `&#169;` / `&#x1F383;` → the character, or the entity unchanged when unknown. */
 function decodeEntity(entity: string, code: string): string {
   if (!code.startsWith('#')) {
     return ENTITIES[code.toLowerCase()] ?? entity;
   }
-  const point =
-    code[1]?.toLowerCase() === 'x'
-      ? parseInt(code.slice(HEX_PREFIX_LENGTH), HEX_RADIX)
-      : parseInt(code.slice(1), DECIMAL_RADIX);
-  return Number.isNaN(point) ? entity : String.fromCodePoint(point);
+  const point = codePoint(code);
+  return point >= FIRST_DECODED_CODE_POINT && point <= MAX_CODE_POINT
+    ? String.fromCodePoint(point)
+    : entity;
 }
 
 const isBlank = (char: string | undefined): boolean => char === ' ' || char === '\t';
@@ -75,10 +84,10 @@ function trimLineEnd(line: string): string {
 }
 
 /**
- * Removes every `<…>` tag (what `/<[^>]*>/g` does, as a linear scan: that regex backtracks
- * quadratically on text with many unclosed `<`).
+ * Replaces every `<…>` tag with `tagText(tag)` (what `/<[^>]*>/g` does, as a linear scan: that
+ * regex backtracks quadratically on text with many unclosed `<`).
  */
-function stripTags(html: string): string {
+function replaceTags(html: string, tagText: (tag: string) => string): string {
   let text = '';
   let index = 0;
   for (;;) {
@@ -87,9 +96,22 @@ function stripTags(html: string): string {
     if (close === -1) {
       return text + html.slice(index);
     }
-    text += html.slice(index, open);
+    text += html.slice(index, open) + tagText(html.slice(open, close + 1));
     index = close + 1;
   }
+}
+
+const decodeEntities = (text: string): string =>
+  text.replace(/&(#x?[0-9a-f]+|[a-z]+);/gi, decodeEntity);
+
+function toText(html: string, tagText: (tag: string) => string): string {
+  const withBreaks = html.replace(/<br\s*\/?>/gi, '\n').replace(/<\/(p|div|li|h[1-6])>/gi, '\n');
+  return decodeEntities(replaceTags(withBreaks, tagText))
+    .split('\n')
+    .map(trimLineEnd)
+    .join('\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
 }
 
 /** Post body HTML (`<p>`, `<br>`, links, entities) → plain text with paragraph breaks. */
@@ -97,14 +119,63 @@ export function htmlToText(html: string | null | undefined): string {
   if (html === null || html === undefined || html === '') {
     return '';
   }
-  const withBreaks = html.replace(/<br\s*\/?>/gi, '\n').replace(/<\/(p|div|li|h[1-6])>/gi, '\n');
-  const text = stripTags(withBreaks).replace(/&(#x?[0-9a-f]+|[a-z]+);/gi, decodeEntity);
-  return text
-    .split('\n')
-    .map(trimLineEnd)
-    .join('\n')
-    .replace(/\n{3,}/g, '\n\n')
-    .trim();
+  return toText(html, () => '');
+}
+
+/** A run of post body text; `href` is set when the run is a link's label. */
+export interface TextSegment {
+  readonly text: string;
+  readonly href?: string | undefined;
+}
+
+/** Characters no post body contains (they are stripped first), marking where a link starts / ends. */
+const LINK_START = '\u0001';
+const LINK_END = '\u0002';
+const OPENING_ANCHOR = /^<a\s/i;
+const CLOSING_ANCHOR = /^<\/a\s*>$/i;
+const HREF_ATTRIBUTE = /\shref\s*=\s*("[^"]+"|'[^']+'|[^\s"'>]+)/i;
+
+function anchorHref(tag: string): string | undefined {
+  const value = OPENING_ANCHOR.test(tag) ? HREF_ATTRIBUTE.exec(tag)?.[1] : undefined;
+  return value === undefined ? undefined : decodeEntities(value.replace(/^["']|["']$/g, ''));
+}
+
+/** Tag replacer that marks each `<a href>` … `</a>` with the link markers, collecting the hrefs. */
+function linkMarkers(hrefs: string[]): (tag: string) => string {
+  let inLink = false;
+  return (tag) => {
+    if (inLink) {
+      inLink = !CLOSING_ANCHOR.test(tag);
+      return inLink ? '' : LINK_END;
+    }
+    const href = anchorHref(tag);
+    if (href === undefined) {
+      return '';
+    }
+    hrefs.push(href);
+    inLink = true;
+    return LINK_START;
+  };
+}
+
+function splitLinks(text: string, hrefs: readonly string[]): TextSegment[] {
+  const [lead = '', ...links] = text.split(LINK_START);
+  const segments: TextSegment[] = [{ text: lead }];
+  links.forEach((part, index) => {
+    const [label = '', tail = ''] = part.split(LINK_END);
+    segments.push({ text: label, href: hrefs[index] }, { text: tail });
+  });
+  return segments.filter((segment) => segment.text !== '');
+}
+
+/** Like {@link htmlToText}, but keeps the body's links as separate segments carrying their href. */
+export function htmlToSegments(html: string | null | undefined): TextSegment[] {
+  if (html === null || html === undefined || html === '') {
+    return [];
+  }
+  const hrefs: string[] = [];
+  const clean = html.split(LINK_START).join('').split(LINK_END).join('');
+  return splitLinks(toText(clean, linkMarkers(hrefs)), hrefs);
 }
 
 const UNITS: [string, number][] = [

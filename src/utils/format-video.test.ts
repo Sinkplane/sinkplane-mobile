@@ -1,4 +1,10 @@
-import { formatCount, formatDuration, formatRelativeDate, htmlToText } from '@/utils/format-video';
+import {
+  formatCount,
+  formatDuration,
+  formatRelativeDate,
+  htmlToSegments,
+  htmlToText,
+} from '@/utils/format-video';
 
 describe('htmlToText', () => {
   it.each([
@@ -11,10 +17,50 @@ describe('htmlToText', () => {
     ['<p>A</p>\n\n\n\n<p>B</p>', 'A\n\nB'],
     ['Tom &amp; Jerry &lt;3 &quot;hi&quot; &apos;yo&apos;&nbsp;!', 'Tom & Jerry <3 "hi" \'yo\' !'],
     ['&#169; &#x1F383; &#ab; &bogus;', '© 🎃 &#ab; &bogus;'],
+    ['&#9;&#10;x&#8; &#1114111;&#1114112;', 'x&#8; \u{10FFFF}&#1114112;'],
     ['<a href="https://x.test">link</a>   \n tail', 'link\n tail'],
     ['1 < 2 <b>x</b> and 3 < 4', '1 x and 3 < 4'],
   ])('converts %p to %p', (html, expected) => {
     expect(htmlToText(html)).toBe(expected);
+  });
+});
+
+describe('htmlToSegments', () => {
+  it.each([
+    [undefined, []],
+    [null, []],
+    ['', []],
+    ['<p>Just text</p>', [{ text: 'Just text' }]],
+    [
+      '<p>Watch <a href="https://www.floatplane.com/post/abc">part 1</a> first.</p>',
+      [
+        { text: 'Watch ' },
+        { text: 'part 1', href: 'https://www.floatplane.com/post/abc' },
+        { text: ' first.' },
+      ],
+    ],
+    [
+      "<a target='_blank' href='https://x.test/?a=1&amp;b=2'><b>A &amp; B</b></a>",
+      [{ text: 'A & B', href: 'https://x.test/?a=1&b=2' }],
+    ],
+    [
+      '<a href=/post/xyz>one</a><a href="/two">two</a>',
+      [
+        { text: 'one', href: '/post/xyz' },
+        { text: 'two', href: '/two' },
+      ],
+    ],
+    ['<a name="top">anchor</a> <a href="">empty</a>', [{ text: 'anchor empty' }]],
+    ['<abbr href="x">abbr</abbr>', [{ text: 'abbr' }]],
+    [
+      '<a href="x"><a href="y">nested</a> after</a>',
+      [{ text: 'nested', href: 'x' }, { text: ' after' }],
+    ],
+    ['<a href="x">unclosed', [{ text: 'unclosed', href: 'x' }]],
+    ['<a href="x"></a>text', [{ text: 'text' }]],
+    ['a\u0001b\u0002c &#1;&#2;', [{ text: 'abc &#1;&#2;' }]],
+  ])('splits %p into %p', (html, expected) => {
+    expect(htmlToSegments(html)).toEqual(expected);
   });
 });
 
