@@ -12,6 +12,7 @@ describe('floatplanePostId', () => {
     ['https://www.floatplane.com/post/AbC123', 'AbC123'],
     ['https://floatplane.com/post/abc?t=30', 'abc'],
     ['/post/xyz', 'xyz'],
+    ['/post/Ab3_x-Z/', 'Ab3_x-Z'],
     ['https://www.floatplane.com/channel/linustechtips/home', undefined],
     ['https://evil.test/post/abc', undefined],
     ['https://www.floatplane.com.evil.test/post/abc', undefined],
@@ -54,7 +55,7 @@ describe('useOpenLink', () => {
 
   it.each([
     ['/channel/linustechtips/home', 'https://www.floatplane.com/channel/linustechtips/home'],
-    ['//cdn.test/file', '//cdn.test/file'],
+    ['//cdn.test/file', 'https://cdn.test/file'],
   ])('resolves %p to %p', async (href, expected) => {
     await openLink(href);
     expect(openURL).toHaveBeenCalledWith(expected);

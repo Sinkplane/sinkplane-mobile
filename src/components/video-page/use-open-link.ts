@@ -5,16 +5,19 @@ import { useRouter } from 'expo-router';
 import { logError } from '@/utils/log';
 
 const FLOATPLANE_ORIGIN = 'https://www.floatplane.com';
-const POST_LINK = /^(?:https?:\/\/(?:www\.)?floatplane\.com)?\/post\/([a-z0-9]+)/i;
+const POST_LINK = /^(?:https?:\/\/(?:www\.)?floatplane\.com)?\/post\/([\w-]+)/i;
 
 /** The post id of a floatplane.com post link (absolute or site-relative), else `undefined`. */
 export function floatplanePostId(href: string): string | undefined {
   return POST_LINK.exec(href)?.[1];
 }
 
-/** Site-relative hrefs (`/channel/…`) point at floatplane.com, as they do on the website. */
+/** Resolves relative hrefs as the website does: `//host/…` over https, `/channel/…` on floatplane.com. */
 function absoluteUrl(href: string): string {
-  return /^\/(?!\/)/.test(href) ? FLOATPLANE_ORIGIN + href : href;
+  if (href.startsWith('//')) {
+    return `https:${href}`;
+  }
+  return href.startsWith('/') ? FLOATPLANE_ORIGIN + href : href;
 }
 
 /** Opens a post body link: Floatplane posts on their in-app video page, anything else externally. */
