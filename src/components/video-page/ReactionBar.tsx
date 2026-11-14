@@ -1,7 +1,8 @@
 import type { ReactElement } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { SymbolView, type SymbolViewProps } from 'expo-symbols';
+import { SymbolView } from 'expo-symbols';
 
+import { reactionIcon } from '@/components/video-page/reaction-icon';
 import type { Reaction } from '@/hooks/use-post-reaction';
 import { useThemeColor } from '@/shared';
 import { formatCount } from '@/utils/format-video';
@@ -13,20 +14,6 @@ interface ReactionBarProps {
   readonly disabled?: boolean | undefined;
   readonly onToggle: (kind: 'like' | 'dislike') => void;
 }
-
-const ICONS: Record<
-  'like' | 'dislike',
-  { on: SymbolViewProps['name']; off: SymbolViewProps['name'] }
-> = {
-  like: {
-    on: { ios: 'hand.thumbsup.fill', android: 'thumb_up', web: 'thumb_up' },
-    off: { ios: 'hand.thumbsup', android: 'thumb_up', web: 'thumb_up' },
-  },
-  dislike: {
-    on: { ios: 'hand.thumbsdown.fill', android: 'thumb_down', web: 'thumb_down' },
-    off: { ios: 'hand.thumbsdown', android: 'thumb_down', web: 'thumb_down' },
-  },
-};
 
 /** Like / dislike pill; the active reaction is highlighted and pressing it again removes it. */
 export function ReactionBar({
@@ -55,7 +42,7 @@ export function ReactionBar({
         accessibilityLabel={`${kind === 'like' ? 'Like' : 'Dislike'}, ${String(count)}`}
         accessibilityState={{ selected: active, disabled }}
       >
-        <SymbolView name={active ? ICONS[kind].on : ICONS[kind].off} size={18} tintColor={color} />
+        <SymbolView name={reactionIcon(kind, active)} size={18} tintColor={color} />
         <Text testID={`reaction-${kind}-count`} style={[styles.count, { color }]}>
           {formatCount(count)}
         </Text>

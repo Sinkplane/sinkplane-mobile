@@ -114,6 +114,8 @@ export class FloatplaneApiStore {
   liveDeliveries = new Map<string, VideoDelivery>();
   /** The signed-in user's reaction per post, as toggled through like/dislike. */
   interactions = new Map<string, 'like' | 'dislike' | null>();
+  /** The signed-in user's reaction per comment id, as toggled through comment like/dislike. */
+  commentInteractions = new Map<string, 'like' | 'dislike' | null>();
 
   /** Per-creator notification switches (unset creators: push on, email off, like Floatplane). */
   notificationSettings = new Map<string, NotificationSetting>();
@@ -260,6 +262,7 @@ export class FloatplaneApiStore {
     this.related.clear();
     this.liveDeliveries.clear();
     this.interactions.clear();
+    this.commentInteractions.clear();
     this.notificationSettings.clear();
   }
 

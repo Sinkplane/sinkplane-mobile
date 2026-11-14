@@ -1,9 +1,10 @@
 /**
  * Mock Floatplane video page endpoints: post, delivery info (on-demand + live), comments,
- * like/dislike toggles, progress saving, related posts (the end screen's suggestions).
+ * post and comment like/dislike toggles, progress saving, related posts (the end screen's suggestions).
  */
 
 import { makeComments, makeLiveDelivery, makeVideoDelivery, makeVideoPost } from '@test/fixtures';
+import type { PostComment } from '@/hooks/use-post-comments';
 import type { Video, VideoPost } from '@/shared';
 
 import type { RouteHandler } from './mock-api-auth-routes';
@@ -59,10 +60,26 @@ const deliveryInfo: RouteHandler = (store, { params }) => {
   return ok(store.deliveries.get(entityId) ?? makeVideoDelivery(entityId));
 };
 
+/** A comment plus the signed-in user's toggled reaction (counted on top of the fixture's). */
+function withInteraction(store: FloatplaneApiStore, comment: PostComment): PostComment {
+  if (!store.commentInteractions.has(comment.id)) {
+    return comment;
+  }
+  const interaction = store.commentInteractions.get(comment.id) ?? null;
+  return {
+    ...comment,
+    likes: comment.likes + (interaction === 'like' ? 1 : 0),
+    dislikes: comment.dislikes + (interaction === 'dislike' ? 1 : 0),
+    userInteraction: interaction === null ? [] : [interaction],
+  };
+}
+
 /** One page of a post's comments, continuing after `fetchAfter` (the last id already loaded). */
 const postComments: RouteHandler = (store, { params }) => {
   const postId = params.get('blogPost') ?? '';
-  const list = store.comments.get(postId) ?? makeComments(postId, 3);
+  const list = (store.comments.get(postId) ?? makeComments(postId, 3)).map((comment) =>
+    withInteraction(store, comment),
+  );
   const start = params.has('fetchAfter')
     ? list.findIndex((c) => c.id === params.get('fetchAfter')) + 1
     : 0;
@@ -83,6 +100,30 @@ function toggleReaction(
   const next = store.interactions.get(id) === kind ? null : kind;
   store.interactions.set(id, next);
   return ok(next === null ? [] : [next]);
+}
+
+/** A non-empty string field of the request body, else null. */
+function nonEmptyField(req: RecordedRequest, name: string): string | null {
+  const value = req.body?.[name];
+  return typeof value === 'string' && value !== '' ? value : null;
+}
+
+/**
+ * Comment like/dislike, toggling like posts do. Floatplane answers with the resulting reaction as
+ * plain text (`like` / `dislike`); the mock answers an empty body once the reaction is removed.
+ */
+function toggleCommentReaction(
+  store: FloatplaneApiStore,
+  req: RecordedRequest,
+  kind: 'like' | 'dislike',
+): MockResponse {
+  const comment = nonEmptyField(req, 'comment');
+  if (comment === null || nonEmptyField(req, 'blogPost') === null) {
+    return apiError(400, 'invalidBodyError', 'Missing comment or blogPost.');
+  }
+  const next = store.commentInteractions.get(comment) === kind ? null : kind;
+  store.commentInteractions.set(comment, next);
+  return ok(next ?? '');
 }
 
 /** Save watch progress — and move the post to the front of the history, like the real backend. */
@@ -122,6 +163,8 @@ export const VIDEO_PAGE_ROUTES = new Map<string, RouteHandler>([
   ['GET /api/v3/comment', postComments],
   ['POST /api/v3/content/like', (store, req) => toggleReaction(store, req, 'like')],
   ['POST /api/v3/content/dislike', (store, req) => toggleReaction(store, req, 'dislike')],
+  ['POST /api/v3/comment/like', (store, req) => toggleCommentReaction(store, req, 'like')],
+  ['POST /api/v3/comment/dislike', (store, req) => toggleCommentReaction(store, req, 'dislike')],
   ['POST /api/v3/content/progress', saveProgress],
   ['GET /api/v3/content/related', relatedPosts],
 ]);

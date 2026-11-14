@@ -4,10 +4,10 @@ import { useMutation } from '@tanstack/react-query';
 import { isNonEmpty } from '@/hooks/is-non-empty';
 import { authenticatedFetch, type VideoPost } from '@/shared';
 
-type ReactionKind = 'like' | 'dislike';
+export type ReactionKind = 'like' | 'dislike';
 export type Reaction = ReactionKind | null;
 
-interface ReactionState {
+export interface ReactionState {
   reaction: Reaction;
   likes: number;
   dislikes: number;

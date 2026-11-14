@@ -218,7 +218,7 @@ function CommentList({ data }: Readonly<{ data: ReturnType<typeof useVideoData> 
       testID="comment-list"
       data={commentList}
       keyExtractor={(comment: PostComment) => comment.id}
-      renderItem={({ item }) => <CommentItem comment={item} />}
+      renderItem={({ item }) => <CommentItem comment={item} token={data.token} />}
       ListHeaderComponent={post ? <VideoDetails post={post} reaction={reaction} /> : undefined}
       ListFooterComponent={<CommentsFooter comments={comments} />}
       onEndReached={loadMore}

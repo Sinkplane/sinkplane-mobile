@@ -5,7 +5,7 @@
  *  - password login: captcha info, login (+ Turnstile token check), 2FA, logout
  *  - profile (/status), subscriptions, creator list
  *  - creator content listing (all channels or one), with pagination + sort
- *  - video page: post by id, delivery info, paged comments, like/dislike toggles
+ *  - video page: post by id, delivery info, paged comments, post + comment like/dislike toggles
  *  - livestreams: live delivery info for streams in `liveNow`, 404 for offline ones (like the real API);
  *    their playlists on live.floatplane.test (404 while offline; see `liveDeliveryWhenOffline`)
  *  - watch progress (get + set) and watch history (offset-paged; POSTing progress moves the

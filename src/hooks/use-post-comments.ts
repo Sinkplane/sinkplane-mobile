@@ -23,6 +23,8 @@ export interface PostComment {
   likes: number;
   dislikes: number;
   totalReplies?: number;
+  /** The signed-in user's reaction: `['like']`, `['dislike']`, or empty / null for none. */
+  userInteraction?: readonly ('like' | 'dislike')[] | null;
 }
 
 export const COMMENTS_PAGE_SIZE = 20;
@@ -55,13 +57,17 @@ async function fetchComments(
 const nextCursor = (lastPage: PostComment[]): CommentsCursor =>
   lastPage.length < COMMENTS_PAGE_SIZE ? undefined : lastPage.at(-1)?.id;
 
+/** The react-query key of a post's comment pages (reaction toggles patch this cache). */
+export const postCommentsKey = (token: string | null | undefined, postId: string | undefined) =>
+  ['post-comments', token, postId] as const;
+
 /** Top-level comments of a post, paged by the id of the last comment loaded (`fetchAfter`). */
 export function usePostComments(
   token: string | null | undefined,
   postId: string | undefined,
 ): PostCommentsResult {
   return useInfiniteQuery({
-    queryKey: ['post-comments', token, postId],
+    queryKey: postCommentsKey(token, postId),
     queryFn:
       isNonEmpty(token) && isNonEmpty(postId)
         ? ({ pageParam }) => fetchComments(token, postId, pageParam)
