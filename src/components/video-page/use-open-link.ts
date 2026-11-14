@@ -5,7 +5,7 @@ import { useRouter } from 'expo-router';
 import { logError } from '@/utils/log';
 
 const FLOATPLANE_ORIGIN = 'https://www.floatplane.com';
-const POST_LINK = /^(?:https?:\/\/(?:www\.)?floatplane\.com)?\/post\/([\w-]+)/i;
+const POST_LINK = /^(?:(?:https?:)?\/\/(?:www\.)?floatplane\.com)?\/post\/([\w-]+)/i;
 
 /** The post id of a floatplane.com post link (absolute or site-relative), else `undefined`. */
 export function floatplanePostId(href: string): string | undefined {

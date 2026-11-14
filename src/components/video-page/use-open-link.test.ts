@@ -12,6 +12,7 @@ describe('floatplanePostId', () => {
     ['https://www.floatplane.com/post/AbC123', 'AbC123'],
     ['https://floatplane.com/post/abc?t=30', 'abc'],
     ['/post/xyz', 'xyz'],
+    ['//www.floatplane.com/post/xyz', 'xyz'],
     ['/post/Ab3_x-Z/', 'Ab3_x-Z'],
     ['https://www.floatplane.com/channel/linustechtips/home', undefined],
     ['https://evil.test/post/abc', undefined],
