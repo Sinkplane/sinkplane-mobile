@@ -1,7 +1,8 @@
 /**
  * E2E: the video page — opening from the feed, reactions, comments (pagination, empty, error),
- * and back navigation. Post/media failures and watch progress: video-posts; the player controls:
- * video-controls; fullscreen and playback errors: video-fullscreen.
+ * tappable description links, and back navigation. Post/media failures and watch progress:
+ * video-posts; the player controls: video-controls; fullscreen and playback errors:
+ * video-fullscreen.
  */
 import { makeComments, makeVideoPost } from '@test/fixtures';
 
@@ -192,6 +193,33 @@ describe('comments', () => {
     await rt.until(() => {
       expect(rt.screen.getByTestId(`comment-${POST_ID}-comment-1`)).toBeTruthy();
     });
+  });
+});
+
+describe('description links', () => {
+  const LINKED_ID = 'ch-tech-main-02';
+
+  it('opens a linked Floatplane post on its video page', async () => {
+    const post = makeVideoPost(firstTechVideo(rt));
+    rt.api.posts.set(POST_ID, {
+      ...post,
+      text: `<p>Watch <a href="https://www.floatplane.com/post/${LINKED_ID}">part 2</a> when it drops.</p>`,
+    });
+    await openVideo(rt);
+    await untilPlayable(rt);
+
+    expect(rt.screen.getByTestId('post-description')).toHaveTextContent(
+      'Watch part 2 when it drops.',
+    );
+    const openURL = jest.spyOn(rt.linking, 'openURL');
+    await rt.fireEvent.press(rt.screen.getByRole('link', { name: 'part 2' }));
+
+    await rt.until(() => {
+      expect(rt.screen.getByTestId('video-title')).toHaveTextContent('Main Channel Video 02');
+    });
+    expect(rt.api.requestsTo('/api/v3/content/post').at(-1)?.params.get('id')).toBe(LINKED_ID);
+    expect(openURL).not.toHaveBeenCalled();
+    openURL.mockRestore();
   });
 });
 

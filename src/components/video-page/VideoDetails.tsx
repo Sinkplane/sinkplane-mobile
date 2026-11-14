@@ -4,9 +4,10 @@ import { Image } from 'expo-image';
 
 import { imagePath, type ApiImage } from '@/components/image-path';
 import { ReactionBar } from '@/components/video-page/ReactionBar';
+import { useOpenLink } from '@/components/video-page/use-open-link';
 import type { usePostReaction } from '@/hooks/use-post-reaction';
 import { useThemeColor, type VideoPost } from '@/shared';
-import { formatRelativeDate, htmlToText } from '@/utils/format-video';
+import { formatRelativeDate, htmlToSegments, type TextSegment } from '@/utils/format-video';
 
 interface VideoDetailsProps {
   readonly post: VideoPost;
@@ -33,6 +34,34 @@ function isCollapsible(text: string): boolean {
   return text.length > COLLAPSIBLE_CHARS || text.split('\n').length > COLLAPSED_LINES;
 }
 
+/** The body's text runs, its links as tappable runs. */
+function DescriptionSegments({
+  segments,
+}: Readonly<{ segments: readonly TextSegment[] }>): ReactElement {
+  const linkColor = useThemeColor({}, 'link');
+  const openLink = useOpenLink();
+  return (
+    <>
+      {segments.map(({ text, href }, index) =>
+        href === undefined ? (
+          text
+        ) : (
+          <Text
+            key={index}
+            accessibilityRole="link"
+            style={{ color: linkColor }}
+            onPress={() => {
+              openLink(href);
+            }}
+          >
+            {text}
+          </Text>
+        ),
+      )}
+    </>
+  );
+}
+
 /** The post body, collapsed to a few lines with a Show more / Show less toggle when long. */
 function PostDescription({
   html,
@@ -40,12 +69,12 @@ function PostDescription({
   const textColor = useThemeColor({}, 'text');
   const mutedColor = useThemeColor({}, 'icon');
   const [expanded, setExpanded] = useState(false);
-  const text = useMemo(() => htmlToText(html), [html]);
-  if (text === '') {
+  const segments = useMemo(() => htmlToSegments(html), [html]);
+  if (segments.length === 0) {
     return null;
   }
 
-  const collapsible = isCollapsible(text);
+  const collapsible = isCollapsible(segments.map((segment) => segment.text).join(''));
   return (
     <View>
       <Text
@@ -53,7 +82,7 @@ function PostDescription({
         style={[styles.description, { color: textColor }]}
         numberOfLines={collapsible && !expanded ? COLLAPSED_LINES : undefined}
       >
-        {text}
+        <DescriptionSegments segments={segments} />
       </Text>
       {collapsible ? (
         <Pressable
