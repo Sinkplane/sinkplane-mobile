@@ -1,20 +1,26 @@
 import { memo } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { Image } from 'expo-image';
-import { SymbolView } from 'expo-symbols';
 
 import { imagePath } from '@/components/image-path';
+import { CommentReactions } from '@/components/video-page/CommentReactions';
+import { useCommentReaction } from '@/hooks/use-comment-reaction';
 import type { PostComment } from '@/hooks/use-post-comments';
 import { useThemeColor } from '@/shared';
-import { formatCount, formatRelativeDate } from '@/utils/format-video';
+import { formatRelativeDate } from '@/utils/format-video';
 
 function repliesLabel(replies: number): string {
   return `${String(replies)} ${replies === 1 ? 'reply' : 'replies'}`;
 }
 
-export const CommentItem = memo(function CommentItem({
-  comment,
-}: Readonly<{ comment: PostComment }>) {
+interface CommentItemProps {
+  readonly comment: PostComment;
+  /** The session token reactions are sent with. */
+  readonly token: string | null | undefined;
+}
+
+export const CommentItem = memo(function CommentItem({ comment, token }: CommentItemProps) {
+  const reaction = useCommentReaction(token, comment);
   const textColor = useThemeColor({}, 'text');
   const mutedColor = useThemeColor({}, 'icon');
   const placeholderColor = useThemeColor({ light: '#e6e8ea', dark: '#26292b' }, 'background');
@@ -34,18 +40,16 @@ export const CommentItem = memo(function CommentItem({
         </Text>
         <Text style={[styles.text, { color: textColor }]}>{comment.text}</Text>
         <View style={styles.footer}>
-          <SymbolView
-            name={{ ios: 'hand.thumbsup', android: 'thumb_up', web: 'thumb_up' }}
-            size={13}
-            tintColor={mutedColor}
-          />
-          <Text style={[styles.footerText, { color: mutedColor }]}>
-            {formatCount(comment.likes)}
-          </Text>
+          <CommentReactions commentId={comment.id} reaction={reaction} />
           {replies > 0 ? (
             <Text style={[styles.footerText, { color: mutedColor }]}>{repliesLabel(replies)}</Text>
           ) : null}
         </View>
+        {reaction.error === null ? null : (
+          <Text style={[styles.meta, { color: mutedColor }]}>
+            Couldn&apos;t save your reaction. Try again.
+          </Text>
+        )}
       </View>
     </View>
   );
@@ -78,7 +82,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    marginTop: 2,
+    marginTop: 4,
   },
   footerText: {
     fontSize: 12,

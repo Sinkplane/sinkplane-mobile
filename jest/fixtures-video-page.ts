@@ -168,6 +168,7 @@ export function makeComments(postId: string, count: number): PostComment[] {
       likes: i,
       dislikes: 0,
       totalReplies: i === 0 ? 2 : 0,
+      userInteraction: null,
     };
   });
 }
