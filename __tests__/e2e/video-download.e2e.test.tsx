@@ -13,8 +13,8 @@ import { firstTechVideo, GUID, openVideo, POST_ID, untilPlayable } from './helpe
 const FILE_720 = `https://edge.floatplane.test/Videos/${GUID}/720.mp4?token=signed-720`;
 const DOWNLOADS = 'file:///document/downloads';
 const VIDEO_FILE = `${DOWNLOADS}/${POST_ID}.mp4`;
-const PARTIAL_FILE = `${VIDEO_FILE}.part`;
 const THUMBNAIL_FILE = `${DOWNLOADS}/${POST_ID}.jpg`;
+const PARTIAL_FILE = /\/downloads\/ch-tech-main-01\.\d+\.part$/;
 const INDEX_FILE = `${DOWNLOADS}/index.json`;
 
 let rt: Runtime;
@@ -55,6 +55,10 @@ async function finishTransfer(sizeBytes = 230_686_720): Promise<void> {
   });
 }
 
+/** The .part files on disk. */
+const partFiles = (): string[] =>
+  [...rt.fileSystem.files.keys()].filter((uri) => PARTIAL_FILE.test(uri));
+
 /** The downloads index as written to disk. */
 function savedIndex(): unknown {
   return JSON.parse(rt.fileSystem.files.get(INDEX_FILE) ?? '[]');
@@ -87,7 +91,8 @@ it('downloads the chosen quality into the app, showing progress, with its thumbn
   expect(task.url).toBe(FILE_720);
   expect(task.headers['User-Agent']).toBe(BROWSER_USER_AGENT);
   expect(task.headers['Authorization']).toMatch(/^Bearer .+/);
-  expect(task.destination.uri).toBe(PARTIAL_FILE);
+  expect(task.destination.uri).toMatch(PARTIAL_FILE);
+  expect(task.options.deferBackgroundSessionCompletion).toBe(true);
   // Nothing goes to Photos on its own.
   expect(rt.mediaLibrary.permissionRequests).toEqual([]);
   expect(rt.screen.queryByTestId('download-sheet')).toBeNull();
@@ -102,7 +107,8 @@ it('downloads the chosen quality into the app, showing progress, with its thumbn
     expect(downloadButton()).toHaveTextContent('Downloaded');
   });
   expect(rt.fileSystem.files.has(VIDEO_FILE)).toBe(true);
-  expect(rt.fileSystem.files.has(PARTIAL_FILE)).toBe(false);
+  expect(partFiles()).toEqual([]);
+  expect(task.acknowledged).toBe(1);
   expect(rt.fileSystem.files.has(THUMBNAIL_FILE)).toBe(true);
   expect(rt.fileSystem.fileDownloads[0]?.url).toBe(
     `https://cdn.floatplane.test/videos/${POST_ID}/thumb.jpg`,
@@ -192,7 +198,7 @@ it('a failed transfer can be retried from the sheet', async () => {
       "Couldn't download 720p. Try again.",
     );
   });
-  expect(rt.fileSystem.files.has(PARTIAL_FILE)).toBe(false);
+  expect(partFiles()).toEqual([]);
 
   await rt.fireEvent.press(downloadButton());
   await rt.until(() => {
@@ -275,10 +281,11 @@ describe('long press on a Videos-tab item', () => {
     await rt.until(() => {
       expect(rt.screen.getByTestId('download-option-720-avc1')).toBeTruthy();
     });
-    // The list sends the attachment id as the entity.
-    expect(rt.api.deliveryRequests('download')[0]?.params.get('entityId')).toBe(
-      `${POST_ID}-attachment`,
-    );
+    // Feed items list no attachments: the post is looked up for its video's guid.
+    expect(rt.api.requestsTo('/api/v3/content/post').map((r) => r.params.get('id'))).toEqual([
+      POST_ID,
+    ]);
+    expect(rt.api.deliveryRequests('download')[0]?.params.get('entityId')).toBe(GUID);
     await rt.fireEvent.press(rt.screen.getByTestId('download-option-720-avc1'));
     await rt.until(() => {
       expect(rt.fileSystem.downloads).toHaveLength(1);

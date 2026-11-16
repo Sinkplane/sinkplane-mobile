@@ -165,10 +165,12 @@ export interface MakeVideoOptions {
   releaseDate?: string | null;
   duration?: number;
   likes?: number;
+  /** `false` makes an image / text post (no video). */
+  hasVideo?: boolean;
 }
 
-const videoMetadata = (duration: number): Video['metadata'] => ({
-  hasVideo: true,
+const videoMetadata = (duration: number, hasVideo: boolean): Video['metadata'] => ({
+  hasVideo,
   videoCount: 1,
   videoDuration: duration,
   hasAudio: false,
@@ -183,7 +185,10 @@ const videoMetadata = (duration: number): Video['metadata'] => ({
 });
 
 /** `options` with every default filled in. */
-function videoDefaults(channel: Channel, options: MakeVideoOptions): Required<MakeVideoOptions> {
+function videoDefaults(
+  channel: Channel,
+  options: MakeVideoOptions,
+): Required<Omit<MakeVideoOptions, 'hasVideo'>> {
   return {
     id: options.id ?? `${channel.id}-video`,
     title: options.title ?? `${channel.title} Video`,
@@ -221,15 +226,15 @@ export function makeVideo(
       channels: creator.channels.map((c) => c.id),
     } as unknown as Video['creator'],
     wasReleasedSilently: false,
-    metadata: videoMetadata(duration),
+    metadata: videoMetadata(duration, options.hasVideo !== false),
     galleryAttachments: [],
     selfUserInteraction: null,
     thumbnail: image(`videos/${id}/thumb.jpg`),
     isAccessible: true,
-    videoAttachments: [`${id}-attachment`],
     audioAttachments: [],
     pictureAttachments: [],
-  };
+    // Feed endpoints don't list `videoAttachments` (only metadata.hasVideo), so the key is absent.
+  } as unknown as Video;
 }
 
 /**

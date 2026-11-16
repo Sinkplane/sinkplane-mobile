@@ -55,6 +55,7 @@ describe('VideoListItem', () => {
       id: 'text-post',
       title: 'Text only',
       duration: 0,
+      hasVideo: false,
     });
     await render(<VideoListItem video={textPost} progress={30} />);
 

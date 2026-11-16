@@ -13,7 +13,8 @@ type DownloadOutcome = { file: MockFile | null } | { error: Error };
 
 export interface DownloadTaskOptions {
   headers?: Record<string, string>;
-  onProgress?: (data: { bytesWritten: number; totalBytes: number }) => void;
+  deferBackgroundSessionCompletion?: boolean;
+  onProgress?: (data: { bytesWritten: number | bigint; totalBytes: number | bigint }) => void;
 }
 
 const joinUri = (base: string, name: string): string =>
@@ -32,6 +33,17 @@ export class MockDirectory {
   create(): void {
     mockFileSystem.directories.add(this.uri);
   }
+
+  /** The files directly inside this directory. */
+  list(): MockFile[] {
+    if (mockFileSystem.listError) {
+      throw mockFileSystem.listError;
+    }
+    const prefix = `${this.uri}/`;
+    return [...mockFileSystem.files.keys()]
+      .filter((uri) => uri.startsWith(prefix) && !uri.slice(prefix.length).includes('/'))
+      .map((uri) => new MockFile(this, uri.slice(prefix.length)));
+  }
 }
 
 export class MockFile {
@@ -43,6 +55,10 @@ export class MockFile {
 
   get exists(): boolean {
     return mockFileSystem.files.has(this.uri);
+  }
+
+  get name(): string {
+    return this.uri.slice(this.uri.lastIndexOf('/') + 1);
   }
 
   get size(): number {
@@ -109,6 +125,7 @@ export class MockFile {
 export class MockDownloadTask {
   state: 'idle' | 'active' | 'completed' | 'cancelled' | 'error' = 'idle';
   released = false;
+  acknowledged = 0;
   private settle: ((outcome: DownloadOutcome) => void) | undefined;
 
   constructor(
@@ -134,7 +151,7 @@ export class MockDownloadTask {
   }
 
   /** The native side reports bytes written (`total` -1: no Content-Length). */
-  progress(bytesWritten: number, totalBytes: number): void {
+  progress(bytesWritten: number | bigint, totalBytes: number | bigint): void {
     this.options.onProgress?.({ bytesWritten, totalBytes });
   }
 
@@ -166,6 +183,13 @@ export class MockDownloadTask {
   release(): void {
     this.released = true;
   }
+
+  /** Records the iOS background-completion acknowledgment (`acknowledgeError` rejects it). */
+  acknowledgeBackgroundCompletionAsync(): Promise<void> {
+    this.acknowledged += 1;
+    const error = mockFileSystem.acknowledgeError;
+    return error ? Promise.reject(error) : Promise.resolve();
+  }
 }
 
 export const mockFileSystem = {
@@ -179,6 +203,10 @@ export const mockFileSystem = {
   fileDownloadError: null as Error | null,
   /** `writeSync` throws this while set. */
   writeError: null as Error | null,
+  /** `Directory.list` throws this while set. */
+  listError: null as Error | null,
+  /** Download tasks' `acknowledgeBackgroundCompletionAsync` rejects with this while set. */
+  acknowledgeError: null as Error | null,
 
   /** The most recently created download task. */
   lastDownload(): MockDownloadTask {
@@ -197,6 +225,8 @@ export const mockFileSystem = {
     this.fileDownloads = [];
     this.fileDownloadError = null;
     this.writeError = null;
+    this.listError = null;
+    this.acknowledgeError = null;
   },
 };
 

@@ -8,6 +8,7 @@ import {
   DOWNLOADS_DIR,
   downloadTarget,
   finishDownload,
+  holdNextThumbnail,
   indexOnDisk,
   OPTION_1080,
   OPTION_720,
@@ -17,7 +18,7 @@ import {
   startDownload,
   setUpDownloadStoreTests,
 } from '@test/download-store';
-import { MockFile, mockFileSystem } from '@test/mocks/expo-file-system';
+import { mockFileSystem } from '@test/mocks/expo-file-system';
 
 const AUTHORIZATION = 'Authorization';
 const { errorSpy } = setUpDownloadStoreTests();
@@ -40,7 +41,7 @@ describe('useVideoDownload', () => {
       'User-Agent': BROWSER_USER_AGENT,
       [AUTHORIZATION]: 'Bearer token',
     });
-    expect(task.destination.uri).toBe(`${DOWNLOADS_DIR}/post-1.mp4.part`);
+    expect(task.destination.uri).toMatch(/\/downloads\/post-1\.\d+\.part$/);
 
     await act(() => {
       task.progress(40, 100);
@@ -228,30 +229,18 @@ describe('useVideoDownload', () => {
   });
 
   it('cancelled while the thumbnail is saved: no video is kept', async () => {
-    let finishThumbnail: () => void = () => undefined;
-    const thumbnail = jest.spyOn(MockFile, 'downloadFileAsync');
-    thumbnail.mockImplementationOnce(
-      (_url, destination) =>
-        new Promise((resolve) => {
-          finishThumbnail = () => {
-            resolve(destination);
-          };
-        }),
-    );
+    const finishThumbnail = holdNextThumbnail();
     const { result } = await startDownload();
     await finishDownload();
     expect(result.current.state.status).toBe('downloading');
     await act(() => {
       result.current.cancel();
     });
-    await act(() => {
-      finishThumbnail();
-    });
-    await settle();
+    await finishThumbnail();
     expect(result.current.state).toEqual({ status: 'idle' });
     expect(mockFileSystem.files.has(`${DOWNLOADS_DIR}/post-1.mp4`)).toBe(false);
+    expect(mockFileSystem.files.has(`${DOWNLOADS_DIR}/post-1.jpg`)).toBe(false);
     expect(indexOnDisk()).toEqual([]);
-    thumbnail.mockRestore();
   });
 
   it('ignores a start while downloading or downloaded', async () => {

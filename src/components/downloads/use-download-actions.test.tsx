@@ -5,12 +5,32 @@ import { act, renderHook, waitFor } from '@testing-library/react-native';
 import { canDownload, useDownloadActions } from '@/components/downloads/use-download-actions';
 import { useStopDownloadsOnSignOut } from '@/hooks/use-video-download';
 import type { DownloadTarget } from '@/utils/download-target';
-import { makeDownloadDelivery, makeVideo, techCreator, techMainChannel } from '@test/fixtures';
+import {
+  makeDownloadDelivery,
+  makeVideo,
+  makeVideoPost,
+  techCreator,
+  techMainChannel,
+} from '@test/fixtures';
 import { mockFileSystem } from '@test/mocks/expo-file-system';
+
+interface MockPostQuery {
+  data: unknown;
+  isError: boolean;
+  isSuccess: boolean;
+  refetch: jest.Mock;
+}
+
+const mockGetVideoPost = jest.fn<
+  MockPostQuery,
+  [string | undefined, number | undefined, string?]
+>();
 
 jest.mock('@/shared', () => ({
   ...jest.requireActual<object>('@/shared'),
   useSession: () => ({ token: 'token' }),
+  useGetVideoPost: (...args: [string | undefined, number | undefined, string?]) =>
+    mockGetVideoPost(...args),
 }));
 
 const TARGET: DownloadTarget = {
@@ -21,7 +41,19 @@ const TARGET: DownloadTarget = {
 };
 
 const listVideo = makeVideo(techCreator, techMainChannel, { id: 'list-1', title: 'From the list' });
-const textPost = { ...listVideo, id: 'text-1', videoAttachments: [] };
+const textPost = makeVideo(techCreator, techMainChannel, { id: 'text-1', hasVideo: false });
+
+const postQuery = (overrides: Partial<MockPostQuery> = {}): MockPostQuery => ({
+  data: undefined,
+  isError: false,
+  isSuccess: false,
+  refetch: jest.fn(),
+  ...overrides,
+});
+
+/** The post ids `useGetVideoPost` was asked to fetch (undefined: nothing). */
+const requestedPosts = (): (string | undefined)[] =>
+  mockGetVideoPost.mock.calls.map(([, , postId]) => postId);
 
 const labels = (options: readonly { label: string }[]): string[] =>
   options.map((option) => option.label);
@@ -32,6 +64,8 @@ let client: QueryClient;
 beforeEach(() => {
   client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   fetchMock.mockReset();
+  mockGetVideoPost.mockReset();
+  mockGetVideoPost.mockImplementation(() => postQuery());
   fetchMock.mockImplementation(() =>
     Promise.resolve(new Response(JSON.stringify(makeDownloadDelivery('guid-1')), { status: 200 })),
   );
@@ -54,7 +88,7 @@ async function renderActions(target?: DownloadTarget) {
 }
 
 describe('canDownload', () => {
-  it('only posts with a video attachment', () => {
+  it('feed items with metadata.hasVideo, not image / text posts', () => {
     expect(canDownload(listVideo)).toBe(true);
     expect(canDownload(textPost)).toBe(false);
   });
@@ -95,6 +129,8 @@ describe('useDownloadActions', () => {
       progress: null,
     });
     expect(mockFileSystem.lastDownload().url).toBe(option.url);
+    // A page's target has its attachment: the post is never fetched.
+    expect(requestedPosts().every((postId) => postId === undefined)).toBe(true);
   });
 
   it('close hides whichever sheet is up', async () => {
@@ -119,8 +155,8 @@ describe('useDownloadActions', () => {
     expect(result.current.target).toMatchObject({
       postId: 'list-1',
       title: 'From the list',
-      attachmentId: 'list-1-attachment',
     });
+    expect(result.current.target?.attachmentId).toBeUndefined();
 
     // Reopening without a post keeps the last one.
     await act(() => {
@@ -148,5 +184,76 @@ describe('useDownloadActions', () => {
       result.current.openMenu(listVideo);
     });
     expect(result.current.target).toBe(TARGET);
+  });
+});
+
+describe('a feed item (no attachment id)', () => {
+  async function openQualities() {
+    const hook = await renderActions();
+    await act(() => {
+      hook.result.current.openMenu(listVideo);
+    });
+    return hook;
+  }
+
+  it('does not fetch the post until the quality list is open', async () => {
+    const { result } = await openQualities();
+    expect(requestedPosts().every((postId) => postId === undefined)).toBe(true);
+    await act(() => {
+      result.current.chooseQuality();
+    });
+    expect(mockGetVideoPost).toHaveBeenLastCalledWith('token', undefined, 'list-1');
+  });
+
+  it('while the post loads: an empty, loading list, and no qualities request', async () => {
+    const { result } = await openQualities();
+    await act(() => {
+      result.current.chooseQuality();
+    });
+    expect(result.current.options).toMatchObject({ options: [], isLoading: true, isError: false });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("then fetches the qualities of the post's first attachment", async () => {
+    const { result, rerender } = await openQualities();
+    await act(() => {
+      result.current.chooseQuality();
+    });
+    mockGetVideoPost.mockImplementation(() =>
+      postQuery({ data: makeVideoPost(listVideo), isSuccess: true }),
+    );
+    await rerender({});
+    await waitFor(() => {
+      expect(labels(result.current.options.options)).toEqual(['1080p', '720p', '360p']);
+    });
+    expect(fetchMock.mock.calls[0]?.[0]).toEqual(expect.stringContaining('entityId=list-1-guid'));
+    expect(result.current.options.isLoading).toBe(false);
+  });
+
+  it('a post without a video attachment lists nothing, loaded', async () => {
+    const { result, rerender } = await openQualities();
+    await act(() => {
+      result.current.chooseQuality();
+    });
+    mockGetVideoPost.mockImplementation(() =>
+      postQuery({ data: makeVideoPost(listVideo, { videoAttachments: false }), isSuccess: true }),
+    );
+    await rerender({});
+    expect(result.current.options).toMatchObject({ options: [], isLoading: false, isError: false });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('a failed post: an error, and Retry refetches the post', async () => {
+    const failed = postQuery({ isError: true });
+    mockGetVideoPost.mockImplementation(() => failed);
+    const { result } = await openQualities();
+    await act(() => {
+      result.current.chooseQuality();
+    });
+    expect(result.current.options).toMatchObject({ options: [], isLoading: false, isError: true });
+    expect(fetchMock).not.toHaveBeenCalled();
+
+    result.current.options.refetch();
+    expect(failed.refetch).toHaveBeenCalledTimes(1);
   });
 });

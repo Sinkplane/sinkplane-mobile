@@ -5,8 +5,11 @@ export interface DownloadTarget {
   readonly channel?: string | undefined;
   readonly thumbnailUrl?: string | undefined;
   readonly durationSeconds?: number | undefined;
-  /** The post's first video attachment, whose qualities are offered. */
-  readonly attachmentId: string;
+  /**
+   * The post's first video attachment, whose qualities are offered. Undefined for a list item:
+   * Floatplane's feeds don't list attachments, so it is looked up from the post when needed.
+   */
+  readonly attachmentId?: string | undefined;
 }
 
 /** A video attachment: an object on the post endpoint, a bare id in post lists. */
@@ -19,7 +22,7 @@ export interface DownloadablePost {
   readonly channel?: unknown;
   readonly thumbnail?: { readonly path?: string } | null;
   readonly videoAttachments?: readonly LooseAttachment[] | null;
-  readonly metadata?: { readonly videoDuration?: number } | null;
+  readonly metadata?: { readonly hasVideo?: boolean; readonly videoDuration?: number } | null;
 }
 
 function channelTitle(channel: unknown): string | undefined {
@@ -44,10 +47,15 @@ function durationOf(post: DownloadablePost, attachmentDuration: number | undefin
   return duration !== undefined && duration > 0 ? duration : undefined;
 }
 
-/** The post's download target; undefined for posts without a video (image / text posts). */
+const reportsVideo = (post: DownloadablePost): boolean => post.metadata?.hasVideo === true;
+
+/**
+ * The post's download target: from its video attachment, or (feed items, which list none) from
+ * `metadata.hasVideo`. Undefined for posts without a video (image / text posts).
+ */
 export function downloadTargetOf(post: DownloadablePost): DownloadTarget | undefined {
   const attachment = attachmentOf(post);
-  if (attachment === undefined) {
+  if (attachment === undefined && !reportsVideo(post)) {
     return undefined;
   }
   return {
@@ -55,7 +63,7 @@ export function downloadTargetOf(post: DownloadablePost): DownloadTarget | undef
     title: post.title,
     channel: channelTitle(post.channel),
     thumbnailUrl: post.thumbnail?.path,
-    durationSeconds: durationOf(post, attachment.duration),
-    attachmentId: attachment.id,
+    durationSeconds: durationOf(post, attachment?.duration),
+    attachmentId: attachment?.id,
   };
 }

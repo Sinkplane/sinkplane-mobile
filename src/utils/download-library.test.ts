@@ -1,5 +1,6 @@
 import { mockFileSystem } from '@test/mocks/expo-file-system';
 import {
+  deleteAbandonedTransfers,
   deleteDownloadFiles,
   downloadedThumbnailUri,
   downloadedVideoUri,
@@ -13,6 +14,7 @@ import {
 
 const DIR = 'file:///document/downloads';
 const INDEX = `${DIR}/index.json`;
+const TEMPORARY_INDEX = `${DIR}/index.json.tmp`;
 
 const VIDEO: DownloadedVideo = {
   postId: 'post-1',
@@ -38,7 +40,7 @@ afterEach(() => {
 describe('file locations', () => {
   it('keeps every file of a post in the documents downloads directory', () => {
     expect(videoFileFor('post-1').uri).toBe(`${DIR}/post-1.mp4`);
-    expect(partialFileFor('post-1').uri).toBe(`${DIR}/post-1.mp4.part`);
+    expect(partialFileFor('post-1', '7').uri).toBe(`${DIR}/post-1.7.part`);
     expect(thumbnailFileFor('post-1').uri).toBe(`${DIR}/post-1.jpg`);
     expect(mockFileSystem.directories).toContain(DIR);
   });
@@ -63,9 +65,31 @@ describe('readLibrary / writeLibrary', () => {
 
   it('round-trips the index', () => {
     mockFileSystem.files.set(`${DIR}/post-1.mp4`, 'video');
-    writeLibrary([VIDEO]);
+    expect(writeLibrary([VIDEO])).toBe(true);
     expect(JSON.parse(mockFileSystem.files.get(INDEX) ?? '')).toEqual([VIDEO]);
     expect(readLibrary()).toEqual([VIDEO]);
+  });
+
+  it('replaces an older index through the temporary file, leaving no temporary file', () => {
+    mockFileSystem.files.set(INDEX, '[]');
+    expect(writeLibrary([VIDEO])).toBe(true);
+    expect(JSON.parse(mockFileSystem.files.get(INDEX) ?? '')).toEqual([VIDEO]);
+    expect(mockFileSystem.files.has(TEMPORARY_INDEX)).toBe(false);
+  });
+
+  it('reads the temporary index when the app stopped before the rename', () => {
+    mockFileSystem.files.set(`${DIR}/post-1.mp4`, 'video');
+    mockFileSystem.files.set(TEMPORARY_INDEX, JSON.stringify([VIDEO]));
+    expect(readLibrary()).toEqual([VIDEO]);
+    expect(errorSpy).not.toHaveBeenCalled();
+  });
+
+  it('prefers the index over a leftover temporary index', () => {
+    mockFileSystem.files.set(`${DIR}/post-1.mp4`, 'video');
+    mockFileSystem.files.set(`${DIR}/post-2.mp4`, 'video');
+    mockFileSystem.files.set(INDEX, JSON.stringify([VIDEO]));
+    mockFileSystem.files.set(TEMPORARY_INDEX, JSON.stringify([{ ...VIDEO, postId: 'post-2' }]));
+    expect(readLibrary().map((video) => video.postId)).toEqual(['post-1']);
   });
 
   it('skips entries whose video file is gone', () => {
@@ -103,44 +127,135 @@ describe('readLibrary / writeLibrary', () => {
 
   it('a failed write is logged, not thrown', () => {
     mockFileSystem.writeError = new Error('Disk full');
-    expect(() => {
-      writeLibrary([VIDEO]);
-    }).not.toThrow();
+    expect(writeLibrary([VIDEO])).toBe(false);
     expect(errorSpy).toHaveBeenCalledWith(
       '[Downloads] Could not write the downloads index',
       mockFileSystem.writeError,
     );
   });
-});
 
-describe('deleteDownloadFiles', () => {
-  it("removes the post's video, thumbnail and half-written transfer, nothing else", () => {
-    for (const name of ['post-1.mp4', 'post-1.jpg', 'post-1.mp4.part', 'post-2.mp4']) {
-      mockFileSystem.files.set(`${DIR}/${name}`, 'x');
-    }
-    deleteDownloadFiles('post-1');
-    expect([...mockFileSystem.files.keys()]).toEqual([`${DIR}/post-2.mp4`]);
+  describe('with only a recovered temporary index', () => {
+    const A = VIDEO;
+    const B = { ...VIDEO, postId: 'post-2' };
+
+    beforeEach(() => {
+      mockFileSystem.files.set(`${DIR}/post-1.mp4`, 'video');
+      mockFileSystem.files.set(`${DIR}/post-2.mp4`, 'video');
+      mockFileSystem.files.set(TEMPORARY_INDEX, JSON.stringify([A]));
+    });
+
+    it('promotes it to the index first, so a failed write keeps the only good copy', () => {
+      mockFileSystem.writeError = new Error('Disk full');
+      expect(writeLibrary([B])).toBe(false);
+      expect(JSON.parse(mockFileSystem.files.get(INDEX) ?? '')).toEqual([A]);
+      expect(mockFileSystem.files.has(TEMPORARY_INDEX)).toBe(false);
+      mockFileSystem.writeError = null;
+      expect(readLibrary()).toEqual([A]);
+    });
+
+    it('a successful write leaves the new index and no temporary file', () => {
+      expect(writeLibrary([B])).toBe(true);
+      expect(JSON.parse(mockFileSystem.files.get(INDEX) ?? '')).toEqual([B]);
+      expect(mockFileSystem.files.has(TEMPORARY_INDEX)).toBe(false);
+    });
   });
 
-  it('tolerates missing files', () => {
-    expect(() => {
-      deleteDownloadFiles('post-1');
-    }).not.toThrow();
-    expect(errorSpy).not.toHaveBeenCalled();
-  });
-
-  it('logs a file that cannot be deleted and still deletes the others', () => {
-    mockFileSystem.files.set(`${DIR}/post-1.mp4`, 'x');
-    mockFileSystem.files.set(`${DIR}/post-1.jpg`, 'x');
+  it('a failed rename is logged and reports false', () => {
+    mockFileSystem.files.set(INDEX, '[]');
     const remove = jest.spyOn(Map.prototype, 'delete').mockImplementationOnce(() => {
       throw new Error('Busy');
     });
-    deleteDownloadFiles('post-1');
+    expect(writeLibrary([VIDEO])).toBe(false);
+    remove.mockRestore();
+    expect(errorSpy).toHaveBeenCalledWith(
+      '[Downloads] Could not write the downloads index',
+      expect.any(Error),
+    );
+  });
+});
+
+describe('deleteAbandonedTransfers', () => {
+  it('deletes every .part file and leaves other files alone', () => {
+    const names = ['post-1.3.part', 'post-2.9.part', 'post-1.mp4', 'post-1.jpg', 'index.json'];
+    for (const name of names) {
+      mockFileSystem.files.set(`${DIR}/${name}`, 'x');
+    }
+    deleteAbandonedTransfers();
+    expect([...mockFileSystem.files.keys()]).toEqual(
+      ['post-1.mp4', 'post-1.jpg', 'index.json'].map((name) => `${DIR}/${name}`),
+    );
+    expect(errorSpy).not.toHaveBeenCalled();
+  });
+
+  it('does nothing in an empty directory', () => {
+    deleteAbandonedTransfers();
+    expect(mockFileSystem.files.size).toBe(0);
+    expect(errorSpy).not.toHaveBeenCalled();
+  });
+
+  it('logs a failed listing instead of throwing', () => {
+    mockFileSystem.listError = new Error('No access');
+    expect(() => {
+      deleteAbandonedTransfers();
+    }).not.toThrow();
+    expect(errorSpy).toHaveBeenCalledWith(
+      '[Downloads] Could not list the downloads directory',
+      mockFileSystem.listError,
+    );
+  });
+
+  it('logs a file that cannot be deleted and still deletes the others', () => {
+    mockFileSystem.files.set(`${DIR}/post-1.1.part`, 'x');
+    mockFileSystem.files.set(`${DIR}/post-2.2.part`, 'x');
+    const remove = jest.spyOn(Map.prototype, 'delete').mockImplementationOnce(() => {
+      throw new Error('Busy');
+    });
+    deleteAbandonedTransfers();
     remove.mockRestore();
     expect(errorSpy).toHaveBeenCalledWith(
       '[Downloads] Could not delete a downloaded file',
       expect.any(Error),
     );
-    expect(mockFileSystem.files.has(`${DIR}/post-1.jpg`)).toBe(false);
+    expect(mockFileSystem.files.has(`${DIR}/post-2.2.part`)).toBe(false);
+  });
+});
+
+describe('deleteDownloadFiles', () => {
+  it("removes the post's video and thumbnail, nothing else, and reports true", () => {
+    for (const name of ['post-1.mp4', 'post-1.jpg', 'post-1.4.part', 'post-2.mp4']) {
+      mockFileSystem.files.set(`${DIR}/${name}`, 'x');
+    }
+    expect(deleteDownloadFiles('post-1')).toBe(true);
+    expect([...mockFileSystem.files.keys()]).toEqual([`${DIR}/post-1.4.part`, `${DIR}/post-2.mp4`]);
+  });
+
+  it('tolerates missing files', () => {
+    expect(deleteDownloadFiles('post-1')).toBe(true);
+    expect(errorSpy).not.toHaveBeenCalled();
+  });
+
+  it('keeps the thumbnail and reports false when the video cannot be deleted', () => {
+    mockFileSystem.files.set(`${DIR}/post-1.mp4`, 'x');
+    mockFileSystem.files.set(`${DIR}/post-1.jpg`, 'x');
+    const remove = jest.spyOn(Map.prototype, 'delete').mockImplementationOnce(() => {
+      throw new Error('Busy');
+    });
+    expect(deleteDownloadFiles('post-1')).toBe(false);
+    remove.mockRestore();
+    expect(errorSpy).toHaveBeenCalledWith(
+      '[Downloads] Could not delete a downloaded file',
+      expect.any(Error),
+    );
+    expect(mockFileSystem.files.has(`${DIR}/post-1.jpg`)).toBe(true);
+  });
+
+  it('logs a thumbnail that cannot be deleted, but still reports true', () => {
+    mockFileSystem.files.set(`${DIR}/post-1.jpg`, 'x');
+    const remove = jest.spyOn(Map.prototype, 'delete').mockImplementationOnce(() => {
+      throw new Error('Busy');
+    });
+    expect(deleteDownloadFiles('post-1')).toBe(true);
+    remove.mockRestore();
+    expect(errorSpy).toHaveBeenCalledTimes(1);
   });
 });

@@ -95,7 +95,7 @@ async function finish(task: ReturnType<typeof mockFileSystem.lastDownload>): Pro
 
 describe('VideoDetails downloads', () => {
   it('posts without a video have no Download button', async () => {
-    await renderDetails({ ...post, videoAttachments: [] });
+    await renderDetails(makeVideoPost(video, { videoAttachments: false }));
     expect(screen.queryByTestId('download-button')).toBeNull();
   });
 

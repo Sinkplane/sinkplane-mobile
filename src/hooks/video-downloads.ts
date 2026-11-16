@@ -3,11 +3,9 @@
  * videos on disk.
  */
 import {
+  deleteAbandonedTransfers,
   deleteDownloadFiles,
-  deleteIfPresent,
   readLibrary,
-  thumbnailFileFor,
-  videoFileFor,
   writeLibrary,
   type DownloadedVideo,
 } from '@/utils/download-library';
@@ -71,7 +69,7 @@ class Attempt {
     return this.request.target.postId;
   }
 
-  run(download: RunningDownload): Promise<DownloadedFiles> {
+  run(download: RunningDownload): Promise<void> {
     this.download = download;
     return download.done;
   }
@@ -127,6 +125,8 @@ class VideoDownloads {
     }
     this.attempts.get(postId)?.cancel();
     this.attempts.delete(postId);
+    // An earlier cancelled attempt may have finished into the post's files meanwhile.
+    deleteDownloadFiles(postId);
     this.set(postId, IDLE);
   }
 
@@ -137,23 +137,22 @@ class VideoDownloads {
     }
   }
 
-  /** Deletes a downloaded video's files. */
+  /** Deletes a downloaded video's files (it stays listed if its video file can't be deleted). */
   remove(postId: string): void {
-    if (this.get(postId).status !== 'downloaded') {
+    if (this.get(postId).status !== 'downloaded' || !deleteDownloadFiles(postId)) {
       return;
     }
-    deleteDownloadFiles(postId);
     this.set(postId, IDLE);
     this.persist();
   }
 
   removeAll(): void {
     for (const video of this.list()) {
-      deleteDownloadFiles(video.postId);
-      this.load().delete(video.postId);
+      if (deleteDownloadFiles(video.postId)) {
+        this.load().delete(video.postId);
+      }
     }
     this.persist();
-    this.notify();
   }
 
   /**
@@ -172,6 +171,8 @@ class VideoDownloads {
 
   private load(): Map<string, VideoDownloadState> {
     if (this.states === undefined) {
+      // Nothing is transferring yet (first use, or right after sign-out cancelled everything).
+      deleteAbandonedTransfers();
       const videos = readLibrary();
       this.states = new Map(videos.map((video) => [video.postId, downloadedState(video)]));
       this.videos = [...videos].sort(newestFirst);
@@ -181,8 +182,7 @@ class VideoDownloads {
 
   private async run(attempt: Attempt): Promise<void> {
     try {
-      const files = await attempt.run(this.begin(attempt));
-      this.complete(attempt, files);
+      await attempt.run(this.begin(attempt));
     } catch (error) {
       this.fail(attempt, error);
     }
@@ -198,19 +198,37 @@ class VideoDownloads {
       onProgress: (progress) => {
         this.progress(attempt, progress);
       },
+      onComplete: (files) => {
+        this.complete(attempt, files);
+      },
     });
   }
 
   private complete(attempt: Attempt, files: DownloadedFiles): void {
+    const { postId } = attempt;
     if (!this.isCurrent(attempt)) {
-      // Cancelled while the thumbnail was saved: drop the finished files.
-      deleteIfPresent(videoFileFor(attempt.postId));
-      deleteIfPresent(thumbnailFileFor(attempt.postId));
+      this.dropCancelled(postId);
       return;
     }
-    this.attempts.delete(attempt.postId);
-    this.set(attempt.postId, downloadedState(downloadedVideo(attempt.request, files)));
-    this.persist();
+    this.attempts.delete(postId);
+    this.load().set(postId, downloadedState(downloadedVideo(attempt.request, files)));
+    if (!this.persist()) {
+      // Not in the index, so it wouldn't be listed after a relaunch: don't keep it.
+      deleteDownloadFiles(postId);
+      this.set(postId, { status: 'failed', label: attempt.request.option.label });
+      this.snapshot();
+    }
+  }
+
+  /**
+   * A transfer cancelled while its thumbnail was saved finished anyway: delete its files, unless a
+   * newer download of the post is running or done (it owns them now).
+   */
+  private dropCancelled(postId: string): void {
+    const status = this.get(postId).status;
+    if (status === 'idle' || status === 'failed') {
+      deleteDownloadFiles(postId);
+    }
   }
 
   private progress(attempt: Attempt, progress: number | null): void {
@@ -230,6 +248,7 @@ class VideoDownloads {
     }
     logError('[Downloads] Download failed', error);
     this.attempts.delete(attempt.postId);
+    deleteDownloadFiles(attempt.postId);
     this.set(attempt.postId, { status: 'failed', label: attempt.request.option.label });
   }
 
@@ -247,17 +266,23 @@ class VideoDownloads {
     this.notify();
   }
 
-  /** Rewrites the index and the list snapshot from the downloaded states. */
-  private persist(): void {
+  /** Rebuilds the list snapshot from the downloaded states. */
+  private snapshot(): void {
     const videos: DownloadedVideo[] = [];
     for (const state of this.load().values()) {
       if (state.status === 'downloaded') {
         videos.push(state.video);
       }
     }
-    this.videos = [...videos].sort(newestFirst);
-    writeLibrary(this.videos);
+    videos.sort(newestFirst);
+    this.videos = videos;
     this.notify();
+  }
+
+  /** Updates the list snapshot and rewrites the index; false when the index couldn't be written. */
+  private persist(): boolean {
+    this.snapshot();
+    return writeLibrary(this.videos);
   }
 
   private notify(): void {

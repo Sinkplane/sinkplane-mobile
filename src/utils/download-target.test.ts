@@ -38,6 +38,46 @@ describe('downloadTargetOf', () => {
     });
   });
 
+  it('a feed item lists no attachments, only metadata.hasVideo: a target without an attachment id', () => {
+    const target = downloadTargetOf({
+      ...BASE,
+      channel: { title: 'LTT' },
+      thumbnail: { path: 'https://pbs.test/t.jpg' },
+      metadata: { hasVideo: true, videoDuration: 90 },
+    });
+    expect(target).toEqual({
+      postId: 'post-1',
+      title: 'Home Lab Tour',
+      channel: 'LTT',
+      thumbnailUrl: 'https://pbs.test/t.jpg',
+      durationSeconds: 90,
+      attachmentId: undefined,
+    });
+    expect(target).toHaveProperty('attachmentId', undefined);
+  });
+
+  it('an attachment wins over hasVideo for the attachment id and duration', () => {
+    expect(
+      downloadTargetOf({
+        ...BASE,
+        videoAttachments: [{ guid: 'att-1', duration: 600 }],
+        metadata: { hasVideo: true, videoDuration: 5 },
+      }),
+    ).toMatchObject({ attachmentId: 'att-1', durationSeconds: 600 });
+  });
+
+  it.each([
+    ['hasVideo false', { metadata: { hasVideo: false, videoDuration: 30 } }],
+    ['hasVideo missing', { metadata: { videoDuration: 30 } }],
+    ['null metadata', { metadata: null }],
+    [
+      'hasVideo false with an empty attachment list',
+      { videoAttachments: [], metadata: { hasVideo: false } },
+    ],
+  ])('no video (%s): undefined', (_case, fields) => {
+    expect(downloadTargetOf({ ...BASE, ...fields })).toBeUndefined();
+  });
+
   it.each([
     ['no attachments field', {}],
     ['null attachments', { videoAttachments: null }],

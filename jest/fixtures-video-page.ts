@@ -70,6 +70,7 @@ export function makeVideoPost(video: Video, options: MakeVideoPostOptions = {}):
     duration: video.metadata.videoDuration,
     ...postCounters(video, options),
     selfUserInteraction: null,
+    metadata: { ...video.metadata, hasVideo: options.videoAttachments !== false },
     videoAttachments:
       options.videoAttachments === false
         ? []

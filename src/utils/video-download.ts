@@ -19,6 +19,11 @@ export interface VideoDownloadRequest {
   /** Saved next to the video for the offline Downloads list; failures are ignored. */
   readonly thumbnailUrl?: string | undefined;
   readonly onProgress: DownloadProgressListener;
+  /**
+   * The video (and thumbnail) are in place: record them. Runs before the transfer is acknowledged,
+   * so iOS keeps a backgrounded app running until the download is recorded.
+   */
+  readonly onComplete: (files: DownloadedFiles) => void;
 }
 
 export interface DownloadedFiles {
@@ -26,9 +31,12 @@ export interface DownloadedFiles {
   readonly hasThumbnail: boolean;
 }
 
-/** A running download; `done` rejects with a `DownloadCancelledError` after `cancel()`. */
+/**
+ * A running download; `done` settles once `onComplete` ran and the transfer was acknowledged, and
+ * rejects with a `DownloadCancelledError` after `cancel()`.
+ */
 export interface RunningDownload {
-  readonly done: Promise<DownloadedFiles>;
+  readonly done: Promise<void>;
   readonly cancel: () => void;
 }
 
@@ -39,8 +47,10 @@ export class DownloadCancelledError extends Error {
   }
 }
 
-function fraction({ bytesWritten, totalBytes }: { bytesWritten: number; totalBytes: number }) {
-  return totalBytes > 0 ? Math.min(bytesWritten / totalBytes, 1) : null;
+/** 0–1, or null without a total size. iOS reports the byte counts as BigInt, so they're converted. */
+function fraction(progress: { bytesWritten: number | bigint; totalBytes: number | bigint }) {
+  const total = Number(progress.totalBytes);
+  return total > 0 ? Math.min(Number(progress.bytesWritten) / total, 1) : null;
 }
 
 async function downloadThumbnail(postId: string, url: string | undefined): Promise<boolean> {
@@ -56,33 +66,74 @@ async function downloadThumbnail(postId: string, url: string | undefined): Promi
   }
 }
 
+/**
+ * How long a finished download waits for its thumbnail: iOS gives a backgrounded app about 25 s to
+ * handle the completion, and the download must be recorded within it.
+ */
+const THUMBNAIL_WAIT_MS = 10_000;
+
+/** The thumbnail's outcome, or false (no thumbnail) when it takes longer than THUMBNAIL_WAIT_MS. */
+function withinThumbnailWait(thumbnail: Promise<boolean>): Promise<boolean> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<boolean>((resolve) => {
+    timer = setTimeout(() => {
+      resolve(false);
+    }, THUMBNAIL_WAIT_MS);
+  });
+  return Promise.race([thumbnail, timeout]).finally(() => {
+    clearTimeout(timer);
+  });
+}
+
+/** Tells iOS the background transfer's completion was handled (a no-op on Android). */
+async function acknowledge(task: DownloadTask): Promise<void> {
+  try {
+    await task.acknowledgeBackgroundCompletionAsync();
+  } catch (error) {
+    logError('[Downloads] Could not acknowledge the transfer', error);
+  }
+}
+
 async function transfer(
   task: DownloadTask,
   request: VideoDownloadRequest,
   isCancelled: () => boolean,
-): Promise<DownloadedFiles> {
+): Promise<void> {
   const partial = await task.downloadAsync();
-  if (partial === null || isCancelled()) {
+  if (partial === null) {
     throw new DownloadCancelledError();
   }
-  const video = videoFileFor(request.postId);
-  partial.moveSync(video, { overwrite: true });
-  const hasThumbnail = await downloadThumbnail(request.postId, request.thumbnailUrl);
-  return { sizeBytes: video.size, hasThumbnail };
+  try {
+    if (isCancelled()) {
+      throw new DownloadCancelledError();
+    }
+    const video = videoFileFor(request.postId);
+    partial.moveSync(video, { overwrite: true });
+    const hasThumbnail = await withinThumbnailWait(
+      downloadThumbnail(request.postId, request.thumbnailUrl),
+    );
+    request.onComplete({ sizeBytes: video.size, hasThumbnail });
+  } finally {
+    // Every successful background download needs its acknowledgment, cancelled or not.
+    await acknowledge(task);
+  }
 }
+
+let transfers = 0;
 
 /**
  * Downloads a post's video into the app's downloads directory (see download-library). The
- * transfer writes a `.part` file that is renamed once complete and removed on failure or cancel.
+ * transfer writes its own `.part` file, renamed once complete and removed on failure or cancel.
  * On iOS it uses a background session, so it continues while the app is suspended (not after it
- * is terminated).
+ * is terminated); completion is deferred until `onComplete` recorded the download.
  */
 export function downloadVideo(request: VideoDownloadRequest): RunningDownload {
-  const partial = partialFileFor(request.postId);
-  deleteIfPresent(partial);
+  transfers += 1;
+  const partial = partialFileFor(request.postId, String(transfers));
   let cancelled = false;
   const task = File.createDownloadTask(request.url, partial, {
     headers: request.headers,
+    deferBackgroundSessionCompletion: true,
     onProgress: (progress) => {
       request.onProgress(fraction(progress));
     },

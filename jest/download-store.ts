@@ -12,7 +12,7 @@ import {
 import type { DownloadedVideo } from '@/utils/download-library';
 import type { DownloadOption } from '@/utils/download-options';
 import type { DownloadTarget } from '@/utils/download-target';
-import { mockFileSystem } from '@test/mocks/expo-file-system';
+import { MockFile, mockFileSystem } from '@test/mocks/expo-file-system';
 
 export const DOWNLOADS_DIR = 'file:///document/downloads';
 const INDEX = `${DOWNLOADS_DIR}/index.json`;
@@ -73,6 +73,7 @@ export function setUpDownloadStoreTests(): { errorSpy: () => jest.SpyInstance } 
       useStopDownloadsOnSignOut(false);
     });
     errorSpy?.mockRestore();
+    jest.restoreAllMocks();
     jest.useRealTimers();
   });
   return {
@@ -95,12 +96,7 @@ export async function renderDownload(
 }
 
 /** Let promise callbacks (transfer → rename → thumbnail → store) run. */
-export const settle = (): Promise<void> =>
-  act(async () => {
-    for (let step = 0; step < 5; step += 1) {
-      await Promise.resolve();
-    }
-  });
+export const settle = (): Promise<void> => act(settleMicrotasks);
 
 export async function startDownload(
   postTarget = downloadTarget(),
@@ -118,4 +114,43 @@ export async function finishDownload(sizeBytes = 4321): Promise<void> {
     mockFileSystem.lastDownload().finish(sizeBytes);
   });
   await settle();
+}
+
+/** Makes deleting these posts' video files fail (everything else deletes normally). */
+export function failVideoDeletes(postIds: readonly string[]): jest.SpyInstance {
+  const blocked = new Set(postIds.map((postId) => `${DOWNLOADS_DIR}/${postId}.mp4`));
+  return jest.spyOn(MockFile.prototype, 'delete').mockImplementation(function (this: MockFile) {
+    if (blocked.has(this.uri)) {
+      throw new Error('Busy');
+    }
+    mockFileSystem.files.delete(this.uri);
+    mockFileSystem.sizes.delete(this.uri);
+  });
+}
+
+/**
+ * Holds back the next thumbnail download; the returned function completes it (writing the file).
+ */
+export function holdNextThumbnail(): () => Promise<void> {
+  let release: () => void = () => undefined;
+  jest.spyOn(MockFile, 'downloadFileAsync').mockImplementationOnce(
+    (_url, destination) =>
+      new Promise((resolve) => {
+        release = () => {
+          mockFileSystem.files.set(destination.uri, 'thumbnail');
+          resolve(destination);
+        };
+      }),
+  );
+  return () =>
+    act(async () => {
+      release();
+      await settleMicrotasks();
+    });
+}
+
+async function settleMicrotasks(): Promise<void> {
+  for (let step = 0; step < 5; step += 1) {
+    await Promise.resolve();
+  }
 }
