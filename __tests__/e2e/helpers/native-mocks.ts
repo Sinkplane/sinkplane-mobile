@@ -49,6 +49,15 @@ jest.mock('react-native-webview', () => {
 });
 
 // ---------------------------------------------------------------------------
+// expo-file-system + expo-media-library — video downloads: an in-memory file system whose download
+// tasks the tests drive, and a photo library recording what was saved (`rt.fileSystem`,
+// `rt.mediaLibrary`).
+// ---------------------------------------------------------------------------
+
+jest.mock('expo-file-system', () => jest.requireActual<object>('@test/mocks/expo-file-system'));
+jest.mock('expo-media-library', () => jest.requireActual<object>('@test/mocks/expo-media-library'));
+
+// ---------------------------------------------------------------------------
 // expo-splash-screen
 // ---------------------------------------------------------------------------
 

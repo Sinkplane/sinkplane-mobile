@@ -181,6 +181,9 @@ describe('MiniPlayer', () => {
     expect(screen.queryByTestId('mini-player')).toBeNull();
     expect(isPlayerRoute('/live/x')).toBe(true);
     expect(isPlayerRoute('/history')).toBe(false);
+    // A downloaded video's page (not the Downloads list) plays too.
+    expect(isPlayerRoute('/downloads/post-1')).toBe(true);
+    expect([isPlayerRoute('/downloads'), isPlayerRoute('/x/downloads/1')]).toEqual([false, false]);
   });
 
   it('reopens the video page, or the live page, when tapped', async () => {

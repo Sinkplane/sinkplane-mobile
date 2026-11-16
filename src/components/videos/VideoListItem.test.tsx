@@ -55,6 +55,7 @@ describe('VideoListItem', () => {
       id: 'text-post',
       title: 'Text only',
       duration: 0,
+      hasVideo: false,
     });
     await render(<VideoListItem video={textPost} progress={30} />);
 
@@ -94,5 +95,36 @@ describe('VideoListItem', () => {
     await expect(
       fireEvent.press(screen.getByTestId('video-list-item-video-1')),
     ).resolves.toBeUndefined();
+  });
+
+  it('a long press hands the video to onLongPress (not onPress)', async () => {
+    const onPress = jest.fn();
+    const onLongPress = jest.fn();
+    await render(<VideoListItem video={video} onPress={onPress} onLongPress={onLongPress} />);
+    await fireEvent(screen.getByTestId('video-list-item-video-1'), 'longPress');
+    expect(onLongPress).toHaveBeenCalledTimes(1);
+    expect(onLongPress).toHaveBeenCalledWith(video);
+    expect(onPress).not.toHaveBeenCalled();
+  });
+
+  it('offers the long press as a "Download options" accessibility action', async () => {
+    const onLongPress = jest.fn();
+    await render(<VideoListItem video={video} onLongPress={onLongPress} />);
+    const item = screen.getByTestId('video-list-item-video-1');
+    expect(item.props['accessibilityActions']).toEqual([
+      { name: 'longpress', label: 'Download options' },
+    ]);
+
+    await fireEvent(item, 'accessibilityAction', { nativeEvent: { actionName: 'activate' } });
+    expect(onLongPress).not.toHaveBeenCalled();
+    await fireEvent(item, 'accessibilityAction', { nativeEvent: { actionName: 'longpress' } });
+    expect(onLongPress).toHaveBeenCalledWith(video);
+  });
+
+  it('has no long press or accessibility action without onLongPress', async () => {
+    await render(<VideoListItem video={video} />);
+    const item = screen.getByTestId('video-list-item-video-1');
+    expect(item.props['accessibilityActions']).toBeUndefined();
+    expect(item.props['onLongPress']).toBeUndefined();
   });
 });

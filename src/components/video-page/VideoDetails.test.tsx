@@ -1,3 +1,4 @@
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, screen } from '@testing-library/react-native';
 
 import { VideoDetails } from '@/components/video-page/VideoDetails';
@@ -28,11 +29,25 @@ function reactionResult(state: Partial<ReturnType<typeof usePostReaction>> = {})
   };
 }
 
+const queryClients: QueryClient[] = [];
+
+afterAll(() => {
+  for (const client of queryClients) {
+    client.clear();
+  }
+});
+
 async function renderDetails(
   reaction: ReturnType<typeof usePostReaction> = reactionResult(),
   activePost: VideoPost = post,
 ) {
-  await render(<VideoDetails post={activePost} reaction={reaction} />);
+  const client = new QueryClient();
+  queryClients.push(client);
+  await render(
+    <QueryClientProvider client={client}>
+      <VideoDetails post={activePost} reaction={reaction} />
+    </QueryClientProvider>,
+  );
   return { reaction };
 }
 

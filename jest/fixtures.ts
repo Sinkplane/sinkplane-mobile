@@ -20,7 +20,10 @@ export {
   techSideChannel,
 } from './fixtures-world';
 export {
+  DOWNLOAD_SIZE_1080,
+  DOWNLOAD_SIZE_720,
   makeComments,
+  makeDownloadDelivery,
   makeCreatorLiveStream,
   makeLiveDelivery,
   makeVideoDelivery,

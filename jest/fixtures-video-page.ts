@@ -70,6 +70,7 @@ export function makeVideoPost(video: Video, options: MakeVideoPostOptions = {}):
     duration: video.metadata.videoDuration,
     ...postCounters(video, options),
     selfUserInteraction: null,
+    metadata: { ...video.metadata, hasVideo: options.videoAttachments !== false },
     videoAttachments:
       options.videoAttachments === false
         ? []
@@ -105,6 +106,48 @@ export function makeVideoDelivery(
         label: 'hls',
         origins: [{ id: `${guid}-origin`, url: `https://edge.floatplane.test/${guid}/` }],
         variants,
+      },
+    ],
+  };
+}
+
+/** Bytes of the download fixture's reported sizes (720p 220 MB, 1080p 1.2 GB). */
+export const DOWNLOAD_SIZE_720 = 220 * 1024 * 1024;
+export const DOWNLOAD_SIZE_1080 = Math.round(1.2 * 1024 * 1024 * 1024);
+
+/**
+ * Download delivery info (`scenario=download`), shaped like Floatplane's: direct MP4 files,
+ * ascending quality. 360p reports no size, only bitrates (500 kbit/s video + 100 kbit/s audio);
+ * 720p and 1080p report theirs; 4K is denied to the account.
+ */
+export function makeDownloadDelivery(guid: string): VideoDelivery {
+  const variant = (height: number, label: string, extra: Record<string, unknown>) => ({
+    name: `${String(height)}-avc1`,
+    label,
+    url: `/Videos/${guid}/${String(height)}.mp4?token=signed-${String(height)}`,
+    mimeType: 'video/mp4',
+    enabled: true,
+    hidden: false,
+    ...extra,
+  });
+  const sized = (size: number) => ({ meta: { common: { size } } });
+  return {
+    groups: [
+      {
+        origins: [{ url: 'https://edge.floatplane.test' }],
+        variants: [
+          variant(360, '360p', {
+            meta: {
+              video: { bitrate: { average: 500_000 } },
+              audio: { bitrate: { average: 100_000 } },
+            },
+          }),
+          variant(720, '720p', sized(DOWNLOAD_SIZE_720)),
+          variant(1080, '1080p', sized(DOWNLOAD_SIZE_1080)),
+          variant(2160, '4K', {
+            meta: { common: { access: { deniedReason: 'isMissingPermission' } } },
+          }),
+        ],
       },
     ],
   };

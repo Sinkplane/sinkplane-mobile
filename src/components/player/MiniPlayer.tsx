@@ -31,9 +31,16 @@ const ICONS = {
   close: { ios: 'xmark', android: 'close', web: 'close' },
 } satisfies Record<string, SymbolViewProps['name']>;
 
+/** A downloaded video's page (`/downloads/<id>`), not the Downloads list. */
+const DOWNLOAD_PLAYER_ROUTE = /^\/downloads\/[^/]+/;
+
 /** The page routes that show the player themselves (the mini player hides there). */
 export function isPlayerRoute(pathname: string): boolean {
-  return pathname.startsWith('/video/') || pathname.startsWith('/live/');
+  return (
+    pathname.startsWith('/video/') ||
+    pathname.startsWith('/live/') ||
+    DOWNLOAD_PLAYER_ROUTE.test(pathname)
+  );
 }
 
 /** Keeps saving watch progress while a video plays in the mini player (live streams have none). */

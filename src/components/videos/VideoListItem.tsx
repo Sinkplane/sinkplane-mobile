@@ -1,5 +1,5 @@
 import { memo, type ReactElement } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View, type AccessibilityActionEvent } from 'react-native';
 import { Image } from 'expo-image';
 
 import { WIDESCREEN_ASPECT_RATIO } from '@/components/aspect-ratio';
@@ -12,7 +12,12 @@ interface VideoListItemProps {
   /** Watched position in seconds. */
   readonly progress?: number | undefined;
   readonly onPress?: ((video: Video) => void) | undefined;
+  /** Opens the item's actions (download); also offered as an accessibility action. */
+  readonly onLongPress?: ((video: Video) => void) | undefined;
 }
+
+const LONG_PRESS_ACTION = 'longpress';
+const LONG_PRESS_ACTIONS = [{ name: LONG_PRESS_ACTION, label: 'Download options' }];
 
 /** The embedded channel as the API may send it: some payloads omit it, or its icon. */
 type ListChannel = { readonly title?: string; readonly icon?: ApiImage | null } | null | undefined;
@@ -102,10 +107,29 @@ function ListDetails({ video, placeholderColor }: Omit<ThumbnailProps, 'progress
   );
 }
 
+/** The item's long-press handlers: the gesture plus the matching accessibility action. */
+function longPressProps(video: Video, onLongPress: VideoListItemProps['onLongPress']) {
+  if (onLongPress === undefined) {
+    return {};
+  }
+  return {
+    onLongPress: () => {
+      onLongPress(video);
+    },
+    accessibilityActions: LONG_PRESS_ACTIONS,
+    onAccessibilityAction: (event: AccessibilityActionEvent) => {
+      if (event.nativeEvent.actionName === LONG_PRESS_ACTION) {
+        onLongPress(video);
+      }
+    },
+  };
+}
+
 export const VideoListItem = memo(function VideoListItem({
   video,
   progress,
   onPress,
+  onLongPress,
 }: VideoListItemProps) {
   const placeholderColor = useThemeColor(PLACEHOLDER_COLORS, 'background');
   const press =
@@ -119,6 +143,7 @@ export const VideoListItem = memo(function VideoListItem({
     <Pressable
       testID={`video-list-item-${video.id}`}
       onPress={press}
+      {...longPressProps(video, onLongPress)}
       style={({ pressed }) => [styles.container, pressed && styles.pressed]}
       accessibilityRole="button"
       accessibilityLabel={video.title}

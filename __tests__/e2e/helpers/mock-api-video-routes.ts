@@ -3,7 +3,13 @@
  * post and comment like/dislike toggles, progress saving, related posts (the end screen's suggestions).
  */
 
-import { makeComments, makeLiveDelivery, makeVideoDelivery, makeVideoPost } from '@test/fixtures';
+import {
+  makeComments,
+  makeDownloadDelivery,
+  makeLiveDelivery,
+  makeVideoDelivery,
+  makeVideoPost,
+} from '@test/fixtures';
 import type { PostComment } from '@/hooks/use-post-comments';
 import type { Video, VideoPost } from '@/shared';
 
@@ -51,11 +57,17 @@ function liveDeliveryInfo(store: FloatplaneApiStore, liveStreamId: string): Mock
   return ok(store.liveDeliveries.get(liveStreamId) ?? makeLiveDelivery(liveStreamId));
 }
 
-/** Playback info for a video attachment guid, or (`entityKind=livestream`) a livestream id. */
+/**
+ * Playback info for a video attachment guid, or (`entityKind=livestream`) a livestream id;
+ * `scenario=download` answers the attachment's MP4 files instead.
+ */
 const deliveryInfo: RouteHandler = (store, { params }) => {
   const entityId = params.get('entityId') ?? '';
   if (params.get('entityKind') === 'livestream') {
     return liveDeliveryInfo(store, entityId);
+  }
+  if (params.get('scenario') === 'download') {
+    return ok(store.downloadDeliveries.get(entityId) ?? makeDownloadDelivery(entityId));
   }
   return ok(store.deliveries.get(entityId) ?? makeVideoDelivery(entityId));
 };

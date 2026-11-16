@@ -1,6 +1,8 @@
 import { useCallback, useMemo, useState, type ReactElement } from 'react';
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 
+import { DownloadSheets } from '@/components/downloads/DownloadActionSheet';
+import { canDownload, useDownloadActions } from '@/components/downloads/use-download-actions';
 import { TabList, TabScreen } from '@/components/tab-screen/TabList';
 import { FeedControls } from '@/components/videos/FeedControls';
 import { useOpenVideo } from '@/components/videos/use-open-video';
@@ -143,14 +145,23 @@ function FeedEmpty({
   );
 }
 
-function useVideoCell(token: string | undefined, videos: Video[]) {
+function useVideoCell(
+  token: string | undefined,
+  videos: Video[],
+  openMenu: (video: Video) => void,
+) {
   const progressById = useProgressById(token, videos);
   const openVideo = useOpenVideo();
   return useCallback(
     (video: Video) => (
-      <VideoListItem video={video} progress={progressById.get(video.id)} onPress={openVideo} />
+      <VideoListItem
+        video={video}
+        progress={progressById.get(video.id)}
+        onPress={openVideo}
+        onLongPress={canDownload(video) ? openMenu : undefined}
+      />
     ),
-    [progressById, openVideo],
+    [progressById, openVideo, openMenu],
   );
 }
 
@@ -168,21 +179,25 @@ function VideoFeed({
   sort: AssDass;
 }>): ReactElement {
   const feed = useSubscriptionFeed(token, feedParams({ creatorIds, sort }, channelId, search));
-  const renderCell = useVideoCell(token, feed.videos);
+  const menu = useDownloadActions();
+  const renderCell = useVideoCell(token, feed.videos, menu.openMenu);
   const { refetch } = feed;
   const onRefresh = useCallback(() => void refetch(), [refetch]);
 
   return (
-    <TabList
-      testID="videos-list"
-      data={feed.videos}
-      keyOf={(video) => video.id}
-      renderCell={renderCell}
-      refreshing={feed.isRefetching && !feed.isFetchingNextPage}
-      onRefresh={onRefresh}
-      paging={feed}
-      empty={<FeedEmpty isLoading={feed.isLoading} error={feed.error} search={search} />}
-    />
+    <>
+      <TabList
+        testID="videos-list"
+        data={feed.videos}
+        keyOf={(video) => video.id}
+        renderCell={renderCell}
+        refreshing={feed.isRefetching && !feed.isFetchingNextPage}
+        onRefresh={onRefresh}
+        paging={feed}
+        empty={<FeedEmpty isLoading={feed.isLoading} error={feed.error} search={search} />}
+      />
+      <DownloadSheets actions={menu} />
+    </>
   );
 }
 
