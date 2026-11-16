@@ -2,7 +2,7 @@ import type { VideoMetadata, VideoSource } from 'expo-video';
 
 import { BROWSER_USER_AGENT, type VideoDelivery } from '@/shared';
 
-type DeliveryVariant = VideoDelivery['groups'][number]['variants'][number];
+export type DeliveryVariant = VideoDelivery['groups'][number]['variants'][number];
 
 const hasText = (value: string | null | undefined): value is string =>
   value !== null && value !== undefined && value !== '';
@@ -14,7 +14,7 @@ const deniedReason = (variant: DeliveryVariant): string =>
   variant.meta?.common?.access?.deniedReason ?? '';
 
 /** Enabled, has a URL, and the account may watch it. */
-const isPlayable = (variant: DeliveryVariant): boolean =>
+export const isPlayable = (variant: DeliveryVariant): boolean =>
   variant.enabled !== false && hasUrl(variant) && deniedReason(variant) === '';
 
 /** Highest playable variant, or the first one (the adaptive playlist) for live deliveries. */
@@ -42,7 +42,7 @@ function trimTrailingSlashes(url: string): string {
 }
 
 /** Origin + variant path, with exactly one slash between them. */
-function joinUrl(origin: string, path: string): string {
+export function joinUrl(origin: string, path: string): string {
   const absolutePath = path.startsWith('/') ? path : `/${path}`;
   return `${trimTrailingSlashes(origin)}${absolutePath}`;
 }
@@ -83,7 +83,7 @@ function toVideoMetadata(metadata: StreamMetadata): VideoMetadata {
 }
 
 /** Browser UA (Cloudflare) plus the session token as a bearer, like API calls. */
-function requestHeaders(token: string | null | undefined): Record<string, string> {
+export function requestHeaders(token: string | null | undefined): Record<string, string> {
   const headers: Record<string, string> = { 'User-Agent': BROWSER_USER_AGENT };
   if (hasText(token)) {
     headers['Authorization'] = `Bearer ${token}`;

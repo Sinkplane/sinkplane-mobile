@@ -2,11 +2,16 @@ import { useMemo, useState, type ReactElement } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Image } from 'expo-image';
 
+import { DownloadSheets } from '@/components/downloads/DownloadActionSheet';
+import { useDownloadActions } from '@/components/downloads/use-download-actions';
 import { imagePath, type ApiImage } from '@/components/image-path';
+import { DownloadButton } from '@/components/video-page/DownloadButton';
+import { DownloadStatus } from '@/components/video-page/DownloadStatus';
 import { ReactionBar } from '@/components/video-page/ReactionBar';
 import { useOpenLink } from '@/components/video-page/use-open-link';
 import type { usePostReaction } from '@/hooks/use-post-reaction';
 import { useThemeColor, type VideoPost } from '@/shared';
+import { downloadTargetOf } from '@/utils/download-target';
 import { formatRelativeDate, htmlToSegments, type TextSegment } from '@/utils/format-video';
 
 interface VideoDetailsProps {
@@ -130,22 +135,50 @@ function ChannelRow({ source }: Readonly<{ source: PostHeaderSource }>): ReactEl
   );
 }
 
-function PostReactions({ reaction }: Pick<VideoDetailsProps, 'reaction'>): ReactElement {
+function ReactionError({ reaction }: Pick<VideoDetailsProps, 'reaction'>): ReactElement | null {
   const mutedColor = useThemeColor({}, 'icon');
+  if (reaction.error === null) {
+    return null;
+  }
+  return (
+    <Text style={[styles.error, { color: mutedColor }]}>
+      Couldn&apos;t save your reaction. Try again.
+    </Text>
+  );
+}
+
+/** Like / dislike plus (posts with a video) Download, then their status lines and sheets. */
+function PostActions({ post, reaction }: VideoDetailsProps): ReactElement {
+  const target = useMemo(() => downloadTargetOf(post), [post]);
+  const actions = useDownloadActions(target);
+  const { state } = actions.download;
   return (
     <>
-      <ReactionBar
-        reaction={reaction.reaction}
-        likes={reaction.likes}
-        dislikes={reaction.dislikes}
-        disabled={reaction.isPending}
-        onToggle={reaction.toggle}
-      />
-      {reaction.error === null ? null : (
-        <Text style={[styles.error, { color: mutedColor }]}>
-          Couldn&apos;t save your reaction. Try again.
-        </Text>
-      )}
+      <View style={styles.actions}>
+        <ReactionBar
+          reaction={reaction.reaction}
+          likes={reaction.likes}
+          dislikes={reaction.dislikes}
+          disabled={reaction.isPending}
+          onToggle={reaction.toggle}
+        />
+        {target ? (
+          <DownloadButton
+            state={state}
+            onPress={() => {
+              if (state.status === 'downloaded') {
+                actions.openMenu();
+              } else {
+                actions.chooseQuality();
+              }
+            }}
+            onCancel={actions.download.cancel}
+          />
+        ) : null}
+      </View>
+      <ReactionError reaction={reaction} />
+      <DownloadStatus state={state} />
+      <DownloadSheets actions={actions} />
     </>
   );
 }
@@ -165,7 +198,7 @@ export function VideoDetails({ post, reaction }: VideoDetailsProps): ReactElemen
         {formatRelativeDate(post.releaseDate)}
       </Text>
       <ChannelRow source={source} />
-      <PostReactions reaction={reaction} />
+      <PostActions post={post} reaction={reaction} />
       <PostDescription html={post.text} />
       <Text style={[styles.commentsHeading, { color: textColor }]}>
         {`Comments · ${String(source.comments ?? 0)}`}
@@ -203,6 +236,12 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 15,
     fontWeight: '600',
+  },
+  actions: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: 8,
   },
   error: {
     fontSize: 13,

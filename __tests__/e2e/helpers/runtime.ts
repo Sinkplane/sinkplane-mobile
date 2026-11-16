@@ -22,9 +22,14 @@ import type * as NotificationsMockModule from '@test/mocks/expo-notifications';
 import type * as TaskManagerMockModule from '@test/mocks/expo-task-manager';
 import type * as BackgroundTaskMockModule from '@test/mocks/expo-background-task';
 import type * as FoldPostureMockModule from '@test/mocks/fold-posture';
+import type * as FileSystemMockModule from '@test/mocks/expo-file-system';
+import type * as MediaLibraryMockModule from '@test/mocks/expo-media-library';
 import type * as WindowSizeHelperModule from '@test/window-size';
 import type * as SocketExports from './mock-floatplane-socket';
 import type * as ReactNativeModule from 'react-native';
+import { spyOnAlert } from '@test/alert';
+import { seedDownloads } from '@test/fixtures-downloads';
+import type { DownloadedVideo } from '@/utils/download-library';
 
 type TestUtils = typeof TestUtilsModule;
 type ApiModule = typeof ApiExports;
@@ -36,6 +41,8 @@ type NotificationsMock = typeof NotificationsMockModule;
 type TaskManagerMock = typeof TaskManagerMockModule;
 type BackgroundTaskMock = typeof BackgroundTaskMockModule;
 type FoldPostureMock = typeof FoldPostureMockModule;
+type FileSystemMock = typeof FileSystemMockModule;
+type MediaLibraryMock = typeof MediaLibraryMockModule;
 type WindowSizeHelper = typeof WindowSizeHelperModule;
 type SocketModule = typeof SocketExports;
 type ReactNative = typeof ReactNativeModule;
@@ -60,6 +67,14 @@ export type Runtime = TestUtils & {
   backgroundTask: BackgroundTaskMock['mockBackgroundTask'];
   /** The foldable hinge (`set(...)` a posture to fold / unfold the device). */
   foldPosture: FoldPostureMock['mockFoldPosture'];
+  /** expo-file-system mock: existing files and the download tasks (drive one with `finish()`). */
+  fileSystem: FileSystemMock['mockFileSystem'];
+  /** expo-media-library mock: permission answer and the videos saved to the library. */
+  mediaLibrary: MediaLibraryMock['mockMediaLibrary'];
+  /** `Alert.alert` (stubbed): read it with `lastAlert`, press with `pressAlertButton` (@test/alert). */
+  alert: ReturnType<typeof spyOnAlert>;
+  /** Puts downloaded videos on the device (default: DOWNLOADED_VIDEOS from @test/fixtures-downloads). */
+  seedDownloads: (videos?: readonly DownloadedVideo[]) => void;
   /** Android hardware-back subscriptions captured while the app runs (press them to exit fullscreen). */
   backHandlers: ((event?: unknown) => boolean | null | undefined)[];
   /**
@@ -96,6 +111,8 @@ export function loadRuntime(): Runtime {
   );
   const foldPostureMock = jest.requireActual<FoldPostureMock>('@test/mocks/fold-posture');
   const windowSize = jest.requireActual<WindowSizeHelper>('@test/window-size');
+  const fileSystemMock = jest.requireActual<FileSystemMock>('@test/mocks/expo-file-system');
+  const mediaLibraryMock = jest.requireActual<MediaLibraryMock>('@test/mocks/expo-media-library');
 
   jest.spyOn(reactNative.BackHandler, 'addEventListener').mockImplementation((_event, handler) => {
     backHandlers.push(handler as () => boolean | null | undefined);
@@ -108,6 +125,8 @@ export function loadRuntime(): Runtime {
   taskManagerMock.mockTaskManager.reset();
   backgroundTaskMock.mockBackgroundTask.reset();
   foldPostureMock.mockFoldPosture.reset();
+  fileSystemMock.mockFileSystem.reset();
+  mediaLibraryMock.mockMediaLibrary.reset();
   secureStore.items.clear();
   nativeMocks.mockWebViewState.props = null;
   nativeMocks.mockWebViewState.mounts = 0;
@@ -130,6 +149,12 @@ export function loadRuntime(): Runtime {
     taskManager: taskManagerMock.mockTaskManager,
     backgroundTask: backgroundTaskMock.mockBackgroundTask,
     foldPosture: foldPostureMock.mockFoldPosture,
+    fileSystem: fileSystemMock.mockFileSystem,
+    mediaLibrary: mediaLibraryMock.mockMediaLibrary,
+    alert: spyOnAlert(reactNative.Alert),
+    seedDownloads: (videos?: readonly DownloadedVideo[]) => {
+      seedDownloads(fileSystemMock.mockFileSystem, videos);
+    },
     setWindow: windowSize.setTestWindow,
     backHandlers,
   } as Runtime;

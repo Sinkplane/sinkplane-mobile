@@ -51,7 +51,15 @@
           "enableRemoteNotifications": false
         }
       ],
-      "expo-background-task"
+      "expo-background-task",
+      [
+        "expo-media-library",
+        {
+          "photosPermission": "Allow $(PRODUCT_NAME) to access your photos so downloaded videos can be saved there.",
+          "savePhotosPermission": "Allow $(PRODUCT_NAME) to save downloaded videos to your photo library.",
+          "granularPermissions": ["video"]
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,

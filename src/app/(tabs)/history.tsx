@@ -2,6 +2,8 @@ import { useCallback, useEffect, useRef, type ReactElement } from 'react';
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 import { useFocusEffect } from 'expo-router';
 
+import { DownloadSheets } from '@/components/downloads/DownloadActionSheet';
+import { canDownload, useDownloadActions } from '@/components/downloads/use-download-actions';
 import { TabList, TabScreen } from '@/components/tab-screen/TabList';
 import { useOpenVideo } from '@/components/videos/use-open-video';
 import { VideoListItem } from '@/components/videos/VideoListItem';
@@ -60,11 +62,18 @@ export default function History(): ReactElement {
   useRefetchOnFocus(history.isFetched, refetch);
 
   const openVideo = useOpenVideo();
+  const menu = useDownloadActions();
+  const { openMenu } = menu;
   const renderCell = useCallback(
     (video: Video) => (
-      <VideoListItem video={video} progress={progressById.get(video.id)} onPress={openVideo} />
+      <VideoListItem
+        video={video}
+        progress={progressById.get(video.id)}
+        onPress={openVideo}
+        onLongPress={canDownload(video) ? openMenu : undefined}
+      />
     ),
-    [progressById, openVideo],
+    [progressById, openVideo, openMenu],
   );
   const onRefresh = useCallback(() => void refetch(), [refetch]);
 
@@ -81,6 +90,7 @@ export default function History(): ReactElement {
         header={<Text style={[styles.title, { color: textColor }]}>Watch History</Text>}
         empty={<HistoryEmpty isLoading={history.isLoading} error={history.error} />}
       />
+      <DownloadSheets actions={menu} />
     </TabScreen>
   );
 }

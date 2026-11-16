@@ -21,7 +21,7 @@ afterEach(async () => {
 // errors stay visible. Silenced: the app's own tagged error/warning logs (tests trigger those failures on
 // purpose and assert the UI instead) and the polyfill notice caused by the fetch mock.
 const EXPECTED_LOGS = [
-  /^\[(SignIn|Turnstile|Auth|ApiClient|Notifications)\]/,
+  /^\[(SignIn|Turnstile|Auth|ApiClient|Notifications|Downloads)\]/,
   /Failed to set polyfill/,
 ];
 const isExpected = (args: unknown[]) =>

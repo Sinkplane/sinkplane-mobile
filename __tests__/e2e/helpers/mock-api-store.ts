@@ -104,6 +104,8 @@ export class FloatplaneApiStore {
   comments = new Map<string, PostComment[]>();
   /** Delivery overrides: attachment guid → payload (default: playable delivery). */
   deliveries = new Map<string, VideoDelivery>();
+  /** `scenario=download` overrides by attachment guid (default: `makeDownloadDelivery`). */
+  downloadDeliveries = new Map<string, VideoDelivery>();
   /** Related-posts overrides: post id → list (default: up to 5 other videos from its channel). */
   related = new Map<string, Video[]>();
   /** Livestream ids currently broadcasting (delivery info answers 404 for the rest). */
@@ -122,6 +124,9 @@ export class FloatplaneApiStore {
 
   /** Simulated network latency (ms of fake time) applied to every response. */
   latencyMs = 0;
+
+  /** The device is offline: every request rejects like fetch does without a network. */
+  offline = false;
 
   private readonly failures = new Map<string, QueuedFailure>();
   private tokenCounter = 0;
@@ -143,6 +148,7 @@ export class FloatplaneApiStore {
     this.resetContent();
     this.failures.clear();
     this.latencyMs = 0;
+    this.offline = false;
     this.tokenCounter = 0;
     this.registerDefaultVideos();
   }
@@ -209,8 +215,11 @@ export class FloatplaneApiStore {
     );
   }
 
-  /** Delivery info requests of one kind: video playback (`onDemand`) or livestream status checks (`live`). */
-  deliveryRequests(scenario: 'onDemand' | 'live'): RecordedRequest[] {
+  /**
+   * Delivery info requests of one kind: video playback (`onDemand`), livestream status checks
+   * (`live`) or download qualities (`download`).
+   */
+  deliveryRequests(scenario: 'onDemand' | 'live' | 'download'): RecordedRequest[] {
     return this.requestsTo('/api/v3/delivery/info').filter(
       (req) => req.params.get('scenario') === scenario,
     );
@@ -257,6 +266,7 @@ export class FloatplaneApiStore {
     this.posts.clear();
     this.comments.clear();
     this.deliveries.clear();
+    this.downloadDeliveries.clear();
     this.liveNow.clear();
     this.liveDeliveryWhenOffline = false;
     this.related.clear();

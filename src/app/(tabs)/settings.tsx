@@ -1,6 +1,7 @@
 import { useState, type ReactElement } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
+import { DownloadsRow } from '@/components/settings/DownloadsRow';
 import { NotificationSettings } from '@/components/settings/NotificationSettings';
 import { ProfileHeader } from '@/components/settings/ProfileHeader';
 import { SubscriptionList } from '@/components/settings/SubscriptionList';
@@ -63,6 +64,31 @@ function Section({
   );
 }
 
+/** Appearance, notifications and downloads. */
+function PreferenceSections({
+  token,
+}: Readonly<{ token: string | null | undefined }>): ReactElement {
+  return (
+    <>
+      <Section title="Appearance">
+        <View style={styles.section}>
+          <ThemeSwitcher />
+        </View>
+      </Section>
+      <Section title="Notifications">
+        <View style={styles.section}>
+          <NotificationSettings token={token} />
+        </View>
+      </Section>
+      <Section title="Downloads">
+        <View style={styles.section}>
+          <DownloadsRow />
+        </View>
+      </Section>
+    </>
+  );
+}
+
 export default function Settings(): ReactElement {
   const { user, subscriptions, creators, token, isLoading } = useSession();
   const insets = useTabScreenInsets();
@@ -87,16 +113,7 @@ export default function Settings(): ReactElement {
         scrollIndicatorInsets={{ bottom: insets.bottom }}
       >
         <ProfileHeader user={user} />
-        <Section title="Appearance">
-          <View style={styles.section}>
-            <ThemeSwitcher />
-          </View>
-        </Section>
-        <Section title="Notifications">
-          <View style={styles.section}>
-            <NotificationSettings token={token} />
-          </View>
-        </Section>
+        <PreferenceSections token={token} />
         <Section title="Subscriptions">
           <SubscriptionList subscriptions={subscriptions} creators={creators} />
         </Section>

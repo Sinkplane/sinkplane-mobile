@@ -5,6 +5,12 @@ import { mockTaskManager } from '@test/mocks/expo-task-manager';
 import { mockBackgroundTask } from '@test/mocks/expo-background-task';
 import { mockFoldPosture } from '@test/mocks/fold-posture';
 import { resetTestWindow } from '@test/window-size';
+import { mockFileSystem } from '@test/mocks/expo-file-system';
+import { mockMediaLibrary } from '@test/mocks/expo-media-library';
+
+// Downloads: in-memory file system + photo library (see the mocks for the drivable state).
+jest.mock('expo-file-system', () => jest.requireActual<object>('@test/mocks/expo-file-system'));
+jest.mock('expo-media-library', () => jest.requireActual<object>('@test/mocks/expo-media-library'));
 
 beforeEach(() => {
   secureStoreItems.clear();
@@ -13,5 +19,7 @@ beforeEach(() => {
   mockTaskManager.reset();
   mockBackgroundTask.reset();
   mockFoldPosture.reset();
+  mockFileSystem.reset();
+  mockMediaLibrary.reset();
   resetTestWindow();
 });
