@@ -3,7 +3,6 @@ import { useCallback, useEffect, useState, type ReactElement } from 'react';
 import type { CaptchaSectionProps, CaptchaState } from '@/components/sign-in/CaptchaSection';
 import { CredentialsForm } from '@/components/sign-in/CredentialsForm';
 import { logSignIn } from '@/components/sign-in/diagnostics';
-import { DownloadsLink } from '@/components/sign-in/DownloadsLink';
 import { SignInScreen } from '@/components/sign-in/SignInScreen';
 import { applyTurnstileEvent } from '@/components/sign-in/turnstile-events';
 import { TwoFactorForm } from '@/components/sign-in/TwoFactorForm';
@@ -324,7 +323,6 @@ export default function SignIn(): ReactElement {
         captcha={captchaSectionProps(captcha)}
         error={submission.error}
       />
-      <DownloadsLink />
     </SignInScreen>
   );
 }

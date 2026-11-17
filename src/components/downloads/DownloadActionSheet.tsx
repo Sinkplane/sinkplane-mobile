@@ -19,13 +19,17 @@ import { formatBytes } from '@/utils/download-options';
 const LIBRARY_NAME = Platform.OS === 'ios' ? 'Photos' : 'your gallery';
 
 const PERCENT = 100;
-const DESTRUCTIVE_COLOR = '#e5484d';
+/** Delete actions, on either theme. */
+export const DESTRUCTIVE_COLOR = '#e5484d';
+
+/** A download's progress (0–1) as a whole percent: "42%". */
+export function downloadPercent(progress: number): string {
+  return `${String(Math.floor(progress * PERCENT))}%`;
+}
 
 /** "Downloading 42%", or "Downloading…" before the transfer reports a size. */
 export function downloadingLabel(progress: number | null): string {
-  return progress === null
-    ? 'Downloading…'
-    : `Downloading ${String(Math.floor(progress * PERCENT))}%`;
+  return progress === null ? 'Downloading…' : `Downloading ${downloadPercent(progress)}`;
 }
 
 interface SheetRowProps {
@@ -103,7 +107,7 @@ function DownloadedActions({
   const canSave = photos.state !== 'saving' && photos.state !== 'saved';
   const play = () => {
     actions.close();
-    router.push({ pathname: '/downloads/[id]', params: { id: video.postId } });
+    router.push({ pathname: '/video/[id]', params: { id: video.postId } });
   };
   const save = () => {
     photos.save(video);
@@ -114,7 +118,7 @@ function DownloadedActions({
   };
   return (
     <>
-      <SheetRow testID="download-action-play" label="Play download" onPress={play} />
+      <SheetRow testID="download-action-play" label="Play" onPress={play} />
       <SheetRow
         testID="download-action-save"
         label={saveLabel(photos.state)}
@@ -187,7 +191,12 @@ function ActionMenu({
         )}
       </View>
       <StateActions actions={actions} />
-      <SheetRow testID="download-action-close" label="Cancel" onPress={actions.close} />
+      <SheetRow
+        testID="download-action-close"
+        // While downloading, "Cancel" would read as cancelling the download: this only hides the menu.
+        label={actions.download.state.status === 'downloading' ? 'Done' : 'Cancel'}
+        onPress={actions.close}
+      />
     </>
   );
 }

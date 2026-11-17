@@ -57,6 +57,9 @@ jest.mock('react-native-webview', () => {
 jest.mock('expo-file-system', () => jest.requireActual<object>('@test/mocks/expo-file-system'));
 jest.mock('expo-media-library', () => jest.requireActual<object>('@test/mocks/expo-media-library'));
 
+// expo-network — connectivity the tests flip (`rt.network`).
+jest.mock('expo-network', () => jest.requireActual<object>('@test/mocks/expo-network'));
+
 // ---------------------------------------------------------------------------
 // expo-splash-screen
 // ---------------------------------------------------------------------------

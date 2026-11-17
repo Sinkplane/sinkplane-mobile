@@ -15,6 +15,8 @@ const LABEL: Record<ReactionKind, string> = { like: 'Like', dislike: 'Dislike' }
 interface CommentReactionsProps {
   readonly commentId: string;
   readonly reaction: PostReaction;
+  /** Offline: the buttons are off (a reaction couldn't be sent). */
+  readonly disabled?: boolean;
 }
 
 interface ReactionButtonProps extends CommentReactionsProps {
@@ -22,24 +24,31 @@ interface ReactionButtonProps extends CommentReactionsProps {
   readonly count: number;
 }
 
-function ReactionButton({ commentId, reaction, kind, count }: ReactionButtonProps): ReactElement {
+function ReactionButton({
+  commentId,
+  reaction,
+  kind,
+  count,
+  disabled = false,
+}: ReactionButtonProps): ReactElement {
   const mutedColor = useThemeColor({}, 'icon');
   const tint = useThemeColor({}, 'tint');
   const active = reaction.reaction === kind;
   const color = active ? tint : mutedColor;
   const testID = `comment-${commentId}-${kind}`;
+  const off = disabled || reaction.isPending;
   return (
     <Pressable
       testID={testID}
       onPress={() => {
         reaction.toggle(kind);
       }}
-      disabled={reaction.isPending}
+      disabled={off}
       hitSlop={HIT_SLOP}
-      style={({ pressed }) => [styles.button, pressed && styles.pressed]}
+      style={({ pressed }) => [styles.button, (pressed || disabled) && styles.pressed]}
       accessibilityRole="button"
       accessibilityLabel={`${LABEL[kind]} comment, ${String(count)}`}
-      accessibilityState={{ selected: active, disabled: reaction.isPending }}
+      accessibilityState={{ selected: active, disabled: off }}
     >
       <SymbolView name={reactionIcon(kind, active)} size={ICON_SIZE} tintColor={color} />
       <Text testID={`${testID}-count`} style={[styles.count, { color }]}>
@@ -50,7 +59,11 @@ function ReactionButton({ commentId, reaction, kind, count }: ReactionButtonProp
 }
 
 /** A comment's like / dislike buttons; pressing the active one again removes it. */
-export function CommentReactions({ commentId, reaction }: CommentReactionsProps): ReactElement {
+export function CommentReactions({
+  commentId,
+  reaction,
+  disabled = false,
+}: CommentReactionsProps): ReactElement {
   return (
     <View style={styles.row}>
       <ReactionButton
@@ -58,12 +71,14 @@ export function CommentReactions({ commentId, reaction }: CommentReactionsProps)
         reaction={reaction}
         kind="like"
         count={reaction.likes}
+        disabled={disabled}
       />
       <ReactionButton
         commentId={commentId}
         reaction={reaction}
         kind="dislike"
         count={reaction.dislikes}
+        disabled={disabled}
       />
     </View>
   );

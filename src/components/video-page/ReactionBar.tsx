@@ -37,7 +37,7 @@ export function ReactionBar({
           onToggle(kind);
         }}
         disabled={disabled}
-        style={({ pressed }) => [styles.button, pressed && styles.pressed]}
+        style={({ pressed }) => [styles.button, (pressed || disabled === true) && styles.pressed]}
         accessibilityRole="button"
         accessibilityLabel={`${kind === 'like' ? 'Like' : 'Dislike'}, ${String(count)}`}
         accessibilityState={{ selected: active, disabled }}

@@ -66,7 +66,7 @@ export function DownloadsScreen(): ReactElement {
   const videos = useDownloadedVideos();
   const menu = useDownloadMenu();
   const play = (video: DownloadedVideo) => {
-    router.push({ pathname: '/downloads/[id]', params: { id: video.postId } });
+    router.push({ pathname: '/video/[id]', params: { id: video.postId } });
   };
   return (
     <View

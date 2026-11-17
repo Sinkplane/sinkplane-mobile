@@ -170,8 +170,8 @@ importers:
   .:
     dependencies:
       '@sinkplane/shared':
-        specifier: ^0.1.2
-        version: 0.1.2(@tanstack/react-query@5.107.1(@types/react@19.3.0)(react@19.3.0))(expo-secure-store@58.0.2(expo@58.0.23))(react-native@0.88.1(@types/react@19.3.0)(react@19.3.0)(supports-color@8.1.1))(react@19.3.0)
+        specifier: ^0.1.3
+        version: 0.1.3(@tanstack/react-query@5.107.1(@types/react@19.3.0)(react@19.3.0))(expo-network@58.0.5(expo@58.0.23)(react@19.3.0))(expo-secure-store@58.0.2(expo@58.0.23))(react-native@0.88.1(@types/react@19.3.0)(react@19.3.0)(supports-color@8.1.1))(react@19.3.0)
       '@tanstack/react-query':
         specifier: ^5.104.5
         version: 5.107.1(@types/react@19.3.0)(react@19.3.0)
@@ -196,6 +196,9 @@ importers:
       expo-media-library:
         specifier: ~58.0.14
         version: 58.0.14(expo@58.0.23)(react-native@0.88.1(@types/react@19.3.0)(react@19.3.0)(supports-color@8.1.1))
+      expo-network:
+        specifier: ~58.0.5
+        version: 58.0.5(expo@58.0.23)(react@19.3.0)
       expo-notifications:
         specifier: ~58.1.8
         version: 58.1.8(expo@58.0.23)(react-native@0.88.1(@types/react@19.3.0)(react@19.3.0)(supports-color@8.1.1))(react@19.3.0)(supports-color@8.1.1)(typescript@6.0.3)
@@ -2222,8 +2225,8 @@ packages:
     resolution: {integrity: sha512-tlqY9xq5ukxTUZBmoOp+m61cqwQD5pHJtFY3Mn8CA8ps6yghLH/Hw8UPdqg4OLmFW3IFlcXnQNmo/dh8HzXYIQ==}
     engines: {node: '>=18'}
 
-  '@sinkplane/shared@0.1.2':
-    resolution: {integrity: sha512-reF1ijFY0/yiEqe/nMFrzJ+/6GLLT15Dqhevdwfi0fvrtAG26w1vAxfwU/8eoepJmCWvCuITFamHrbsXeBdpbw==, tarball: https://npm.pkg.github.com/download/@sinkplane/shared/0.1.2/971f90e547ff251a4ae2a806ec656dafd39b8b13}
+  '@sinkplane/shared@0.1.3':
+    resolution: {integrity: sha512-PaKwKna6R4G3WMmMwyIONOSlMQctVHPsMnVYqGtJ4bRSzoZYNwjzZrBsTMIMKgCSeBGyub2qnDrhztIIG3LALA==, tarball: https://npm.pkg.github.com/download/@sinkplane/shared/0.1.3/b89addc20bbc0b80d8aa9f83c25a4e34f2b954fe}
     peerDependencies:
       '@preeternal/react-native-cookie-manager': ^7.0.0
       '@tanstack/react-query': ^5.104.2
@@ -3398,6 +3401,12 @@ packages:
 
   expo-modules-macros@0.29.0:
     resolution: {integrity: sha512-kpkJHrFnHMXfUfvFkDuKRXXqi+CUIIhJ6G8v/4rC09VjmXcdQ30imoY1oNDVEho6tPbJFV0Ux21sZ9wK0XYajQ==}
+
+  expo-network@58.0.5:
+    resolution: {integrity: sha512-/0F4WsFgJK9/wBzVd8ai/tUHpOROG3dbI4Azu89PQZnC7uohmm7/ruwK5VaTBumPh3hBMANXnww3WFAaMA1gOA==}
+    peerDependencies:
+      expo: '*'
+      react: '*'
 
   expo-notifications@58.1.8:
     resolution: {integrity: sha512-TbYuNpD+1WKi02PHVI22o5W+FAsVMUfVyeW6YfubmZNM2fwcijoYuiagVj1E2ca6WEi0AxgorUX6TpZ6u4lIXA==}
@@ -7872,9 +7881,10 @@ snapshots:
 
   '@sindresorhus/merge-streams@4.0.0': {}
 
-  '@sinkplane/shared@0.1.2(@tanstack/react-query@5.107.1(@types/react@19.3.0)(react@19.3.0))(expo-secure-store@58.0.2(expo@58.0.23))(react-native@0.88.1(@types/react@19.3.0)(react@19.3.0)(supports-color@8.1.1))(react@19.3.0)':
+  '@sinkplane/shared@0.1.3(@tanstack/react-query@5.107.1(@types/react@19.3.0)(react@19.3.0))(expo-network@58.0.5(expo@58.0.23)(react@19.3.0))(expo-secure-store@58.0.2(expo@58.0.23))(react-native@0.88.1(@types/react@19.3.0)(react@19.3.0)(supports-color@8.1.1))(react@19.3.0)':
     dependencies:
       '@tanstack/react-query': 5.107.1(@types/react@19.3.0)(react@19.3.0)
+      expo-network: 58.0.5(expo@58.0.23)(react@19.3.0)
       expo-secure-store: 58.0.2(expo@58.0.23)
       react: 19.3.0
       react-native: 0.88.1(@types/react@19.3.0)(react@19.3.0)(supports-color@8.1.1)
@@ -9170,6 +9180,11 @@ snapshots:
       '@expo/modules-macros-linux-x64': 0.29.0
       '@expo/modules-macros-win32-arm64': 0.29.0
       '@expo/modules-macros-win32-x64': 0.29.0
+
+  expo-network@58.0.5(expo@58.0.23)(react@19.3.0):
+    dependencies:
+      expo: 58.0.23(@babel/core@7.29.13(supports-color@8.1.1))(@expo/metro-runtime@58.0.17)(expo-router@58.0.30)(react-dom@19.3.0(react@19.3.0))(react-native-web@0.21.4(react-dom@19.3.0(react@19.3.0))(react@19.3.0))(react-native-webview@14.0.1(react-native@0.88.1(@types/react@19.3.0)(react@19.3.0)(supports-color@8.1.1))(react@19.3.0))(react-native-worklets@0.13.0(@babel/core@7.29.13(supports-color@8.1.1))(react-native@0.88.1(@types/react@19.3.0)(react@19.3.0)(supports-color@8.1.1))(react@19.3.0)(supports-color@8.1.1))(react-native@0.88.1(@types/react@19.3.0)(react@19.3.0)(supports-color@8.1.1))(react@19.3.0)(supports-color@8.1.1)(typescript@6.0.3)
+      react: 19.3.0
 
   expo-notifications@58.1.8(expo@58.0.23)(react-native@0.88.1(@types/react@19.3.0)(react@19.3.0)(supports-color@8.1.1))(react@19.3.0)(supports-color@8.1.1)(typescript@6.0.3):
     dependencies:

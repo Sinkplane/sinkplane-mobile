@@ -78,12 +78,17 @@ describe('Save to Photos failures', () => {
     expect(rt.mediaLibrary.saved).toEqual([]);
   });
 
-  it('a denied save on the downloaded-video page links to Settings', async () => {
+  it("a denied save on the downloaded video's page links to Settings", async () => {
     rt.mediaLibrary.granted = false;
     await openDownloads();
+    // Offline with no saved post, the page shows the download's own details.
+    rt.api.offline = true;
+    await rt.act(() => {
+      rt.network.offline();
+    });
     await rt.fireEvent.press(rt.screen.getByTestId('download-row-post-1'));
     await rt.until(() => {
-      expect(rt.screen.getByTestId('downloaded-video-screen')).toBeTruthy();
+      expect(rt.screen.getByTestId('downloaded-video-details')).toBeTruthy();
     });
     await rt.fireEvent.press(rt.screen.getByTestId('downloaded-save-to-photos'));
     await rt.until(() => {

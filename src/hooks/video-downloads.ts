@@ -157,7 +157,7 @@ class VideoDownloads {
 
   /**
    * Signing out stops every transfer and drops what's in memory; the downloaded videos stay on
-   * disk (an offline launch signs out too) and are read again on next use.
+   * disk and are read again on next use.
    */
   reset(): void {
     for (const attempt of this.attempts.values()) {

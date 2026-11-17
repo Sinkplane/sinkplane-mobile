@@ -46,3 +46,5 @@ reports/
 
 expo-env.d.ts
 # @end expo-cli
+# Git guard approval window (local only; see .claude/hooks/git-guard.mjs)
+.claude/git-approval.json

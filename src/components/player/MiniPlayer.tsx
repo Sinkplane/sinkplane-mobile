@@ -12,6 +12,8 @@ import {
   type PlaybackSession,
 } from '@/components/player/PlaybackSession';
 import { useCornerDrag } from '@/components/player/use-corner-drag';
+import { isNonEmpty } from '@/hooks/is-non-empty';
+import { useIsOffline } from '@/hooks/use-offline';
 import { useWatchProgress } from '@/hooks/use-watch-progress';
 import { useSession, useUpdateVideoProgress } from '@/shared';
 import { MINI_PLAYER_MARGIN, miniPlayerSize, type Edges } from '@/utils/mini-player-layout';
@@ -31,24 +33,19 @@ const ICONS = {
   close: { ios: 'xmark', android: 'close', web: 'close' },
 } satisfies Record<string, SymbolViewProps['name']>;
 
-/** A downloaded video's page (`/downloads/<id>`), not the Downloads list. */
-const DOWNLOAD_PLAYER_ROUTE = /^\/downloads\/[^/]+/;
-
 /** The page routes that show the player themselves (the mini player hides there). */
 export function isPlayerRoute(pathname: string): boolean {
-  return (
-    pathname.startsWith('/video/') ||
-    pathname.startsWith('/live/') ||
-    DOWNLOAD_PLAYER_ROUTE.test(pathname)
-  );
+  return pathname.startsWith('/video/') || pathname.startsWith('/live/');
 }
 
 /** Keeps saving watch progress while a video plays in the mini player (live streams have none). */
 function useMiniPlayerProgress({ media, player }: PlaybackSession) {
   const { token } = useSession();
+  // Offline (e.g. a download playing), progress couldn't reach Floatplane.
+  const offline = useIsOffline();
   const { mutate } = useUpdateVideoProgress(token ?? undefined);
   const save =
-    media.kind === 'video' && token !== undefined && token !== null && token !== ''
+    media.kind === 'video' && !offline && isNonEmpty(token)
       ? (seconds: number) => {
           mutate({ id: media.id, progress: seconds });
         }

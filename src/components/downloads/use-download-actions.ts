@@ -24,7 +24,7 @@ export interface DownloadActions {
   /** Opens the quality list (fetching the qualities). */
   readonly chooseQuality: () => void;
   readonly close: () => void;
-  /** Closes the sheets and downloads `option`. */
+  /** Downloads `option` and goes back to the menu, which then shows the download's progress. */
   readonly select: (option: DownloadOption) => void;
 }
 
@@ -107,7 +107,7 @@ export function useDownloadActions(target?: DownloadTarget): DownloadActions {
   }, []);
   const select = useCallback(
     (option: DownloadOption) => {
-      setSheet('none');
+      setSheet('menu');
       start(option);
     },
     [start],

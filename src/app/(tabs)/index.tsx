@@ -5,6 +5,7 @@ import { DownloadSheets } from '@/components/downloads/DownloadActionSheet';
 import { canDownload, useDownloadActions } from '@/components/downloads/use-download-actions';
 import { TabList, TabScreen } from '@/components/tab-screen/TabList';
 import { FeedControls } from '@/components/videos/FeedControls';
+import { OfflineDownloads } from '@/components/videos/OfflineDownloads';
 import { useOpenVideo } from '@/components/videos/use-open-video';
 import { VideoListItem } from '@/components/videos/VideoListItem';
 import { useDebouncedValue } from '@/hooks/use-debounced-value';
@@ -201,21 +202,31 @@ function VideoFeed({
   );
 }
 
+/**
+ * The session provider is still loading subscriptions/creators (it signs out when there are none,
+ * so a signed-in user always ends up with creators), or couldn't for lack of network: then the
+ * downloaded videos are shown instead.
+ */
+function NoCreatorsYet({ offline }: Readonly<{ offline: boolean }>): ReactElement {
+  const backgroundColor = useThemeColor({}, 'background');
+  if (offline) {
+    return <OfflineDownloads />;
+  }
+  return (
+    <View style={[styles.container, styles.center, { backgroundColor }]}>
+      <ActivityIndicator testID="videos-loading" size="large" />
+    </View>
+  );
+}
+
 export default function Videos(): ReactElement {
-  const { token, creators } = useSession();
+  const { token, creators, offline } = useSession();
   const [sort, setSort] = useState(AssDass.DESC);
   const searchState = useFeedSearch();
   const selection = useFeedSelection();
-  const backgroundColor = useThemeColor({}, 'background');
 
-  // The session provider is still loading subscriptions/creators. (It signs out when there are
-  // none, so a signed-in user always ends up with creators.)
   if (!creators) {
-    return (
-      <View style={[styles.container, styles.center, { backgroundColor }]}>
-        <ActivityIndicator testID="videos-loading" size="large" />
-      </View>
-    );
+    return <NoCreatorsYet offline={offline} />;
   }
 
   return (

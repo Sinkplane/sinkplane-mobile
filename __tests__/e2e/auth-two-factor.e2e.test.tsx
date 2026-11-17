@@ -82,7 +82,7 @@ describe('two-factor authentication', () => {
     await rt.fireEvent.changeText(codeInput(), '123456');
     await rt.fireEvent.press(rt.screen.getByText('Verify'));
     await rt.until(() => {
-      expect(rt.screen.getByText('Network request failed')).toBeTruthy();
+      expect(rt.screen.getByText('fetch failed: Network request failed')).toBeTruthy();
     });
   });
 

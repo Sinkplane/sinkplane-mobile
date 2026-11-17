@@ -1,8 +1,8 @@
 /**
  * E2E: Settings › Downloads — the list of downloaded videos (newest first, total size), playing
- * one offline from the local file, its menu (Save to Photos / Delete) and Delete all; and the
- * offline launch, which signs out (the session can't load), still reaching the downloads from the
- * sign-in screen.
+ * one offline from the local file, its menu (Save to Photos / Delete) and Delete all; the
+ * and the "Show downloaded videos" list in Settings. (The offline launch is in
+ * offline-launch.e2e.test.tsx.)
  */
 import { alertLabels, lastAlert, pressAlertButton } from '@test/alert';
 import { downloadUri } from '@test/fixtures-downloads';
@@ -44,10 +44,20 @@ async function openDownloads(): Promise<void> {
   });
 }
 
+/** Opens a row: the one video page, which plays the file from the device. */
 async function playDownload(postId: string): Promise<void> {
   await rt.fireEvent.press(rt.screen.getByTestId(`download-row-${postId}`));
   await rt.until(() => {
-    expect(rt.screen.getByTestId('downloaded-video-screen')).toBeTruthy();
+    expect(rt.screen.getByTestId('video-screen')).toBeTruthy();
+    expect(rt.screen.getByTestId('video-player')).toBeTruthy();
+  });
+}
+
+/** The connection drops: the page falls back to what the download itself knows. */
+async function goOffline(): Promise<void> {
+  rt.api.offline = true;
+  await rt.act(() => {
+    rt.network.offline();
   });
 }
 
@@ -65,16 +75,13 @@ describe('Settings › Downloads', () => {
 
   it('plays a download from its local file, without asking the API for a stream', async () => {
     await openDownloads();
-    const requestsBefore = rt.api.requests.length;
     await playDownload('post-1');
 
     expect(rt.mockVideoPlayerState.lastPlayer().source).toMatchObject({
       uri: downloadUri('post-1'),
     });
-    expect(rt.screen.getByTestId('downloaded-video-details')).toHaveTextContent(
-      /Home Lab TourTech ChannelDownloaded · 1080p · 1\.2 GB/,
-    );
-    expect(rt.api.requests.slice(requestsBefore)).toEqual([]);
+    expect(rt.api.deliveryRequests('onDemand')).toEqual([]);
+    expect(rt.screen.getByTestId('video-screen')).toBeTruthy();
   });
 
   it("a row's menu deletes it; Settings shows what's left", async () => {
@@ -118,8 +125,23 @@ describe('Settings › Downloads', () => {
     expect(rt.fileSystem.files.has(downloadUri('post-1'))).toBe(false);
   });
 
+  it('offline, with no saved post, the page shows the download and plays it', async () => {
+    await openDownloads();
+    await goOffline();
+    await playDownload('post-1');
+
+    expect(rt.mockVideoPlayerState.lastPlayer().source).toMatchObject({
+      uri: downloadUri('post-1'),
+    });
+    expect(rt.screen.getByTestId('downloaded-video-details')).toHaveTextContent(
+      /Home Lab TourTech ChannelDownloaded · 1080p · 1\.2 GB/,
+    );
+    expect(rt.api.deliveryRequests('onDemand')).toEqual([]);
+  });
+
   it('deleting from the player page closes it', async () => {
     await openDownloads();
+    await goOffline();
     await playDownload('post-1');
     await rt.fireEvent.press(rt.screen.getByRole('button', { name: 'Delete download' }));
     await rt.act(() => {
@@ -132,42 +154,75 @@ describe('Settings › Downloads', () => {
   });
 });
 
-describe('offline launch', () => {
-  it('signs out, but the downloads still play from the sign-in screen', async () => {
-    rt.seedDownloads();
-    rt.seedSession();
-    rt.api.offline = true;
-    await rt.renderApp();
+describe('Settings › Show downloaded videos', () => {
+  const settings = () => rt.inTab('settings');
 
+  async function showDownloads(): Promise<void> {
+    await openSettings();
+    await rt.fireEvent(settings().getByTestId('settings-show-downloads'), 'valueChange', true);
     await rt.until(() => {
-      expect(rt.screen.getByText('Sign in to Floatplane')).toBeTruthy();
+      expect(settings().getByTestId('settings-downloaded-list')).toBeTruthy();
     });
-    await rt.fireEvent.press(rt.screen.getByRole('link', { name: 'Watch downloaded videos (2)' }));
-    await rt.until(() => {
-      expect(rowIds()).toEqual(['post-2', 'post-1']);
-    });
-    await playDownload('post-2');
-    expect(rt.mockVideoPlayerState.lastPlayer().source).toMatchObject({
-      uri: downloadUri('post-2'),
-    });
+  }
 
-    await rt.fireEvent.press(rt.screen.getByLabelText('Close video'));
-    await rt.until(() => {
-      expect(rt.screen.getByTestId('downloads-screen')).toBeTruthy();
-    });
-    await rt.fireEvent.press(rt.screen.getByRole('button', { name: 'Back' }));
-    await rt.until(() => {
-      expect(rt.screen.getByText('Sign in to Floatplane')).toBeTruthy();
-    });
+  it('is off by default; the switch reveals every download', async () => {
+    await openSettings();
+    expect(settings().getByTestId('settings-show-downloads').props['value']).toBe(false);
+    expect(settings().queryByTestId('settings-downloaded-list')).toBeNull();
+
+    await showDownloads();
+    expect(settings().getByTestId('settings-download-post-2')).toHaveTextContent(
+      'Server Rack Build720p · 220 MB',
+      { exact: true },
+    );
+    expect(settings().getByTestId('settings-download-post-1')).toHaveTextContent(
+      'Home Lab Tour1080p · 1.2 GB',
+      { exact: true },
+    );
   });
 
-  it('without downloads the sign-in screen has no downloads link', async () => {
-    rt.seedSession();
-    rt.api.offline = true;
-    await rt.renderApp();
-    await rt.until(() => {
-      expect(rt.screen.getByText('Sign in to Floatplane')).toBeTruthy();
+  it('trash → confirm removes that row and its files, the others stay', async () => {
+    await showDownloads();
+    await rt.fireEvent.press(settings().getByTestId('settings-delete-download-post-1'));
+    expect(lastAlert(rt.alert).title).toBe('Delete this download?');
+    expect(settings().getByTestId('settings-download-post-1')).toBeTruthy();
+
+    await rt.act(async () => {
+      pressAlertButton(rt.alert, 'Delete');
+      await Promise.resolve();
     });
-    expect(rt.screen.queryByTestId('sign-in-downloads')).toBeNull();
+    await rt.until(() => {
+      expect(settings().queryByTestId('settings-download-post-1')).toBeNull();
+    });
+    expect(settings().getByTestId('settings-download-post-2')).toBeTruthy();
+    expect(rt.fileSystem.files.has(downloadUri('post-1'))).toBe(false);
+    expect(rt.fileSystem.files.has(downloadUri('post-2'))).toBe(true);
+    expect(settingsRow()).toHaveTextContent('Downloaded videos1 video · 220 MB');
+  });
+
+  it('declining the confirmation keeps everything', async () => {
+    await showDownloads();
+    await rt.fireEvent.press(settings().getByTestId('settings-delete-download-post-1'));
+    await rt.act(async () => {
+      pressAlertButton(rt.alert, 'Cancel');
+      await Promise.resolve();
+    });
+    expect(settings().getByTestId('settings-download-post-1')).toBeTruthy();
+    expect(rt.fileSystem.files.has(downloadUri('post-1'))).toBe(true);
+  });
+
+  it('Delete all → confirm removes every download and hides the list', async () => {
+    await showDownloads();
+    await rt.fireEvent.press(settings().getByTestId('settings-delete-all-downloads'));
+    expect(lastAlert(rt.alert).title).toBe('Delete all downloads?');
+    await rt.act(async () => {
+      pressAlertButton(rt.alert, 'Delete all');
+      await Promise.resolve();
+    });
+    await rt.until(() => {
+      expect(settings().queryByTestId('settings-show-downloads')).toBeNull();
+    });
+    expect(rt.fileSystem.files.has(downloadUri('post-1'))).toBe(false);
+    expect(rt.fileSystem.files.has(downloadUri('post-2'))).toBe(false);
   });
 });

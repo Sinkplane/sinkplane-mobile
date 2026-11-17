@@ -202,7 +202,7 @@ describe('sign-in failures', () => {
     await attemptSignIn('testuser', 'hunter2');
 
     await rt.until(() => {
-      expect(rt.screen.getByText('Network request failed')).toBeTruthy();
+      expect(rt.screen.getByText('fetch failed: Network request failed')).toBeTruthy();
     });
     expect(rt.turnstile.mounts()).toBe(2);
   });
@@ -258,7 +258,7 @@ describe('captcha availability', () => {
     rt.api.failRequests('GET /api/v3/auth/captcha/info', NETWORK_ERROR);
     await openSignIn(rt);
     await rt.until(() => {
-      expect(rt.screen.getByText('Network request failed')).toBeTruthy();
+      expect(rt.screen.getByText('fetch failed: Network request failed')).toBeTruthy();
     });
   });
 

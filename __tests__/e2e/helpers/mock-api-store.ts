@@ -27,6 +27,8 @@ export interface RecordedRequest {
 export interface MockResponse {
   status: number;
   body: unknown;
+  /** Response headers (e.g. Cloudflare's `cf-mitigated: challenge`). */
+  headers?: Record<string, string>;
 }
 
 /** Pass to failRequests() to make fetch reject (offline / DNS / TLS failure) instead of responding. */

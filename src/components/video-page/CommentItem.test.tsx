@@ -21,6 +21,7 @@ const queryClients: QueryClient[] = [];
 
 async function renderComment(
   overrides: Partial<Parameters<typeof CommentItem>[0]['comment']> = {},
+  offline = false,
 ) {
   // gcTime Infinity: a settled mutation's GC timer would otherwise keep the worker alive.
   const queryClient = new QueryClient({
@@ -29,7 +30,7 @@ async function renderComment(
   queryClients.push(queryClient);
   await render(
     <QueryClientProvider client={queryClient}>
-      <CommentItem comment={{ ...comment, ...overrides }} token="session-token" />
+      <CommentItem comment={{ ...comment, ...overrides }} token="session-token" offline={offline} />
     </QueryClientProvider>,
   );
 }
@@ -88,6 +89,17 @@ describe('CommentItem', () => {
       }),
     );
     expect(screen.queryByText("Couldn't save your reaction. Try again.")).toBeNull();
+  });
+
+  it('offline: the like and dislike buttons are disabled and send nothing', async () => {
+    const fetch = answerToggles(200, 'like');
+    await renderComment({}, true);
+
+    await fireEvent.press(screen.getByTestId('comment-post-1-comment-1-like'));
+
+    expect(screen.getByTestId('comment-post-1-comment-1-like')).toBeDisabled();
+    expect(screen.getByTestId('comment-post-1-comment-1-dislike')).toBeDisabled();
+    expect(fetch).not.toHaveBeenCalled();
   });
 
   it('explains when saving the reaction fails', async () => {

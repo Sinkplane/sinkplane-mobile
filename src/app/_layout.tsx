@@ -11,6 +11,7 @@ import { PlaybackProvider } from '@/components/player/PlaybackSession';
 import { lockAppOrientation } from '@/hooks/use-fullscreen-orientation';
 import { useNotificationSync } from '@/hooks/use-notification-sync';
 import { useScreenLayout } from '@/hooks/use-screen-layout';
+import { useClearPostCacheOnSignOut } from '@/hooks/use-post-cache';
 import { useStopDownloadsOnSignOut } from '@/hooks/use-video-download';
 import { configureNotifications } from '@/notifications/local-notifications';
 import {
@@ -102,6 +103,7 @@ function RootNavigator(): ReactElement {
 
   useNotificationSync(token, isLoading);
   useStopDownloadsOnSignOut(signedIn);
+  useClearPostCacheOnSignOut(signedIn);
 
   // The playback session outlives the player pages (mini player); signing out stops it.
   return (
@@ -112,13 +114,11 @@ function RootNavigator(): ReactElement {
             <Stack.Screen name="(tabs)" />
             <Stack.Screen name="video/[id]" />
             <Stack.Screen name="live/[id]" />
+            <Stack.Screen name="downloads/index" />
           </Stack.Protected>
           <Stack.Protected guard={!signedIn}>
             <Stack.Screen name="sign-in" />
           </Stack.Protected>
-          {/* Downloads play offline, and an offline launch signs out: reachable either way. */}
-          <Stack.Screen name="downloads/index" />
-          <Stack.Screen name="downloads/[id]" />
           <Stack.Screen name="+not-found" />
         </Stack>
         <MiniPlayer />

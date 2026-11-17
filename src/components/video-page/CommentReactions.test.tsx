@@ -4,7 +4,7 @@ import { CommentReactions } from '@/components/video-page/CommentReactions';
 import type { PostReaction } from '@/hooks/use-post-reaction';
 import { Colors } from '@/shared';
 
-async function renderReactions(overrides: Partial<PostReaction> = {}) {
+async function renderReactions(overrides: Partial<PostReaction> = {}, disabled = false) {
   const reaction: PostReaction = {
     reaction: null,
     likes: 1200,
@@ -14,7 +14,7 @@ async function renderReactions(overrides: Partial<PostReaction> = {}) {
     toggle: jest.fn(),
     ...overrides,
   };
-  await render(<CommentReactions commentId="c1" reaction={reaction} />);
+  await render(<CommentReactions commentId="c1" reaction={reaction} disabled={disabled} />);
   return reaction;
 }
 
@@ -52,5 +52,23 @@ describe('CommentReactions', () => {
 
     expect(toggle).not.toHaveBeenCalled();
     expect(screen.getByRole('button', { name: 'Like comment, 1200' })).toBeDisabled();
+  });
+
+  it('is disabled and dimmed when told so (offline), without a toggle pending', async () => {
+    const { toggle } = await renderReactions({}, true);
+
+    await fireEvent.press(screen.getByTestId('comment-c1-like'));
+    await fireEvent.press(screen.getByTestId('comment-c1-dislike'));
+
+    expect(toggle).not.toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: 'Like comment, 1200' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Dislike comment, 3' })).toBeDisabled();
+    expect(screen.getByTestId('comment-c1-like')).toHaveStyle({ opacity: 0.6 });
+  });
+
+  it('is enabled and not dimmed by default', async () => {
+    await renderReactions();
+    expect(screen.getByTestId('comment-c1-like')).toBeEnabled();
+    expect(screen.getByTestId('comment-c1-like')).not.toHaveStyle({ opacity: 0.6 });
   });
 });

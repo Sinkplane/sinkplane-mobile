@@ -1,7 +1,16 @@
 import { StyleSheet, type StyleProp, type ViewStyle } from 'react-native';
-import { fireEvent, render, screen, userEvent } from '@testing-library/react-native';
+import {
+  act,
+  fireEvent,
+  render,
+  renderHook,
+  screen,
+  userEvent,
+} from '@testing-library/react-native';
 
 import { VideoListItem } from '@/components/videos/VideoListItem';
+import { useStopDownloadsOnSignOut, useVideoDownload } from '@/hooks/use-video-download';
+import { downloadTarget, OPTION_720 } from '@test/download-store';
 import { FIXED_NOW, makeVideo, techCreator, techMainChannel } from '@test/fixtures';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -43,6 +52,24 @@ describe('VideoListItem', () => {
   it('caps the progress bar at 100%', async () => {
     await render(<VideoListItem video={video} progress={99_999} />);
     expect(widthOf('video-progress-video-1')).toBe('100%');
+  });
+
+  it("shows the video's download badge on the thumbnail only while it has one", async () => {
+    const view = await render(<VideoListItem video={video} />);
+    expect(view.queryByTestId('download-badge-video-1')).toBeNull();
+
+    const { result } = await renderHook(() => useVideoDownload(downloadTarget('video-1'), 'token'));
+    await act(() => {
+      result.current.start(OPTION_720);
+    });
+    expect(view.getByTestId('download-badge-video-1')).toBeTruthy();
+    await act(() => {
+      result.current.cancel();
+    });
+    await renderHook(() => {
+      useStopDownloadsOnSignOut(false);
+    });
+    expect(view.queryByTestId('download-badge-video-1')).toBeNull();
   });
 
   it('hides the progress bar when unwatched', async () => {

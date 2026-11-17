@@ -17,9 +17,15 @@ interface CommentItemProps {
   readonly comment: PostComment;
   /** The session token reactions are sent with. */
   readonly token: string | null | undefined;
+  /** No network: reactions can't be sent. */
+  readonly offline?: boolean;
 }
 
-export const CommentItem = memo(function CommentItem({ comment, token }: CommentItemProps) {
+export const CommentItem = memo(function CommentItem({
+  comment,
+  token,
+  offline = false,
+}: CommentItemProps) {
   const reaction = useCommentReaction(token, comment);
   const textColor = useThemeColor({}, 'text');
   const mutedColor = useThemeColor({}, 'icon');
@@ -40,7 +46,7 @@ export const CommentItem = memo(function CommentItem({ comment, token }: Comment
         </Text>
         <Text style={[styles.text, { color: textColor }]}>{comment.text}</Text>
         <View style={styles.footer}>
-          <CommentReactions commentId={comment.id} reaction={reaction} />
+          <CommentReactions commentId={comment.id} reaction={reaction} disabled={offline} />
           {replies > 0 ? (
             <Text style={[styles.footerText, { color: mutedColor }]}>{repliesLabel(replies)}</Text>
           ) : null}

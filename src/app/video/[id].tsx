@@ -1,7 +1,8 @@
-import { useCallback, useMemo, type ReactElement } from 'react';
-import { FlatList, StyleSheet, useWindowDimensions, View } from 'react-native';
+import { useCallback, type ReactElement } from 'react';
+import { useWindowDimensions, View } from 'react-native';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
+import type { VideoSource } from 'expo-video';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import type { PlaybackMedia } from '@/components/player/PlaybackSession';
@@ -9,63 +10,48 @@ import { PlayerPlaceholder } from '@/components/player/PlayerPlaceholder';
 import { usePlayerPage } from '@/components/player/use-player-page';
 import { VideoPlayer } from '@/components/player/VideoPlayer';
 import type { EndScreenRenderer } from '@/components/player/use-end-screen';
-import { CommentItem } from '@/components/video-page/CommentItem';
-import { CommentsFooter } from '@/components/video-page/CommentsFooter';
 import { PostImage } from '@/components/video-page/PostImage';
 import { SuggestedVideos } from '@/components/video-page/SuggestedVideos';
-import { VideoDetails } from '@/components/video-page/VideoDetails';
-import { usePostComments, type PostComment } from '@/hooks/use-post-comments';
-import { usePostReaction } from '@/hooks/use-post-reaction';
-import { useResumePosition } from '@/hooks/use-resume-position';
-import { useSuggestedVideos } from '@/hooks/use-suggested-videos';
-import {
-  useColorScheme,
-  useGetVideoDelivery,
-  useGetVideoPost,
-  useSession,
-  useThemeColor,
-  useUpdateVideoProgress,
-  type VideoPost,
-} from '@/shared';
+import { useVideoPageData, type VideoPageData } from '@/components/video-page/use-video-page-data';
+import { VideoComments } from '@/components/video-page/VideoComments';
+import { useThemeColor, useUpdateVideoProgress, type VideoPost } from '@/shared';
+import type { DownloadedVideo } from '@/utils/download-library';
 import { playerPageLayout } from '@/utils/player-page-layout';
-import { buildVideoSource, getStreamUrl } from '@/utils/stream-source';
+import { buildVideoSource, downloadedVideoSource } from '@/utils/stream-source';
 
-/** Breathing room below the last comment, on top of the safe-area inset. */
-const LIST_BOTTOM_PADDING = 24;
-const COMMENTS_END_REACHED_THRESHOLD = 0.5;
-
-type PostQuery = ReturnType<typeof useGetVideoPost>;
-type DeliveryQuery = ReturnType<typeof useGetVideoDelivery>;
 type PlayerPage = ReturnType<typeof usePlayerPage>;
-type VideoAttachment = VideoPost['videoAttachments'][number];
 
 /** The post's fields as the API may send them (the channel and thumbnail can be missing). */
 interface LoosePost {
   readonly channel?: { readonly title: string } | null;
   readonly thumbnail?: { readonly path: string } | null;
-  readonly videoAttachments?: readonly VideoAttachment[] | null;
 }
 
-function firstAttachment(post: LoosePost | undefined): VideoAttachment | undefined {
-  return post?.videoAttachments?.[0];
+/** What the player and Now Playing show: from the post, else (offline) from the download. */
+interface NowPlaying {
+  readonly title: string;
+  readonly channel: string | undefined;
+  readonly artwork: string | undefined;
 }
 
-/** The post, its first video attachment, that attachment's playable stream, comments and reaction. */
-function useVideoData(id: string) {
-  const { token, tokenExpiration } = useSession();
-  const post = useGetVideoPost(token ?? undefined, tokenExpiration ?? undefined, id);
-  const attachment = firstAttachment(post.data);
-  const delivery = useGetVideoDelivery(
-    token ?? undefined,
-    tokenExpiration ?? undefined,
-    attachment?.guid,
-  );
-  const streamUrl = getStreamUrl(delivery.data);
-  const comments = usePostComments(token, id);
-  const reaction = usePostReaction(token, post.data);
-  const resume = useResumePosition(token, id, post.data);
-  const suggested = useSuggestedVideos(token, tokenExpiration, id);
-  return { token, post, attachment, delivery, streamUrl, comments, reaction, resume, suggested };
+function nowPlaying(
+  post: VideoPost | undefined,
+  download: DownloadedVideo | undefined,
+): NowPlaying | undefined {
+  if (post !== undefined) {
+    const loose: LoosePost = post;
+    return { title: post.title, channel: loose.channel?.title, artwork: loose.thumbnail?.path };
+  }
+  return download && { title: download.title, channel: download.channel, artwork: undefined };
+}
+
+/** The downloaded file, else the stream. */
+function hasSource(data: VideoPageData): boolean {
+  return data.download !== undefined || hasStream(data.streamUrl);
+}
+
+function hasStream(streamUrl: string | null | undefined): streamUrl is string {
+  return streamUrl !== null && streamUrl !== undefined && streamUrl !== '';
 }
 
 /**
@@ -73,7 +59,7 @@ function useVideoData(id: string) {
  * replaces this page, so the finished video's page and player go away.
  */
 function useSuggestedEndScreen(
-  data: ReturnType<typeof useVideoData>,
+  data: VideoPageData,
   page: PlayerPage,
 ): EndScreenRenderer | undefined {
   const router = useRouter();
@@ -94,90 +80,118 @@ function useSuggestedEndScreen(
   );
 }
 
-/** Saves watch progress; the mutation also patches the cached post / list progress, so reopening the video resumes here. */
-function useSaveProgress(token: string | null | undefined, id: string) {
+/**
+ * Saves watch progress (not offline: it couldn't reach Floatplane); the mutation also patches the
+ * cached post / list progress, so reopening the video resumes here.
+ */
+function useSaveProgress(data: VideoPageData, id: string) {
+  const { token, offline } = data;
   const { mutate: mutateProgress } = useUpdateVideoProgress(token ?? undefined);
+  const canSave = !offline && token !== null && token !== undefined && token !== '';
   return useCallback(
     (seconds: number) => {
-      if (token !== null && token !== undefined && token !== '' && id !== '') {
+      if (canSave && id !== '') {
         mutateProgress({ id, progress: seconds });
       }
     },
-    [token, id, mutateProgress],
+    [canSave, id, mutateProgress],
   );
 }
 
 interface PlayerSlotProps {
   readonly id: string;
-  readonly data: ReturnType<typeof useVideoData>;
+  readonly data: VideoPageData;
   readonly page: PlayerPage;
   readonly onSaveProgress: (seconds: number) => void;
 }
 
-function nowPlaying(post: VideoPost): { channel: string | undefined; artwork: string | undefined } {
-  const loose: LoosePost = post;
-  return { channel: loose.channel?.title, artwork: loose.thumbnail?.path };
-}
-
-function videoMedia(id: string, title: string, channel: string | undefined): PlaybackMedia {
-  const media: PlaybackMedia = { key: `video:${id}`, kind: 'video', id, title };
+/**
+ * The playback identity: a download's own, so reopening the page never picks up a player that was
+ * streaming the same video (e.g. from the mini player, before the download finished).
+ */
+function videoMedia(id: string, { title, channel }: NowPlaying, local: boolean): PlaybackMedia {
+  const key = local ? `download:${id}` : `video:${id}`;
+  const media: PlaybackMedia = { key, kind: 'video', id, title };
   if (channel !== undefined) {
     media.subtitle = channel;
   }
   return media;
 }
 
+/** The downloaded file when there is one (no data used), else the stream. */
+function videoSource(data: VideoPageData, playing: NowPlaying): VideoSource {
+  if (data.download !== undefined) {
+    return downloadedVideoSource(data.download);
+  }
+  return buildVideoSource(data.streamUrl ?? null, data.token, {
+    title: playing.title,
+    artist: playing.channel,
+    artwork: playing.artwork,
+  });
+}
+
+function fallbackDuration(data: VideoPageData): number | undefined {
+  return data.attachment?.duration ?? data.download?.durationSeconds;
+}
+
 function PlayableVideo({
   id,
-  post,
-  streamUrl,
+  playing,
   data,
   page,
   onSaveProgress,
-}: PlayerSlotProps & { readonly post: VideoPost; readonly streamUrl: string }): ReactElement {
-  const { channel, artwork } = nowPlaying(post);
+}: PlayerSlotProps & { readonly playing: NowPlaying }): ReactElement {
   const endScreen = useSuggestedEndScreen(data, page);
   return (
     <VideoPlayer
-      source={buildVideoSource(streamUrl, data.token, {
-        title: post.title,
-        artist: channel,
-        artwork,
-      })}
-      title={post.title}
+      source={videoSource(data, playing)}
+      title={playing.title}
       initialTime={data.resume.seconds}
-      fallbackDuration={data.attachment?.duration}
+      fallbackDuration={fallbackDuration(data)}
       fullscreen={page.fullscreen}
       tabletop={page.tabletop}
       onFullscreenChange={page.setFullscreen}
       onBack={page.minimize}
       onSaveProgress={onSaveProgress}
-      media={videoMedia(id, post.title, channel)}
+      media={videoMedia(id, playing, data.download !== undefined)}
       endScreen={endScreen}
     />
   );
 }
 
-/** The delivery failed, or answered without a playable variant. */
-function isUnplayable(delivery: DeliveryQuery, streamUrl: string | null | undefined): boolean {
+/** Not downloaded, and the delivery failed or answered without a playable variant. */
+function isUnplayable({ download, delivery, streamUrl }: VideoPageData): boolean {
+  if (download !== undefined) {
+    return false;
+  }
   return delivery.isError || (delivery.data !== undefined && !hasStream(streamUrl));
 }
 
-function hasStream(streamUrl: string | null | undefined): streamUrl is string {
-  return streamUrl !== null && streamUrl !== undefined && streamUrl !== '';
+/** Nothing to show: the post didn't load, wasn't saved, and isn't downloaded. */
+function failedToLoad({ post, postData, download }: VideoPageData): boolean {
+  return postData === undefined && download === undefined && post.isError;
+}
+
+/** An image / text post (no video, nor a download). */
+function imagePost({ postData, download, attachment }: VideoPageData): VideoPost | undefined {
+  return download === undefined && attachment === undefined ? postData : undefined;
 }
 
 /** Whatever goes in the player slot instead of the player (errors, images, loading), if anything. */
-function slotStandIn(post: PostQuery, data: PlayerSlotProps['data']): ReactElement | undefined {
-  if (post.isError) {
+function slotStandIn(data: VideoPageData): ReactElement | undefined {
+  if (failedToLoad(data)) {
     return (
-      <PlayerPlaceholder message="Couldn't load this video." onRetry={() => void post.refetch()} />
+      <PlayerPlaceholder
+        message="Couldn't load this video."
+        onRetry={() => void data.post.refetch()}
+      />
     );
   }
-  if (post.data && data.attachment === undefined) {
-    return <PostImage post={post.data} />;
+  const image = imagePost(data);
+  if (image !== undefined) {
+    return <PostImage post={image} />;
   }
-  if (isUnplayable(data.delivery, data.streamUrl)) {
+  if (isUnplayable(data)) {
     return (
       <PlayerPlaceholder
         message="This video can't be played right now."
@@ -189,47 +203,17 @@ function slotStandIn(post: PostQuery, data: PlayerSlotProps['data']): ReactEleme
 }
 
 function PlayerSlot(props: PlayerSlotProps): ReactElement {
-  const { post, streamUrl } = props.data;
-  const standIn = slotStandIn(post, props.data);
+  const { data } = props;
+  const standIn = slotStandIn(data);
   if (standIn !== undefined) {
     return standIn;
   }
+  const playing = nowPlaying(data.postData, data.download);
   // Wait for the resume position too: the player only reads `initialTime` when it mounts.
-  if (!post.data || !hasStream(streamUrl) || !props.data.resume.ready) {
+  if (playing === undefined || !hasSource(data) || !data.resume.ready) {
     return <PlayerPlaceholder />;
   }
-  return <PlayableVideo {...props} post={post.data} streamUrl={streamUrl} />;
-}
-
-function CommentList({ data }: Readonly<{ data: ReturnType<typeof useVideoData> }>): ReactElement {
-  const insets = useSafeAreaInsets();
-  const colorScheme = useColorScheme();
-  const { comments, reaction } = data;
-  const post = data.post.data;
-  const commentList = useMemo(() => comments.data?.pages.flat() ?? [], [comments.data]);
-  const loadMore = () => {
-    if (comments.hasNextPage && !comments.isFetchingNextPage) {
-      void comments.fetchNextPage();
-    }
-  };
-
-  return (
-    <FlatList
-      testID="comment-list"
-      data={commentList}
-      keyExtractor={(comment: PostComment) => comment.id}
-      renderItem={({ item }) => <CommentItem comment={item} token={data.token} />}
-      ListHeaderComponent={post ? <VideoDetails post={post} reaction={reaction} /> : undefined}
-      ListFooterComponent={<CommentsFooter comments={comments} />}
-      onEndReached={loadMore}
-      onEndReachedThreshold={COMMENTS_END_REACHED_THRESHOLD}
-      contentContainerStyle={[
-        styles.content,
-        { paddingBottom: insets.bottom + LIST_BOTTOM_PADDING },
-      ]}
-      indicatorStyle={colorScheme === 'dark' ? 'white' : 'default'}
-    />
-  );
+  return <PlayableVideo {...props} playing={playing} />;
 }
 
 export default function VideoScreen(): ReactElement {
@@ -237,11 +221,11 @@ export default function VideoScreen(): ReactElement {
   const insets = useSafeAreaInsets();
   const window = useWindowDimensions();
   const backgroundColor = useThemeColor({}, 'background');
-  const data = useVideoData(id);
-  const page = usePlayerPage('video', id, hasStream(data.streamUrl));
+  const data = useVideoPageData(id);
+  const page = usePlayerPage('video', id, hasSource(data));
   const { immersive } = page;
   const layout = playerPageLayout({ immersive, wide: page.wide }, insets, window);
-  const saveProgress = useSaveProgress(data.token, id);
+  const saveProgress = useSaveProgress(data, id);
 
   return (
     <View
@@ -254,13 +238,7 @@ export default function VideoScreen(): ReactElement {
       <View testID="player-column" style={layout.player}>
         <PlayerSlot id={id} data={data} page={page} onSaveProgress={saveProgress} />
       </View>
-      {immersive ? null : <CommentList data={data} />}
+      {immersive ? null : <VideoComments data={data} />}
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  content: {
-    paddingHorizontal: 16,
-  },
-});
