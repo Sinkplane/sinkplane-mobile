@@ -16,3 +16,5 @@ patchedDependencies:
 # ships prebuilt binaries, so its node-gyp fallback is not needed.
 allowBuilds:
   '@parcel/watcher': false
+minimumReleaseAgeExclude:
+  - '@sinkplane/shared@0.1.3'

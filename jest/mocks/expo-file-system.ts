@@ -34,6 +34,27 @@ export class MockDirectory {
     mockFileSystem.directories.add(this.uri);
   }
 
+  get exists(): boolean {
+    return mockFileSystem.directories.has(this.uri);
+  }
+
+  /** Removes the directory and every file inside it (throws `deleteError` while set). */
+  delete(): void {
+    if (mockFileSystem.deleteError) {
+      throw mockFileSystem.deleteError;
+    }
+    if (!mockFileSystem.directories.delete(this.uri)) {
+      throw new Error(`No directory at ${this.uri}`);
+    }
+    const prefix = `${this.uri}/`;
+    for (const uri of [...mockFileSystem.files.keys()]) {
+      if (uri.startsWith(prefix)) {
+        mockFileSystem.files.delete(uri);
+        mockFileSystem.sizes.delete(uri);
+      }
+    }
+  }
+
   /** The files directly inside this directory. */
   list(): MockFile[] {
     if (mockFileSystem.listError) {
@@ -203,6 +224,8 @@ export const mockFileSystem = {
   fileDownloadError: null as Error | null,
   /** `writeSync` throws this while set. */
   writeError: null as Error | null,
+  /** `Directory.delete` throws this while set. */
+  deleteError: null as Error | null,
   /** `Directory.list` throws this while set. */
   listError: null as Error | null,
   /** Download tasks' `acknowledgeBackgroundCompletionAsync` rejects with this while set. */
@@ -226,6 +249,7 @@ export const mockFileSystem = {
     this.fileDownloadError = null;
     this.writeError = null;
     this.listError = null;
+    this.deleteError = null;
     this.acknowledgeError = null;
   },
 };

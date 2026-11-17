@@ -1,4 +1,5 @@
-import { getStreamUrl, buildVideoSource } from '@/utils/stream-source';
+import type { DownloadedVideo } from '@/utils/download-library';
+import { buildVideoSource, downloadedVideoSource, getStreamUrl } from '@/utils/stream-source';
 import { BROWSER_USER_AGENT, type VideoDelivery } from '@/shared';
 
 const delivery = (
@@ -131,6 +132,44 @@ describe('buildVideoSource', () => {
       uri: 'https://x.test/a.m3u8',
       contentType: 'hls',
       headers: { 'User-Agent': BROWSER_USER_AGENT },
+    });
+  });
+});
+
+describe('downloadedVideoSource', () => {
+  const video: DownloadedVideo = {
+    postId: 'post-1',
+    title: 'Home Lab Tour',
+    channel: 'Tech Channel',
+    label: '1080p',
+    sizeBytes: 100,
+    downloadedAt: '2026-11-10T12:00:00.000Z',
+    hasThumbnail: true,
+  };
+
+  it('plays the local file: no HLS type, no auth headers, labelled for the lock screen', () => {
+    expect(downloadedVideoSource(video)).toEqual({
+      uri: 'file:///document/downloads/post-1.mp4',
+      metadata: {
+        title: 'Home Lab Tour',
+        artist: 'Tech Channel',
+        artwork: 'file:///document/downloads/post-1.jpg',
+      },
+    });
+  });
+
+  it('leaves out the channel and artwork it does not have', () => {
+    const source = downloadedVideoSource({
+      postId: 'post-1',
+      title: 'Home Lab Tour',
+      label: '1080p',
+      sizeBytes: 100,
+      downloadedAt: '2026-11-10T12:00:00.000Z',
+      hasThumbnail: false,
+    });
+    expect(source).toStrictEqual({
+      uri: 'file:///document/downloads/post-1.mp4',
+      metadata: { title: 'Home Lab Tour' },
     });
   });
 });

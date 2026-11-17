@@ -4,6 +4,7 @@ import {
   deleteAllDownloads,
   deleteDownload,
   useDownloadedVideo,
+  useDownloadState,
   useDownloadedVideos,
   useStopDownloadsOnSignOut,
 } from '@/hooks/use-video-download';
@@ -20,6 +21,42 @@ import {
 import { mockFileSystem } from '@test/mocks/expo-file-system';
 
 setUpDownloadStoreTests();
+
+describe('useDownloadState', () => {
+  it('follows one post by id: idle, downloading with progress, downloaded, idle again', async () => {
+    const state = await renderHook(() => useDownloadState('post-1'));
+    const other = await renderHook(() => useDownloadState('post-2'));
+    expect(state.result.current).toEqual({ status: 'idle' });
+
+    await startDownload(downloadTarget('post-1'));
+    expect(state.result.current).toEqual({ status: 'downloading', label: '720p', progress: null });
+    await act(() => {
+      mockFileSystem.lastDownload().progress(1, 4);
+    });
+    expect(state.result.current).toEqual({ status: 'downloading', label: '720p', progress: 0.25 });
+    expect(other.result.current).toEqual({ status: 'idle' });
+
+    await finishDownload();
+    expect(state.result.current).toMatchObject({
+      status: 'downloaded',
+      video: { postId: 'post-1' },
+    });
+    expect(other.result.current).toEqual({ status: 'idle' });
+
+    await act(() => {
+      deleteDownload('post-1');
+    });
+    await settle();
+    expect(state.result.current).toEqual({ status: 'idle' });
+  });
+
+  it('knows a download left on disk by an earlier run', async () => {
+    const video = seedDownload('post-old');
+    const state = await renderHook(() => useDownloadState('post-old'));
+    await settle();
+    expect(state.result.current).toEqual({ status: 'downloaded', video });
+  });
+});
 
 describe('useDownloadedVideos / useDownloadedVideo', () => {
   it('lists every download newest first, and updates as downloads finish and go', async () => {

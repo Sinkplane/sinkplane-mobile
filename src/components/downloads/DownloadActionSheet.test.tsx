@@ -1,7 +1,11 @@
 import { Linking } from 'react-native';
 import { act, fireEvent, render, screen, userEvent } from '@testing-library/react-native';
 
-import { DownloadSheets, downloadingLabel } from '@/components/downloads/DownloadActionSheet';
+import {
+  DownloadSheets,
+  downloadingLabel,
+  downloadPercent,
+} from '@/components/downloads/DownloadActionSheet';
 import type { DownloadActions } from '@/components/downloads/use-download-actions';
 import type { VideoDownloadState } from '@/hooks/use-video-download';
 import type { DownloadedVideo } from '@/utils/download-library';
@@ -72,6 +76,18 @@ beforeEach(() => {
   mockRouter.push.mockReset();
 });
 
+describe('downloadPercent', () => {
+  it.each([
+    [0, '0%'],
+    [0.005, '0%'],
+    [0.429, '42%'],
+    [0.999, '99%'],
+    [1, '100%'],
+  ])('%s is %s', (progress, text) => {
+    expect(downloadPercent(progress)).toBe(text);
+  });
+});
+
 describe('downloadingLabel', () => {
   it.each([
     [null, 'Downloading…'],
@@ -100,7 +116,7 @@ describe('DownloadSheets', () => {
     expect(screen.queryByTestId('download-actions-note')).toBeNull();
     await fireEvent.press(row('Download…'));
     expect(actions.chooseQuality).toHaveBeenCalledTimes(1);
-    expect(screen.queryByRole('button', { name: 'Play download' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Play' })).toBeNull();
   });
 
   it('failed: says so and offers Download… again', async () => {
@@ -127,10 +143,10 @@ describe('DownloadSheets', () => {
     expect(screen.getByTestId('download-actions-note')).toHaveTextContent(
       '1080p · 1.5 GB · Available offline',
     );
-    await fireEvent.press(row('Play download'));
+    await fireEvent.press(row('Play'));
     expect(actions.close).toHaveBeenCalledTimes(1);
     expect(mockRouter.push).toHaveBeenCalledWith({
-      pathname: '/downloads/[id]',
+      pathname: '/video/[id]',
       params: { id: 'post-1' },
     });
   });
@@ -194,6 +210,28 @@ describe('DownloadSheets', () => {
     await userEvent.setup().press(row('Cancel'));
     await fireEvent.press(screen.getByTestId('download-sheet-backdrop'));
     expect(actions.close).toHaveBeenCalledTimes(2);
+  });
+
+  it('the bottom row reads "Done" while downloading (it only hides the menu), else "Cancel"', async () => {
+    const actions = await renderSheets(
+      makeActions({ status: 'downloading', label: '720p', progress: 0.25 }),
+    );
+    expect(screen.getByTestId('download-action-close')).toHaveTextContent('Done', { exact: true });
+    expect(screen.queryByRole('button', { name: 'Cancel' })).toBeNull();
+    await fireEvent.press(screen.getByTestId('download-action-close'));
+    expect(actions.close).toHaveBeenCalledTimes(1);
+    expect(actions.download.cancel).not.toHaveBeenCalled();
+  });
+
+  it.each<[string, VideoDownloadState]>([
+    ['idle', { status: 'idle' }],
+    ['failed', { status: 'failed', label: '720p' }],
+    ['downloaded', DOWNLOADED],
+  ])('the bottom row reads "Cancel" when %s', async (_name, state) => {
+    await renderSheets(makeActions(state));
+    expect(screen.getByTestId('download-action-close')).toHaveTextContent('Cancel', {
+      exact: true,
+    });
   });
 
   it('the quality sheet lists the qualities and hands the choice over', async () => {

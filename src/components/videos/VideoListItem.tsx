@@ -4,6 +4,7 @@ import { Image } from 'expo-image';
 
 import { WIDESCREEN_ASPECT_RATIO } from '@/components/aspect-ratio';
 import { imagePath, type ApiImage } from '@/components/image-path';
+import { DownloadBadge } from '@/components/videos/DownloadBadge';
 import { useThemeColor, type Video } from '@/shared';
 import { formatCount, formatDuration, formatRelativeDate } from '@/utils/format-video';
 
@@ -66,6 +67,7 @@ function ListThumbnail({ video, progress, placeholderColor }: ThumbnailProps): R
         transition={THUMBNAIL_TRANSITION_MS}
         recyclingKey={video.id}
       />
+      <DownloadBadge postId={video.id} />
       {duration > 0 ? (
         <View style={styles.durationBadge}>
           <Text style={styles.durationText}>{formatDuration(duration)}</Text>

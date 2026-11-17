@@ -1,6 +1,7 @@
 import { useState, type ReactElement } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
+import { DownloadedVideosList } from '@/components/settings/DownloadedVideosList';
 import { DownloadsRow } from '@/components/settings/DownloadsRow';
 import { NotificationSettings } from '@/components/settings/NotificationSettings';
 import { ProfileHeader } from '@/components/settings/ProfileHeader';
@@ -81,8 +82,9 @@ function PreferenceSections({
         </View>
       </Section>
       <Section title="Downloads">
-        <View style={styles.section}>
+        <View style={[styles.section, styles.downloads]}>
           <DownloadsRow />
+          <DownloadedVideosList />
         </View>
       </Section>
     </>
@@ -141,6 +143,9 @@ const styles = StyleSheet.create({
   },
   section: {
     marginBottom: 28,
+  },
+  downloads: {
+    gap: 12,
   },
   sectionHeader: {
     fontSize: 18,

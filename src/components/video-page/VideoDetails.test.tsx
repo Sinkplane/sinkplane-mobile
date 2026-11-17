@@ -1,10 +1,11 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { fireEvent, render, screen } from '@testing-library/react-native';
+import { act, fireEvent, render, screen } from '@testing-library/react-native';
 
 import { VideoDetails } from '@/components/video-page/VideoDetails';
 import { FIXED_NOW, makeVideo, techCreator, techMainChannel } from '@test/fixtures';
 import type { VideoPost } from '@/shared';
 import type { usePostReaction } from '@/hooks/use-post-reaction';
+import { mockNetwork } from '@test/mocks/expo-network';
 
 const mockRouter = { push: jest.fn() };
 jest.mock('expo-router', () => ({ useRouter: () => mockRouter }));
@@ -58,6 +59,24 @@ describe('VideoDetails', () => {
 
   afterEach(() => {
     jest.useRealTimers();
+  });
+
+  it('offline: the reactions are disabled and sending is not offered; online again they work', async () => {
+    const { reaction } = await renderDetails();
+    await act(() => {
+      mockNetwork.offline();
+    });
+    expect(screen.getByTestId('reaction-like')).toBeDisabled();
+    expect(screen.getByTestId('reaction-dislike')).toBeDisabled();
+    await fireEvent.press(screen.getByTestId('reaction-like'));
+    expect(reaction.toggle).not.toHaveBeenCalled();
+
+    await act(() => {
+      mockNetwork.online();
+    });
+    expect(screen.getByTestId('reaction-like')).toBeEnabled();
+    await fireEvent.press(screen.getByTestId('reaction-like'));
+    expect(reaction.toggle).toHaveBeenCalledWith('like');
   });
 
   it('shows the title, age, channel and comment count', async () => {

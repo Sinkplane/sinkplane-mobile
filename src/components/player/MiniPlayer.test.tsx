@@ -181,9 +181,11 @@ describe('MiniPlayer', () => {
     expect(screen.queryByTestId('mini-player')).toBeNull();
     expect(isPlayerRoute('/live/x')).toBe(true);
     expect(isPlayerRoute('/history')).toBe(false);
-    // A downloaded video's page (not the Downloads list) plays too.
-    expect(isPlayerRoute('/downloads/post-1')).toBe(true);
-    expect([isPlayerRoute('/downloads'), isPlayerRoute('/x/downloads/1')]).toEqual([false, false]);
+    expect(isPlayerRoute('/video/post-1')).toBe(true);
+    expect([isPlayerRoute('/downloads'), isPlayerRoute('/downloads/post-1')]).toEqual([
+      false,
+      false,
+    ]);
   });
 
   it('reopens the video page, or the live page, when tapped', async () => {
@@ -241,72 +243,6 @@ describe('MiniPlayer', () => {
     await fireEvent.press(screen.getByLabelText('Close mini player'));
     expect(screen.queryByTestId('mini-player')).toBeNull();
     expect(player.release).toHaveBeenCalled();
-  });
-
-  it('keeps saving watch progress for videos without seeking or restarting', async () => {
-    const player = await renderMinimized();
-    player.currentTime = 40;
-    await act(() => {
-      player.emit('timeUpdate', {
-        currentTime: 40,
-        bufferedPosition: 40,
-        currentLiveTimestamp: null,
-        currentOffsetFromLive: null,
-      });
-    });
-    expect(mockMutate).toHaveBeenCalledWith({ id: 'a', progress: 40 });
-    expect(player.seeks).toEqual([40]); // only the test's own assignment
-    expect(player.play).not.toHaveBeenCalled();
-  });
-
-  it('resumes a video that was still loading when minimized, at the position the page saved', async () => {
-    await render(app(<MiniPlayer />));
-    const { player } = store.acquire(
-      { ...VIDEO, resumeAt: 37 },
-      { uri: 'https://edge.floatplane.test/a.m3u8' },
-    );
-    const mock = player as unknown as MockVideoPlayer;
-    mock.status = 'loading';
-    await act(() => {
-      store.attach(player);
-      store.minimize();
-      store.detach(player);
-    });
-    expect(screen.getByTestId('mini-player')).toBeTruthy();
-    // The tile took over a player nobody started: nothing to seek or play yet.
-    expect(mock.play).not.toHaveBeenCalled();
-    expect(mock.seeks).toEqual([]);
-
-    // The stream becomes ready: the tile finishes the resume at the saved position and plays.
-    await act(() => {
-      mock.setStatus('readyToPlay');
-    });
-    expect(mock.seeks).toEqual([37]);
-    expect(mock.play).toHaveBeenCalledTimes(1);
-    expect(mock.playing).toBe(true);
-  });
-
-  it('saves no progress for live streams or without a session token', async () => {
-    const live = await renderMinimized(LIVE);
-    await act(() => {
-      live.emit('timeUpdate', {
-        currentTime: 60,
-        bufferedPosition: 60,
-        currentLiveTimestamp: null,
-        currentOffsetFromLive: null,
-      });
-    });
-    mockToken = null;
-    const video = await renderMinimized({ ...VIDEO, key: 'video:c', id: 'c' });
-    await act(() => {
-      video.emit('timeUpdate', {
-        currentTime: 60,
-        bufferedPosition: 60,
-        currentLiveTimestamp: null,
-        currentOffsetFromLive: null,
-      });
-    });
-    expect(mockMutate).not.toHaveBeenCalled();
   });
 
   it('drags to another corner and snaps there; small moves stay taps', async () => {

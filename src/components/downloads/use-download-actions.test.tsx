@@ -122,7 +122,8 @@ describe('useDownloadActions', () => {
     await act(() => {
       result.current.select(option);
     });
-    expect(result.current.sheet).toBe('none');
+    // Back to the menu, which shows the download's progress.
+    expect(result.current.sheet).toBe('menu');
     expect(result.current.download.state).toEqual({
       status: 'downloading',
       label: '720p',

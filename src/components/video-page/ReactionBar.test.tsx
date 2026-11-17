@@ -41,4 +41,14 @@ describe('ReactionBar', () => {
     expect(onToggle).not.toHaveBeenCalled();
     expect(screen.getByRole('button', { name: 'Like, 10' })).toBeDisabled();
   });
+
+  it('dims both buttons while disabled, not otherwise', async () => {
+    await renderBar({ disabled: true });
+    expect(screen.getByTestId('reaction-like')).toHaveStyle({ opacity: 0.6 });
+    expect(screen.getByTestId('reaction-dislike')).toHaveStyle({ opacity: 0.6 });
+    await screen.unmount();
+
+    await renderBar();
+    expect(screen.getByTestId('reaction-like')).not.toHaveStyle({ opacity: 0.6 });
+  });
 });

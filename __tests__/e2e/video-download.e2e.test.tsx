@@ -95,11 +95,17 @@ it('downloads the chosen quality into the app, showing progress, with its thumbn
   expect(task.options.deferBackgroundSessionCompletion).toBe(true);
   // Nothing goes to Photos on its own.
   expect(rt.mediaLibrary.permissionRequests).toEqual([]);
-  expect(rt.screen.queryByTestId('download-sheet')).toBeNull();
+  // The sheet stays open, showing the progress; "Done" only hides it.
+  expect(rt.screen.getByTestId('download-action-progress')).toHaveTextContent('Downloading…');
+  expect(rt.screen.getByTestId('download-action-close')).toHaveTextContent('Done');
 
   await rt.act(() => {
     task.progress(55, 200);
   });
+  expect(rt.screen.getByTestId('download-action-progress')).toHaveTextContent('Downloading 27%');
+  await rt.fireEvent.press(rt.screen.getByTestId('download-action-close'));
+  expect(rt.screen.queryByTestId('download-sheet')).toBeNull();
+  expect(rt.fileSystem.lastDownload().state).not.toBe('cancelled');
   expect(downloadButton()).toHaveTextContent('Downloading 27%');
 
   await finishTransfer();
@@ -128,13 +134,17 @@ it('downloads the chosen quality into the app, showing progress, with its thumbn
 
 it('Cancel stops the transfer; nothing is kept', async () => {
   await download720();
+  await rt.fireEvent.press(rt.screen.getByTestId('download-action-close'));
   await rt.fireEvent.press(button('Cancel download'));
 
   expect(rt.fileSystem.lastDownload().state).toBe('cancelled');
   expect(downloadButton()).toHaveTextContent('Download');
   expect(rt.screen.queryByTestId('download-status')).toBeNull();
   await rt.until(() => {
-    expect([...rt.fileSystem.files.keys()]).toEqual([]);
+    // Only the page's saved copy (post-cache) may remain, never a video file.
+    expect([...rt.fileSystem.files.keys()].filter((uri) => !uri.includes('/post-cache/'))).toEqual(
+      [],
+    );
   });
 });
 
@@ -258,6 +268,8 @@ it('image / text posts have no Download button', async () => {
 
 describe('long press on a Videos-tab item', () => {
   const ITEM = `video-list-item-${POST_ID}`;
+  const BADGE = `download-badge-${POST_ID}`;
+  const feedBadge = () => rt.inTab('index').getByTestId(BADGE);
 
   async function longPressItem(): Promise<void> {
     await rt.fireEvent(rt.inTab('index').getByTestId(ITEM), 'longPress');
@@ -290,20 +302,36 @@ describe('long press on a Videos-tab item', () => {
     await rt.until(() => {
       expect(rt.fileSystem.downloads).toHaveLength(1);
     });
-    expect(rt.screen.queryByTestId('download-sheet')).toBeNull();
+    // Back on the menu with the progress row; nothing opened the video.
+    expect(rt.screen.getByTestId('download-action-progress')).toHaveTextContent('Downloading…');
     expect(rt.screen.queryByTestId('video-screen')).toBeNull();
+    expect(feedBadge()).toHaveTextContent('', { exact: true });
 
     await rt.act(() => {
       rt.fileSystem.lastDownload().progress(1, 4);
     });
+    expect(rt.screen.getByTestId('download-action-progress')).toHaveTextContent('Downloading 25%');
+    expect(feedBadge()).toHaveTextContent('25%', { exact: true });
+    expect(feedBadge()).toHaveAccessibleName('Downloading 25%');
+
+    // "Done" hides the menu; the badge keeps showing the progress, and the menu comes back.
+    await rt.fireEvent.press(rt.screen.getByTestId('download-action-close'));
+    expect(rt.screen.queryByTestId('download-sheet')).toBeNull();
+    expect(feedBadge()).toHaveTextContent('25%', { exact: true });
     await longPressItem();
     expect(button('Downloading 25%')).toBeDisabled();
-    await rt.fireEvent.press(button('Cancel'));
+    await rt.fireEvent.press(rt.screen.getByTestId('download-action-close'));
 
     await finishTransfer();
+    expect(feedBadge()).toHaveAccessibleName('Downloaded');
+    expect(feedBadge()).toHaveTextContent('', { exact: true });
     await longPressItem();
-    expect(button('Play download')).toBeTruthy();
+    expect(button('Play')).toBeTruthy();
     expect(button('Delete download')).toBeTruthy();
+    await rt.fireEvent.press(button('Delete download'));
+    await rt.until(() => {
+      expect(rt.screen.queryByTestId(BADGE)).toBeNull();
+    });
   });
 
   it('Cancel download from the menu stops the transfer', async () => {
@@ -317,10 +345,13 @@ describe('long press on a Videos-tab item', () => {
       expect(rt.fileSystem.downloads).toHaveLength(1);
     });
 
-    await longPressItem();
-    await rt.fireEvent.press(button('Cancel download'));
+    // Cancelled from the menu that stayed open: it falls back to the plain menu.
+    await rt.fireEvent.press(rt.screen.getByTestId('download-action-cancel'));
     expect(rt.fileSystem.lastDownload().state).toBe('cancelled');
+    expect(rt.screen.queryByTestId('download-action-progress')).toBeNull();
+    expect(rt.screen.getByTestId('download-action-close')).toHaveTextContent('Cancel');
     expect(button('Download…')).toBeTruthy();
+    expect(rt.inTab('index').queryByTestId(`download-badge-${POST_ID}`)).toBeNull();
   });
 
   it('the backdrop closes the menu', async () => {

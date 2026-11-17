@@ -1,6 +1,11 @@
 import type { VideoMetadata, VideoSource } from 'expo-video';
 
 import { BROWSER_USER_AGENT, type VideoDelivery } from '@/shared';
+import {
+  downloadedThumbnailUri,
+  downloadedVideoUri,
+  type DownloadedVideo,
+} from '@/utils/download-library';
 
 export type DeliveryVariant = VideoDelivery['groups'][number]['variants'][number];
 
@@ -105,5 +110,17 @@ export function buildVideoSource(
     contentType: 'hls',
     headers: requestHeaders(token),
     ...(metadata && { metadata: toVideoMetadata(metadata) }),
+  };
+}
+
+/** A downloaded video's local file, labelled for the lock screen (artwork: the saved thumbnail). */
+export function downloadedVideoSource(video: DownloadedVideo): VideoSource {
+  return {
+    uri: downloadedVideoUri(video),
+    metadata: toVideoMetadata({
+      title: video.title,
+      artist: video.channel,
+      artwork: downloadedThumbnailUri(video),
+    }),
   };
 }

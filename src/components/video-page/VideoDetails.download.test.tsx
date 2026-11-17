@@ -14,6 +14,7 @@ import {
 } from '@test/fixtures';
 import { mockFileSystem } from '@test/mocks/expo-file-system';
 import { mockMediaLibrary } from '@test/mocks/expo-media-library';
+import { mockNetwork } from '@test/mocks/expo-network';
 
 jest.mock('expo-router', () => ({ useRouter: () => ({ push: jest.fn() }) }));
 // A signed-in session (the real module otherwise, for authenticatedFetch, theme colors, …).
@@ -111,9 +112,11 @@ describe('VideoDetails downloads', () => {
     expect(urlOf(fetchMock.mock.calls[0]?.[0])).toContain(`scenario=download&entityId=${GUID}`);
   });
 
-  it('picking a quality closes the sheet and downloads it into the app', async () => {
+  it('picking a quality goes back to the menu and downloads it into the app', async () => {
     await renderDetails();
     await startDownload('720-avc1');
+    expect(screen.getByTestId('download-action-progress')).toBeTruthy();
+    await fireEvent.press(screen.getByTestId('download-action-close'));
     expect(screen.queryByTestId('download-sheet')).toBeNull();
 
     const task = mockFileSystem.lastDownload();
@@ -141,7 +144,7 @@ describe('VideoDetails downloads', () => {
     expect(screen.getByTestId('download-actions-note')).toHaveTextContent(
       '720p · 1000 B · Available offline',
     );
-    expect(screen.getByRole('button', { name: 'Play download' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Play' })).toBeTruthy();
     await fireEvent.press(screen.getByRole('button', { name: 'Delete download' }));
 
     expect(screen.queryByTestId('download-sheet')).toBeNull();
@@ -162,6 +165,33 @@ describe('VideoDetails downloads', () => {
     );
     expect(screen.getByTestId('download-button')).toHaveTextContent('Download');
     errorSpy.mockRestore();
+  });
+
+  it('offline: no Download button for a video that is not downloaded', async () => {
+    mockNetwork.offline();
+    await renderDetails();
+    expect(screen.queryByTestId('download-button')).toBeNull();
+    expect(screen.getByTestId('reaction-like')).toBeDisabled();
+  });
+
+  it('offline: a downloaded video keeps its menu', async () => {
+    await renderDetails();
+    await startDownload('720-avc1');
+    await finish(mockFileSystem.lastDownload());
+    await act(() => {
+      mockNetwork.offline();
+    });
+    await fireEvent.press(screen.getByTestId('download-button'));
+    expect(screen.getByRole('button', { name: 'Play' })).toBeTruthy();
+  });
+
+  it('offline: a running download keeps its Cancel', async () => {
+    await renderDetails();
+    await startDownload('1080-avc1');
+    await act(() => {
+      mockNetwork.offline();
+    });
+    expect(screen.getByTestId('download-cancel')).toBeTruthy();
   });
 
   it('closing the sheet starts nothing', async () => {

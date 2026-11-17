@@ -9,7 +9,9 @@ import { DownloadButton } from '@/components/video-page/DownloadButton';
 import { DownloadStatus } from '@/components/video-page/DownloadStatus';
 import { ReactionBar } from '@/components/video-page/ReactionBar';
 import { useOpenLink } from '@/components/video-page/use-open-link';
+import { useIsOffline } from '@/hooks/use-offline';
 import type { usePostReaction } from '@/hooks/use-post-reaction';
+import type { VideoDownloadState } from '@/hooks/use-video-download';
 import { useThemeColor, type VideoPost } from '@/shared';
 import { downloadTargetOf } from '@/utils/download-target';
 import { formatRelativeDate, htmlToSegments, type TextSegment } from '@/utils/format-video';
@@ -147,8 +149,17 @@ function ReactionError({ reaction }: Pick<VideoDetailsProps, 'reaction'>): React
   );
 }
 
-/** Like / dislike plus (posts with a video) Download, then their status lines and sheets. */
+/** Offline, only a download that's already there (or running) is offered: a new one can't start. */
+function offersDownload(state: VideoDownloadState, offline: boolean): boolean {
+  return !offline || state.status === 'downloaded' || state.status === 'downloading';
+}
+
+/**
+ * Like / dislike plus (posts with a video) Download, then their status lines and sheets. Offline,
+ * reactions are off (they couldn't be sent).
+ */
 function PostActions({ post, reaction }: VideoDetailsProps): ReactElement {
+  const offline = useIsOffline();
   const target = useMemo(() => downloadTargetOf(post), [post]);
   const actions = useDownloadActions(target);
   const { state } = actions.download;
@@ -159,10 +170,10 @@ function PostActions({ post, reaction }: VideoDetailsProps): ReactElement {
           reaction={reaction.reaction}
           likes={reaction.likes}
           dislikes={reaction.dislikes}
-          disabled={reaction.isPending}
+          disabled={reaction.isPending || offline}
           onToggle={reaction.toggle}
         />
-        {target ? (
+        {target && offersDownload(state, offline) ? (
           <DownloadButton
             state={state}
             onPress={() => {

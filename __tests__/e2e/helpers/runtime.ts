@@ -24,6 +24,7 @@ import type * as BackgroundTaskMockModule from '@test/mocks/expo-background-task
 import type * as FoldPostureMockModule from '@test/mocks/fold-posture';
 import type * as FileSystemMockModule from '@test/mocks/expo-file-system';
 import type * as MediaLibraryMockModule from '@test/mocks/expo-media-library';
+import type * as NetworkMockModule from '@test/mocks/expo-network';
 import type * as WindowSizeHelperModule from '@test/window-size';
 import type * as SocketExports from './mock-floatplane-socket';
 import type * as ReactNativeModule from 'react-native';
@@ -43,6 +44,7 @@ type BackgroundTaskMock = typeof BackgroundTaskMockModule;
 type FoldPostureMock = typeof FoldPostureMockModule;
 type FileSystemMock = typeof FileSystemMockModule;
 type MediaLibraryMock = typeof MediaLibraryMockModule;
+type NetworkMock = typeof NetworkMockModule;
 type WindowSizeHelper = typeof WindowSizeHelperModule;
 type SocketModule = typeof SocketExports;
 type ReactNative = typeof ReactNativeModule;
@@ -71,6 +73,8 @@ export type Runtime = TestUtils & {
   fileSystem: FileSystemMock['mockFileSystem'];
   /** expo-media-library mock: permission answer and the videos saved to the library. */
   mediaLibrary: MediaLibraryMock['mockMediaLibrary'];
+  /** expo-network mock: `set({ isConnected, isInternetReachable })`, `offline()`, `online()`. */
+  network: NetworkMock['mockNetwork'];
   /** `Alert.alert` (stubbed): read it with `lastAlert`, press with `pressAlertButton` (@test/alert). */
   alert: ReturnType<typeof spyOnAlert>;
   /** Puts downloaded videos on the device (default: DOWNLOADED_VIDEOS from @test/fixtures-downloads). */
@@ -110,6 +114,7 @@ export function loadRuntime(): Runtime {
     '@test/mocks/expo-background-task',
   );
   const foldPostureMock = jest.requireActual<FoldPostureMock>('@test/mocks/fold-posture');
+  const networkMock = jest.requireActual<NetworkMock>('@test/mocks/expo-network');
   const windowSize = jest.requireActual<WindowSizeHelper>('@test/window-size');
   const fileSystemMock = jest.requireActual<FileSystemMock>('@test/mocks/expo-file-system');
   const mediaLibraryMock = jest.requireActual<MediaLibraryMock>('@test/mocks/expo-media-library');
@@ -151,6 +156,7 @@ export function loadRuntime(): Runtime {
     foldPosture: foldPostureMock.mockFoldPosture,
     fileSystem: fileSystemMock.mockFileSystem,
     mediaLibrary: mediaLibraryMock.mockMediaLibrary,
+    network: networkMock.mockNetwork,
     alert: spyOnAlert(reactNative.Alert),
     seedDownloads: (videos?: readonly DownloadedVideo[]) => {
       seedDownloads(fileSystemMock.mockFileSystem, videos);

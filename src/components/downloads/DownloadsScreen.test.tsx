@@ -63,12 +63,12 @@ describe('DownloadsScreen', () => {
     expect(screen.getByTestId('downloads-screen')).toHaveStyle({ paddingTop: 47 });
   });
 
-  it('opens the offline player for a row', async () => {
+  it('opens the video page for a row', async () => {
     seedDownloads(mockFileSystem);
     await renderScreen();
     await fireEvent.press(screen.getByTestId('download-row-post-1'));
     expect(mockRouter.push).toHaveBeenCalledWith({
-      pathname: '/downloads/[id]',
+      pathname: '/video/[id]',
       params: { id: 'post-1' },
     });
   });

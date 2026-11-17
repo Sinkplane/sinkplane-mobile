@@ -64,9 +64,14 @@ export function useDownloadedVideos(): readonly DownloadedVideo[] {
   return useSyncExternalStore(downloads.subscribe, downloads.list);
 }
 
+/** A post's download state, by post id (list items, which have no download target). */
+export function useDownloadState(postId: string): VideoDownloadState {
+  return useSyncExternalStore(downloads.subscribe, () => downloads.get(postId));
+}
+
 /** A post's downloaded video, if it has one. */
 export function useDownloadedVideo(postId: string): DownloadedVideo | undefined {
-  const state = useSyncExternalStore(downloads.subscribe, () => downloads.get(postId));
+  const state = useDownloadState(postId);
   return state.status === 'downloaded' ? state.video : undefined;
 }
 

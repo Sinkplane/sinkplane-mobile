@@ -37,8 +37,9 @@ export {
 } from './mock-api-store';
 
 /** The subset of a fetch Response the app reads. */
-function respond({ status, body }: MockResponse): Response {
+function respond({ status, body, headers = {} }: MockResponse): Response {
   const response = {
+    headers: new Headers(headers),
     ok: status >= 200 && status < 300,
     status,
     json(): Promise<unknown> {
@@ -88,6 +89,17 @@ function toRecordedRequest(
   };
 }
 
+/**
+ * What Expo SDK 58's fetch rejects with when there is no network (expo/src/winter/fetch/
+ * FetchErrors.ts): an `Error` whose message starts with "fetch failed:", NOT a `TypeError`.
+ */
+class FetchError extends Error {
+  constructor(message: string) {
+    super(`fetch failed: ${message}`);
+    this.name = 'Error';
+  }
+}
+
 export class FloatplaneApiMock extends FloatplaneApiStore {
   // -- fetch entry point ------------------------------------------------------------------
 
@@ -100,12 +112,12 @@ export class FloatplaneApiMock extends FloatplaneApiStore {
     }
 
     if (this.offline) {
-      throw new TypeError('Network request failed');
+      throw new FetchError('Network request failed');
     }
     const failure = this.consumeFailure(request);
     // Compared by value: tests import NETWORK_ERROR from a different module registry than this instance.
     if (failure?.status === NETWORK_ERROR.status) {
-      throw new TypeError('Network request failed');
+      throw new FetchError('Network request failed');
     }
     if (failure) {
       return respond(failure);
