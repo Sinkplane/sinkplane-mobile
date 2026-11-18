@@ -3,7 +3,7 @@
  * listing, watch progress / history, notification settings.
  */
 
-import { fixtureUser, makeHistoryEntry } from '@test/fixtures';
+import { makeHistoryEntry } from '@test/fixtures';
 import type { Video } from '@/shared';
 
 import type { RouteHandler } from './mock-api-auth-routes';
@@ -75,7 +75,7 @@ function notificationList(store: FloatplaneApiStore): MockResponse {
           creator,
           userNotificationSetting: {
             creator: creator.id,
-            user: fixtureUser.id,
+            user: store.user.id,
             ...store.notificationSettingFor(creator.id),
             creatorMessageEmail: true,
           },
@@ -117,8 +117,8 @@ function contentHistory(
   return ok(page);
 }
 
-const status: RouteHandler = () =>
-  ok({ selfUser: fixtureUser, selfCreator: null, serviceMessages: [], serviceDenied: null });
+const status: RouteHandler = (store) =>
+  ok({ selfUser: store.user, selfCreator: null, serviceMessages: [], serviceDenied: null });
 
 const creatorList: RouteHandler = (store, req) =>
   ok(

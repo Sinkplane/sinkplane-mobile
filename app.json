@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "sinkplane-mobile",
+    "name": "Sinkplane",
     "slug": "sinkplane-mobile",
     "version": "1.0.0",
     "orientation": "default",
@@ -10,7 +10,10 @@
     "ios": {
       "supportsTablet": true,
       "icon": "./assets/expo.icon",
-      "bundleIdentifier": "com.paynoattn1989.sinkplane-mobile"
+      "bundleIdentifier": "com.paynoattn1989.sinkplane-mobile",
+      "config": {
+        "usesNonExemptEncryption": false
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -64,6 +67,12 @@
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
-    }
+    },
+    "extra": {
+      "eas": {
+        "projectId": "7b9da75a-fc3a-4bda-8e84-1ed275417adc"
+      }
+    },
+    "owner": "sinkplane"
   }
 }

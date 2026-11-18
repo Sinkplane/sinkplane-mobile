@@ -2,8 +2,6 @@
  * Mock Floatplane endpoints that work without a session: captcha info, password login, 2FA, logout.
  */
 
-import { fixtureUser } from '@test/fixtures';
-
 import {
   apiError,
   type FloatplaneApiStore,
@@ -48,7 +46,7 @@ function issueSession(store: FloatplaneApiStore): MockResponse {
     store.pendingSessions.add(pending);
     return ok({ needs2FA: true, token: pending });
   }
-  return ok({ needs2FA: false, user: fixtureUser, token: store.createSession() });
+  return ok({ needs2FA: false, user: store.user, token: store.createSession() });
 }
 
 function login(store: FloatplaneApiStore, req: RecordedRequest): MockResponse {
@@ -61,7 +59,7 @@ function login(store: FloatplaneApiStore, req: RecordedRequest): MockResponse {
     return refused;
   }
   if (body['returnSessionToken'] !== true) {
-    return ok({ needs2FA: false, user: fixtureUser });
+    return ok({ needs2FA: false, user: store.user });
   }
   return issueSession(store);
 }
@@ -75,7 +73,7 @@ function checkFor2fa(store: FloatplaneApiStore, req: RecordedRequest): MockRespo
   }
   store.pendingSessions.delete(req.bearer);
   store.sessions.add(req.bearer);
-  return ok({ needs2FA: false, user: fixtureUser });
+  return ok({ needs2FA: false, user: store.user });
 }
 
 function logout(store: FloatplaneApiStore, req: RecordedRequest): MockResponse {

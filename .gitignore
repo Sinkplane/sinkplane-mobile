@@ -48,3 +48,6 @@ expo-env.d.ts
 # @end expo-cli
 # Git guard approval window (local only; see .claude/hooks/git-guard.mjs)
 .claude/git-approval.json
+
+# Demo-mode media rendered by store/demo/make-media.sh
+/store/demo/media/

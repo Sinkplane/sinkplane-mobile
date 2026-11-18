@@ -6,12 +6,13 @@
 import {
   fixtureCreators,
   fixtureSubscriptions,
+  fixtureUser,
   gamingCreator,
   makeChannelVideos,
   techCreator,
 } from '@test/fixtures';
 import type { PostComment } from '@/hooks/use-post-comments';
-import type { Creator, Subscription, Video, VideoDelivery, VideoPost } from '@/shared';
+import type { Creator, Subscription, User, Video, VideoDelivery, VideoPost } from '@/shared';
 
 export const TURNSTILE_SITE_KEY = '0x4AAAAAAATestSiteKey';
 
@@ -77,6 +78,8 @@ export class FloatplaneApiStore {
   requests: RecordedRequest[] = [];
 
   account: Account = defaultAccount();
+  /** The signed-in user (login, 2FA, /status and notification settings answer with it). */
+  user: User = fixtureUser;
   /** Turnstile is enforced (captcha info returns a managed site key) unless disabled. */
   captchaEnabled = true;
   /** Captcha tokens the (mock) Turnstile widget issued and the login endpoint will accept once. */
@@ -140,6 +143,7 @@ export class FloatplaneApiStore {
   reset(): void {
     this.requests = [];
     this.account = defaultAccount();
+    this.user = fixtureUser;
     this.captchaEnabled = true;
     this.issuedCaptchaTokens.clear();
     this.sessions.clear();
@@ -156,6 +160,22 @@ export class FloatplaneApiStore {
   }
 
   // -- setup helpers ----------------------------------------------------------------------
+
+  /** Swap in another world (the demo mode's): who signs in and how, creators, no videos yet. */
+  replaceWorld(world: {
+    user: User;
+    login: Pick<Account, 'username' | 'email' | 'password'>;
+    captcha: boolean;
+    creators: Creator[];
+    subscriptions: Subscription[];
+  }): void {
+    this.user = world.user;
+    this.account = { ...this.account, ...world.login };
+    this.captchaEnabled = world.captcha;
+    this.creators = world.creators;
+    this.subscriptions = world.subscriptions;
+    this.videos.clear();
+  }
 
   /** Issue a session token directly (used to seed an already-signed-in launch). */
   createSession(): string {

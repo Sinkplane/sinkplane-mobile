@@ -42,7 +42,7 @@ export const fixtureUser: User = {
   profileImage: image('users/testuser/avatar.png'),
 };
 
-const makeChannel = (
+export const makeChannel = (
   { id, creator }: { id: string; creator: string },
   title: string,
   order: number,
@@ -92,7 +92,7 @@ export const techLiveStream: NonNullable<Creator['liveStream']> = {
   },
 };
 
-const makeCreator = (
+export const makeCreator = (
   { id, title }: { id: string; title: string },
   channels: [Channel, ...Channel[]],
   liveStream?: Creator['liveStream'],
@@ -129,7 +129,7 @@ export const gamingCreator = makeCreator({ id: 'creator-gaming', title: 'Gaming 
 ]);
 export const fixtureCreators: Creator[] = [techCreator, gamingCreator];
 
-const makeSubscription = (creator: Creator, planTitle: string): Subscription => ({
+export const makeSubscription = (creator: Creator, planTitle: string): Subscription => ({
   startDate: '2025-01-01T00:00:00.000Z',
   endDate: '2027-01-01T00:00:00.000Z',
   paymentID: 1,
