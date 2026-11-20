@@ -1,0 +1,779 @@
+<title>Sinkplane Logo Concepts</title>
+<meta name="claude:viewport-fit-sides" content="cover" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link
+  rel="stylesheet"
+  href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@500&family=Sora:wght@700&family=Outfit:wght@600&family=Archivo+Black&family=Zilla+Slab:wght@700&family=Space+Grotesk:wght@700&display=swap"
+/>
+<style>
+  /* Layout: a review sheet. Lineup of all five up top, then one row per concept:
+     big icon on the left, how it behaves at real sizes and masks on the right. */
+  :root {
+    --bg: #eef1f5;
+    --surface: #ffffff;
+    --fg: #0e1726;
+    --muted: #586478;
+    --line: #d8dee7;
+    --accent: #2456d6;
+    --display: 'Bricolage Grotesque', 'Helvetica Neue', Arial, sans-serif;
+    --body: 'IBM Plex Sans', -apple-system, 'Segoe UI', sans-serif;
+    --mono: 'IBM Plex Mono', ui-monospace, Menlo, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme='light']) {
+      --bg: #0b1017;
+      --surface: #121a24;
+      --fg: #e8edf4;
+      --muted: #95a1b3;
+      --line: #233040;
+      --accent: #7ea4ff;
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme='dark'] {
+    --bg: #0b1017;
+    --surface: #121a24;
+    --fg: #e8edf4;
+    --muted: #95a1b3;
+    --line: #233040;
+    --accent: #7ea4ff;
+    color-scheme: dark;
+  }
+  body {
+    background: var(--bg);
+    color: var(--fg);
+    font-family: var(--body);
+    font-size: 15px;
+    line-height: 1.55;
+    padding-left: max(16px, env(safe-area-inset-left, 0px));
+    padding-right: max(16px, env(safe-area-inset-right, 0px));
+    padding-block: 40px 64px;
+  }
+  .wrap {
+    max-width: 1080px;
+    margin: 0 auto;
+    display: grid;
+    gap: 40px;
+  }
+  header {
+    display: grid;
+    gap: 10px;
+    max-width: 68ch;
+  }
+  .eyebrow {
+    font-family: var(--mono);
+    font-size: 12px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+  h1 {
+    font-family: var(--display);
+    font-weight: 800;
+    font-size: clamp(32px, 6vw, 52px);
+    line-height: 1.02;
+    letter-spacing: -0.02em;
+    margin: 0;
+    text-wrap: balance;
+  }
+  header p {
+    margin: 0;
+    color: var(--muted);
+  }
+
+  .lineup {
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 16px;
+  }
+  .lineup a {
+    display: grid;
+    justify-items: center;
+    gap: 10px;
+    text-decoration: none;
+    color: inherit;
+    padding: 18px 8px;
+    border-radius: 14px;
+  }
+  .lineup a:hover,
+  .lineup a:focus-visible {
+    background: var(--surface);
+    outline: none;
+  }
+  .lineup a:focus-visible {
+    box-shadow: 0 0 0 2px var(--accent);
+  }
+  .lineup .ico {
+    width: min(112px, 100%);
+  }
+  .lineup span {
+    font-weight: 600;
+    font-size: 14px;
+    text-align: center;
+  }
+  .lineup small {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--muted);
+  }
+
+  .ico {
+    display: block;
+    aspect-ratio: 1;
+    max-width: 100%;
+    border-radius: 22.37%;
+    box-shadow:
+      0 1px 2px rgba(0, 0, 0, 0.12),
+      0 8px 24px rgba(10, 20, 40, 0.12);
+  }
+  .round {
+    display: block;
+    aspect-ratio: 1;
+    border-radius: 50%;
+  }
+
+  .concept {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 20px;
+    padding: 28px;
+    display: grid;
+    grid-template-columns: 240px minmax(0, 1fr);
+    gap: 32px;
+    scroll-margin-top: 16px;
+  }
+  .hero {
+    display: grid;
+    gap: 14px;
+    align-content: start;
+  }
+  .hero .ico {
+    width: 240px;
+  }
+  .tag {
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--muted);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+  .concept h2 {
+    font-family: var(--display);
+    font-weight: 800;
+    font-size: 30px;
+    line-height: 1.1;
+    margin: 0;
+    letter-spacing: -0.01em;
+  }
+  .detail {
+    display: grid;
+    gap: 22px;
+    min-width: 0;
+  }
+  .idea {
+    margin: 0;
+    font-size: 17px;
+    max-width: 60ch;
+  }
+  .notes {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 20px;
+  }
+  .notes h3,
+  .row h3 {
+    font-size: 12px;
+    font-family: var(--mono);
+    font-weight: 500;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin: 0 0 6px;
+  }
+  .notes ul {
+    margin: 0;
+    padding-left: 18px;
+    display: grid;
+    gap: 4px;
+  }
+
+  .rows {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 22px;
+    border-top: 1px solid var(--line);
+    padding-top: 20px;
+  }
+  .sizes {
+    display: flex;
+    align-items: flex-end;
+    gap: 18px;
+    flex-wrap: wrap;
+  }
+  .sizes figure {
+    margin: 0;
+    display: grid;
+    justify-items: center;
+    gap: 6px;
+  }
+  .sizes figcaption {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--muted);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+  .sizes .ico {
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.15);
+  }
+
+  .marks {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+    grid-column: 1 / -1;
+  }
+  /* Sample grounds: fixed colours on purpose, they show the mark on a light and a dark background. */
+  .mark {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 20px 22px;
+    border-radius: 14px;
+    min-width: 0;
+  }
+  .mark.light {
+    background: #f7f9fc;
+    color: #0e1726;
+    box-shadow: inset 0 0 0 1px #dfe5ee;
+  }
+  .mark.dark {
+    background: #0c1420;
+    color: #f3f6fb;
+  }
+  .mark .ico {
+    width: 48px;
+    flex: none;
+    box-shadow: none;
+  }
+  .mark b {
+    font-size: 30px;
+    line-height: 1;
+    overflow-wrap: anywhere;
+  }
+
+  .android {
+    display: flex;
+    gap: 18px;
+    align-items: flex-end;
+    flex-wrap: wrap;
+  }
+  .android figure {
+    margin: 0;
+    display: grid;
+    justify-items: center;
+    gap: 6px;
+  }
+  .android figcaption {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--muted);
+    white-space: nowrap;
+  }
+  .themed {
+    width: 64px;
+    height: 64px;
+    border-radius: 50%;
+    background: #d9e2ff;
+    color: #1b2b5e;
+    display: grid;
+    place-items: center;
+    overflow: hidden;
+  }
+  .themed.dk {
+    background: #2a3350;
+    color: #c8d4ff;
+  }
+  .themed svg {
+    width: 64px;
+    height: 64px;
+  }
+
+  .next {
+    display: grid;
+    gap: 10px;
+    max-width: 70ch;
+  }
+  .next h2 {
+    font-family: var(--display);
+    font-weight: 800;
+    font-size: 24px;
+    margin: 0;
+  }
+  .next ol {
+    margin: 0;
+    padding-left: 20px;
+    display: grid;
+    gap: 4px;
+  }
+  .next p {
+    margin: 0;
+    color: var(--muted);
+  }
+
+  @media (max-width: 820px) {
+    .concept {
+      grid-template-columns: 1fr;
+      padding: 20px;
+      gap: 22px;
+    }
+    .hero {
+      grid-template-columns: 120px minmax(0, 1fr);
+      align-items: center;
+    }
+    .hero .ico {
+      width: 120px;
+      grid-row: span 2;
+    }
+    .rows,
+    .notes,
+    .marks {
+      grid-template-columns: 1fr;
+    }
+  }
+  @media (max-width: 560px) {
+    .lineup {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+    .mark b {
+      font-size: 24px;
+    }
+  }
+</style>
+
+<!-- Shared drawing parts. Each concept has a full-colour icon (#cN) and a one-colour glyph (#mN,
+     drawn in currentColor) for Android's themed icons. All on a 1024 grid. -->
+<svg width="0" height="0" style="position: absolute" aria-hidden="true" focusable="false">
+  <defs>
+    <!-- Paper plane seen from above, nose at 0,0 pointing right. -->
+    <g id="plane">
+      <path d="M0 0L-540-210L-400 0Z" style="fill: var(--pw, #fff)" />
+      <path
+        d="M0 0L-400 0L-540 210Z"
+        style="fill: var(--pk, #c8d5ff); fill-opacity: var(--pko, 1)"
+      />
+    </g>
+
+    <!-- 1 Nosedive -->
+    <linearGradient id="c1sky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1b3480" />
+      <stop offset="1" stop-color="#4d7bff" />
+    </linearGradient>
+    <linearGradient id="c1sea" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#0f2257" />
+      <stop offset="1" stop-color="#081233" />
+    </linearGradient>
+    <clipPath id="c1above"><rect width="1024" height="630" /></clipPath>
+    <clipPath id="c1below"><rect y="630" width="1024" height="394" /></clipPath>
+    <symbol id="c1" viewBox="0 0 1024 1024">
+      <rect width="1024" height="630" fill="url(#c1sky)" />
+      <rect y="630" width="1024" height="394" fill="url(#c1sea)" />
+      <g clip-path="url(#c1below)" opacity=".32">
+        <g transform="translate(752 720) rotate(40) scale(.85)">
+          <use href="#plane" style="--pk: #ffffff" />
+        </g>
+      </g>
+      <ellipse
+        cx="628"
+        cy="638"
+        rx="220"
+        ry="40"
+        fill="none"
+        stroke="#fff"
+        stroke-opacity=".22"
+        stroke-width="12"
+      />
+      <ellipse
+        cx="628"
+        cy="636"
+        rx="135"
+        ry="24"
+        fill="none"
+        stroke="#fff"
+        stroke-opacity=".55"
+        stroke-width="14"
+      />
+      <g clip-path="url(#c1above)">
+        <g transform="translate(740 720) rotate(40) scale(.85)"><use href="#plane" /></g>
+      </g>
+    </symbol>
+    <symbol id="m1" viewBox="0 0 1024 1024">
+      <g clip-path="url(#c1above)">
+        <g transform="translate(740 720) rotate(40) scale(.85)">
+          <use href="#plane" style="--pw: currentColor; --pk: currentColor; --pko: 0.55" />
+        </g>
+      </g>
+      <ellipse
+        cx="610"
+        cy="664"
+        rx="170"
+        ry="32"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="26"
+      />
+    </symbol>
+
+    <!-- 2 Waterline -->
+    <linearGradient id="c2top" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#138092" />
+      <stop offset="1" stop-color="#0d5867" />
+    </linearGradient>
+    <linearGradient id="c2sea" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#073844" />
+      <stop offset="1" stop-color="#05232c" />
+    </linearGradient>
+    <path id="tri" d="M392 300L392 724L759 512Z" stroke-width="80" stroke-linejoin="round" />
+    <clipPath id="c2above"><rect width="1024" height="560" /></clipPath>
+    <clipPath id="c2b1"><rect y="580" width="1024" height="34" /></clipPath>
+    <clipPath id="c2b2"><rect y="632" width="1024" height="34" /></clipPath>
+    <clipPath id="c2b3"><rect y="684" width="1024" height="34" /></clipPath>
+    <clipPath id="c2b4"><rect y="736" width="1024" height="34" /></clipPath>
+    <symbol id="c2" viewBox="0 0 1024 1024">
+      <rect width="1024" height="560" fill="url(#c2top)" />
+      <rect y="560" width="1024" height="464" fill="url(#c2sea)" />
+      <g clip-path="url(#c2above)"><use href="#tri" fill="#fff" stroke="#fff" /></g>
+      <g clip-path="url(#c2b1)" opacity=".9">
+        <use href="#tri" fill="#86e3dc" stroke="#86e3dc" transform="translate(20 0)" />
+      </g>
+      <g clip-path="url(#c2b2)" opacity=".68">
+        <use href="#tri" fill="#86e3dc" stroke="#86e3dc" transform="translate(-16 0)" />
+      </g>
+      <g clip-path="url(#c2b3)" opacity=".46">
+        <use href="#tri" fill="#86e3dc" stroke="#86e3dc" transform="translate(12 0)" />
+      </g>
+      <g clip-path="url(#c2b4)" opacity=".26">
+        <use href="#tri" fill="#86e3dc" stroke="#86e3dc" transform="translate(-8 0)" />
+      </g>
+    </symbol>
+    <symbol id="m2" viewBox="0 0 1024 1024">
+      <g clip-path="url(#c2above)"><use href="#tri" fill="currentColor" stroke="currentColor" /></g>
+      <g clip-path="url(#c2b1)">
+        <use href="#tri" fill="currentColor" stroke="currentColor" transform="translate(20 0)" />
+      </g>
+      <g clip-path="url(#c2b2)" opacity=".7">
+        <use href="#tri" fill="currentColor" stroke="currentColor" transform="translate(-16 0)" />
+      </g>
+      <g clip-path="url(#c2b3)" opacity=".45">
+        <use href="#tri" fill="currentColor" stroke="currentColor" transform="translate(12 0)" />
+      </g>
+    </symbol>
+
+    <!-- 3 Origami S -->
+    <linearGradient id="c3bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#ff8248" />
+      <stop offset="1" stop-color="#ec3f1c" />
+    </linearGradient>
+    <g id="s-strip">
+      <path d="M724 250L330 250L330 370L698 370Z" style="fill: var(--sw, #fff)" />
+      <rect x="330" y="370" width="120" height="82" style="fill: var(--sf, #ffc6ae)" />
+      <rect x="330" y="452" width="364" height="120" style="fill: var(--sw, #fff)" />
+      <rect x="574" y="572" width="120" height="82" style="fill: var(--sf, #ffc6ae)" />
+      <path d="M694 654L694 774L404 774L292 714L404 654Z" style="fill: var(--sw, #fff)" />
+      <path d="M300 714L694 714" style="stroke: var(--sc, #ffc6ae)" stroke-width="10" />
+    </g>
+    <symbol id="c3" viewBox="0 0 1024 1024">
+      <rect width="1024" height="1024" fill="url(#c3bg)" />
+      <use href="#s-strip" />
+    </symbol>
+    <symbol id="m3" viewBox="0 0 1024 1024">
+      <g style="color: inherit">
+        <use href="#s-strip" style="--sw: currentColor; --sf: currentColor; --sc: transparent" />
+      </g>
+    </symbol>
+
+    <!-- 4 Porthole -->
+    <linearGradient id="c4bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#13263b" />
+      <stop offset="1" stop-color="#0a1522" />
+    </linearGradient>
+    <linearGradient id="c4glass" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#2a93a6" />
+      <stop offset="1" stop-color="#0b3a50" />
+    </linearGradient>
+    <g id="bolts">
+      <circle cx="512" cy="242" r="15" />
+      <circle cx="782" cy="512" r="15" />
+      <circle cx="512" cy="782" r="15" />
+      <circle cx="242" cy="512" r="15" />
+      <circle cx="703" cy="321" r="15" />
+      <circle cx="703" cy="703" r="15" />
+      <circle cx="321" cy="703" r="15" />
+      <circle cx="321" cy="321" r="15" />
+    </g>
+    <g id="bubbles" fill="none" stroke-width="10">
+      <circle cx="648" cy="478" r="20" />
+      <circle cx="676" cy="414" r="14" />
+      <circle cx="656" cy="364" r="9" />
+    </g>
+    <symbol id="c4" viewBox="0 0 1024 1024">
+      <rect width="1024" height="1024" fill="url(#c4bg)" />
+      <circle cx="512" cy="512" r="242" fill="url(#c4glass)" />
+      <path
+        d="M352 420A180 180 0 0 1 452 322"
+        fill="none"
+        stroke="#fff"
+        stroke-opacity=".3"
+        stroke-width="18"
+        stroke-linecap="round"
+      />
+      <g transform="translate(620 590) rotate(28) scale(.45)">
+        <use href="#plane" style="--pk: #bfe3ea" />
+      </g>
+      <use href="#bubbles" stroke="#d7f3f7" stroke-opacity=".8" />
+      <circle cx="512" cy="512" r="270" fill="none" stroke="#d6a548" stroke-width="56" />
+      <circle cx="512" cy="512" r="244" fill="none" stroke="#8d6526" stroke-width="8" />
+      <use href="#bolts" fill="#8d6526" />
+    </symbol>
+    <symbol id="m4" viewBox="0 0 1024 1024">
+      <circle cx="512" cy="512" r="270" fill="none" stroke="currentColor" stroke-width="56" />
+      <g transform="translate(620 590) rotate(28) scale(.45)">
+        <use href="#plane" style="--pw: currentColor; --pk: currentColor; --pko: 0.55" />
+      </g>
+      <use href="#bubbles" stroke="currentColor" />
+    </symbol>
+
+    <!-- 5 Anchor-wing -->
+    <linearGradient id="c5bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#0d2a45" />
+      <stop offset="1" stop-color="#143f61" />
+    </linearGradient>
+    <g id="anchor">
+      <circle
+        cx="512"
+        cy="268"
+        r="46"
+        fill="none"
+        style="stroke: var(--aw, #f3f6fb)"
+        stroke-width="40"
+      />
+      <rect x="488" y="310" width="48" height="452" rx="24" style="fill: var(--aw, #f3f6fb)" />
+      <path
+        d="M292 580Q300 778 512 782Q724 778 732 580"
+        fill="none"
+        style="stroke: var(--aw, #f3f6fb)"
+        stroke-width="48"
+        stroke-linecap="round"
+      />
+      <path
+        d="M290 515L248 606L336 600Z M734 515L776 606L688 600Z"
+        style="fill: var(--aw, #f3f6fb)"
+        stroke-linejoin="round"
+      />
+      <path
+        d="M488 372L238 440L250 474L488 438Z M536 372L786 440L774 474L536 438Z"
+        style="fill: var(--ww, #8fd3ff)"
+      />
+    </g>
+    <symbol id="c5" viewBox="0 0 1024 1024">
+      <rect width="1024" height="1024" fill="url(#c5bg)" />
+      <use href="#anchor" />
+    </symbol>
+    <symbol id="m5" viewBox="0 0 1024 1024">
+      <use href="#anchor" style="--aw: currentColor; --ww: currentColor" />
+    </symbol>
+  </defs>
+</svg>
+
+<div class="wrap">
+  <header>
+    <div class="eyebrow">Sinkplane · app icon drafts</div>
+    <h1>Five ways to sink a plane</h1>
+    <p>
+      Five directions for the app icon and wordmark. Each one is shown as the iOS icon, at the sizes
+      iOS really draws it, through Android's circle mask, as an Android 13+ themed icon, and as a
+      wordmark on light and dark backgrounds. Nosedive (concept 1) was picked;
+      <code>make-icons.py</code> builds the real icon set from it.
+    </p>
+  </header>
+
+  <nav class="lineup" id="lineup" aria-label="All concepts"></nav>
+  <div id="concepts" class="wrap" style="gap: 24px"></div>
+
+  <section class="next">
+    <h2>After you pick one</h2>
+    <ol>
+      <li>
+        Refine the chosen mark: line weights, optical centring, and a check at 29pt on a real
+        device.
+      </li>
+      <li>
+        Export the full set: <code>icon.png</code> (1024), Android adaptive foreground, background
+        and monochrome layers, the splash icon, and Play's 512 × 512 icon.
+      </li>
+      <li>
+        Replace Expo's template icon in <code>app.json</code>, and update the store feature graphic
+        and caption frames to match.
+      </li>
+    </ol>
+    <p>
+      Wordmark faces are all from Google Fonts (SIL Open Font License), so they're free to use in a
+      logo.
+    </p>
+  </section>
+</div>
+
+<script>
+  const CONCEPTS = [
+    {
+      id: 'nosedive',
+      n: 1,
+      name: 'Nosedive',
+      font: "'Sora', sans-serif",
+      weight: 700,
+      word: 'Sinkplane',
+      idea: 'A paper plane hitting the water nose-first. The most literal reading of the name: the plane that sinks.',
+      good: [
+        'Tells the joke at a glance',
+        'Still a white dart on blue at Settings size',
+        'Has a scene to it, so it suits the splash screen',
+      ],
+      watch: [
+        'The ripples blur together at 29pt',
+        'Blue on blue sits closest to Floatplane’s own colours',
+        'The themed icon loses the water',
+      ],
+    },
+    {
+      id: 'waterline',
+      n: 2,
+      name: 'Waterline',
+      font: "'Outfit', sans-serif",
+      weight: 600,
+      word: 'sinkplane',
+      idea: 'The play button, half under water. It says “video app” first and makes the pun second.',
+      good: [
+        'Simplest shape of the five; survives 29pt and the Android crop',
+        'Monochrome version keeps the whole idea',
+        'Teal keeps clear of Floatplane’s blue',
+      ],
+      watch: [
+        'A play triangle on its own is generic',
+        'The reflection bands need to stay chunky to read small',
+        'No plane in it at all',
+      ],
+    },
+    {
+      id: 'origami',
+      n: 3,
+      name: 'Origami S',
+      font: "'Archivo Black', sans-serif",
+      weight: 400,
+      word: 'Sinkplane',
+      idea: 'An S folded from one strip of paper, finishing in a paper-plane nose that points down. On international orange, the colour of life jackets and rescue gear.',
+      good: [
+        'An ownable letterform, not a stock symbol',
+        'Stands out on a home screen full of blue apps',
+        'No chance of confusion with Floatplane',
+      ],
+      watch: [
+        'Reads as a folded S (or a 5) before it reads as a plane',
+        'The app’s accent is blue, so orange would need to come into the app too',
+        'Fold shading is subtle',
+      ],
+    },
+    {
+      id: 'porthole',
+      n: 4,
+      name: 'Porthole',
+      font: "'Zilla Slab', serif",
+      weight: 700,
+      word: 'Sinkplane',
+      idea: 'A ship’s porthole with a paper plane drifting down past the glass, trailing bubbles. Brass, navy and sea glass.',
+      good: [
+        'The most characterful of the five',
+        'Round, so it fits Android’s circle mask naturally',
+        'Works as a badge or sticker',
+      ],
+      watch: [
+        'Most detail of the five: the bolts vanish below 40pt',
+        'The brass ring sits close to the edge of Android’s safe zone',
+        'Busy next to flat system icons',
+      ],
+    },
+    {
+      id: 'anchor',
+      n: 5,
+      name: 'Anchor-wing',
+      font: "'Space Grotesk', sans-serif",
+      weight: 700,
+      word: 'SINKPLANE',
+      tracking: '0.06em',
+      idea: 'An anchor whose crossbar is a pair of swept-back wings. Sinking and flying in one symmetrical symbol.',
+      good: [
+        'Symmetrical, so it reads at any size',
+        'Cleanest monochrome and favicon of the five',
+        'Works stamped on merch or a TV splash',
+      ],
+      watch: [
+        'Anchors are common in marine and tattoo imagery',
+        'Nothing in it says video',
+        'The wings could read as a moustache at a glance',
+      ],
+    },
+  ];
+
+  const icon = (n, cls = 'ico', style = '') =>
+    `<svg class="${cls}" viewBox="0 0 1024 1024" style="${style}" role="img" aria-label="Concept ${n} icon"><use href="#c${n}"/></svg>`;
+  // Android shows the centre 72 of a 108dp adaptive icon: 1024 × 72/108 ≈ 683.
+  const adaptive = (n, size) =>
+    `<svg class="round" viewBox="170.7 170.7 682.7 682.7" style="width:${size}px" role="img" aria-label="Concept ${n} on Android"><use href="#c${n}" width="1024" height="1024"/></svg>`;
+  const themed = (n, dark) =>
+    `<div class="themed${dark ? ' dk' : ''}"><svg viewBox="170.7 170.7 682.7 682.7" aria-hidden="true"><use href="#m${n}" width="1024" height="1024"/></svg></div>`;
+  const list = (items) => `<ul>${items.map((i) => `<li>${i}</li>`).join('')}</ul>`;
+
+  document.getElementById('lineup').innerHTML = CONCEPTS.map(
+    (c) => `<a href="#${c.id}">${icon(c.n)}<span>${c.name}</span><small>Concept ${c.n}</small></a>`,
+  ).join('');
+
+  document.getElementById('concepts').innerHTML = CONCEPTS.map((c) => {
+    const word = `<b style="font-family:${c.font};font-weight:${c.weight};letter-spacing:${c.tracking ?? '-0.01em'}">${c.word}</b>`;
+    return `<section class="concept" id="${c.id}">
+      <div class="hero">
+        ${icon(c.n)}
+        <div class="tag">Concept ${c.n}</div>
+        <h2>${c.name}</h2>
+      </div>
+      <div class="detail">
+        <p class="idea">${c.idea}</p>
+        <div class="notes">
+          <div><h3>Works</h3>${list(c.good)}</div>
+          <div><h3>Watch out</h3>${list(c.watch)}</div>
+        </div>
+        <div class="rows">
+          <div class="row">
+            <h3>iOS sizes</h3>
+            <div class="sizes">
+              <figure>${icon(c.n, 'ico', 'width:60px')}<figcaption>60pt home</figcaption></figure>
+              <figure>${icon(c.n, 'ico', 'width:40px')}<figcaption>40pt Spotlight</figcaption></figure>
+              <figure>${icon(c.n, 'ico', 'width:29px')}<figcaption>29pt Settings</figcaption></figure>
+            </div>
+          </div>
+          <div class="row">
+            <h3>Android</h3>
+            <div class="android">
+              <figure>${adaptive(c.n, 64)}<figcaption>Adaptive</figcaption></figure>
+              <figure>${themed(c.n, false)}<figcaption>Themed</figcaption></figure>
+              <figure>${themed(c.n, true)}<figcaption>Themed, dark</figcaption></figure>
+            </div>
+          </div>
+          <div class="marks">
+            <div class="mark light">${icon(c.n)}${word}</div>
+            <div class="mark dark">${icon(c.n)}${word}</div>
+          </div>
+        </div>
+      </div>
+    </section>`;
+  }).join('');
+</script>

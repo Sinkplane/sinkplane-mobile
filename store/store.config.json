@@ -1,0 +1,37 @@
+{
+  "configVersion": 0,
+  "apple": {
+    "version": "1.0.0",
+    "copyright": "2026 Kingdomworks LLC",
+    "categories": ["ENTERTAINMENT", "PHOTO_AND_VIDEO"],
+    "info": {
+      "en-US": {
+        "title": "Sinkplane",
+        "subtitle": "Watch your creator subs",
+        "promoText": "Your Floatplane subscriptions on iPhone and iPad: pick up where you left off, catch creators live, and keep watching in picture-in-picture.",
+        "description": "Sinkplane is a fan-made app for watching the creators you subscribe to on Floatplane.\n\nSign in with your Floatplane account and everything you already have access to is there: new videos from every creator you follow, your watch history, and live streams.\n\nWATCH YOUR WAY\n• A player built for touch: double-tap to skip 15 seconds, press and hold to watch at 2×, and choose any playback speed\n• Resume right where you stopped, on any device\n• Keep watching in picture-in-picture or with the screen off\n• Shrink a video into a mini player while you browse\n• Download videos to watch offline\n\nNEVER MISS A VIDEO\n• One feed with the newest posts from all of your subscriptions\n• Get notified when a creator you follow posts something new\n• The Live tab shows who is streaming right now\n\nMADE FOR EVERY SCREEN\n• Works in portrait and landscape on iPhone\n• Grid layouts and a roomy player on iPad\n• Light and dark themes\n\nRequires an active Floatplane subscription. Sinkplane is an independent, open-source project. It is not affiliated with, endorsed by or sponsored by Floatplane Media Inc. or any creator on Floatplane. All videos and channel content belong to their creators.\n\nSinkplane doesn't collect any data. Your sign-in goes straight to Floatplane, and your session stays on your device.",
+        "keywords": [
+          "creator",
+          "subscription",
+          "video",
+          "player",
+          "live",
+          "stream",
+          "watch",
+          "offline",
+          "download",
+          "pip",
+          "tech",
+          "podcast"
+        ],
+        "supportUrl": "https://github.com/Sinkplane/sinkplane-mobile/issues",
+        "marketingUrl": "https://github.com/Sinkplane/sinkplane-mobile",
+        "privacyPolicyUrl": "https://github.com/Sinkplane/sinkplane-mobile/blob/main/store/listing/privacy-policy.md"
+      }
+    },
+    "release": {
+      "automaticRelease": false,
+      "phasedRelease": false
+    }
+  }
+}

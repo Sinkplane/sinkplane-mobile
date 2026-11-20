@@ -5,7 +5,7 @@ Draft listing for Play Console. Anything in `<angle brackets>` needs your input.
 **Not ready to upload yet**, regardless of the listing:
 
 1. `android.package` isn't set in `app.json`. Pick it once: it can never change after the first
-   upload. For example `com.paynoattn1989.sinkplane` (match the iOS bundle ID family).
+   upload. For example `com.kingdomworks.sinkplane` (match the iOS bundle ID family).
 2. The release build crashes at launch with R8 on (`WorkDatabase_Impl.<init>` stripped from
    WorkManager, which `expo-background-task` uses). It needs a keep rule or minify off before an EAS
    production build.
@@ -15,15 +15,15 @@ Draft listing for Play Console. Anything in `<angle brackets>` needs your input.
 
 ## Main store listing
 
-| Field                  | Value                                                           |
-| ---------------------- | --------------------------------------------------------------- |
-| App name (30)          | `Sinkplane`                                                     |
-| Short description (80) | `Fan-made player for the video creators you subscribe to.` (56) |
-| App category           | Video Players & Editors                                         |
-| Tags                   | Video player, Streaming                                         |
-| Contact email          | `<email>` (shown publicly)                                      |
-| Website                | `https://github.com/Sinkplane/sinkplane-mobile`                 |
-| Privacy policy         | `<URL where privacy-policy.md is published>`                    |
+| Field                  | Value                                                                                     |
+| ---------------------- | ----------------------------------------------------------------------------------------- |
+| App name (30)          | `Sinkplane`                                                                               |
+| Short description (80) | `Fan-made player for the video creators you subscribe to.` (56)                           |
+| App category           | Video Players & Editors                                                                   |
+| Tags                   | Video player, Streaming                                                                   |
+| Contact email          | `<email>` (shown publicly)                                                                |
+| Website                | `https://github.com/Sinkplane/sinkplane-mobile`                                           |
+| Privacy policy         | `https://github.com/Sinkplane/sinkplane-mobile/blob/main/store/listing/privacy-policy.md` |
 
 Google's metadata policy bans other companies' trademarks in the title and short description, so
 "Floatplane" appears only in the full description, with the not-affiliated line.
@@ -58,13 +58,13 @@ Requires an active Floatplane subscription. Sinkplane is an independent, open-so
 
 ### Graphics
 
-| Asset                  | Size / rules                 | File                                                 |
-| ---------------------- | ---------------------------- | ---------------------------------------------------- |
-| App icon               | 512 × 512 PNG, 32-bit        | **Blocked**: the app still uses Expo's template icon |
-| Feature graphic        | 1024 × 500 PNG/JPG, required | `store/screenshots/play/feature-graphic.png`         |
-| Phone screenshots      | 2–8, 9:16, 1080 × 1920       | `store/screenshots/play/phone/*.png`                 |
-| 7" tablet screenshots  | up to 8, 1200 × 1920         | `store/screenshots/play/tablet/*.png` (reuse)        |
-| 10" tablet screenshots | up to 8, 1600 × 2560         | `store/screenshots/play/tablet/*.png`                |
+| Asset                  | Size / rules                 | File                                          |
+| ---------------------- | ---------------------------- | --------------------------------------------- |
+| App icon               | 512 × 512 PNG, 32-bit        | `store/screenshots/play/icon-512.png`         |
+| Feature graphic        | 1024 × 500 PNG/JPG, required | `store/screenshots/play/feature-graphic.png`  |
+| Phone screenshots      | 2–8, 9:16, 1080 × 1920       | `store/screenshots/play/phone/*.png`          |
+| 7" tablet screenshots  | up to 8, 1200 × 1920         | `store/screenshots/play/tablet/*.png` (reuse) |
+| 10" tablet screenshots | up to 8, 1600 × 2560         | `store/screenshots/play/tablet/*.png`         |
 
 ## Data safety
 

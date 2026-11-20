@@ -1,6 +1,6 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
-import { renderHook, waitFor } from '@testing-library/react-native';
+import { act, renderHook, waitFor } from '@testing-library/react-native';
 
 import { useResumePosition } from '@/hooks/use-resume-position';
 import type { VideoPost } from '@/shared';
@@ -58,8 +58,18 @@ describe('useResumePosition', () => {
   });
 
   it('waits for the batch endpoint when the post has no progress, then resumes from it', async () => {
+    // Hold the request open: the mock fetch otherwise resolves within the async render, so a
+    // loaded machine can be ready before the "still waiting" assertion.
+    const held = Promise.withResolvers<undefined>();
+    fetchMock.mockImplementationOnce(async () => {
+      await held.promise;
+      return respond([{ id: 'post-1', progress: 90 }]);
+    });
     const { result } = await renderResume('token', post(null));
     expect(result.current.ready).toBe(false);
+    await act(() => {
+      held.resolve(undefined);
+    });
     await waitFor(() => {
       expect(result.current).toEqual({ ready: true, seconds: 90 });
     });

@@ -1,9 +1,9 @@
 # Sinkplane privacy policy
 
-_Last updated: <date of publishing>_
+_Last updated: November 18, 2026_
 
 Sinkplane is an independent, open-source app for watching your Floatplane subscriptions. It's made by
-<Kingdomworks LLC> ("we"). It isn't affiliated with Floatplane Media Inc.
+Kingdomworks LLC ("we"). It isn't affiliated with Floatplane Media Inc.
 
 ## What we collect
 
@@ -48,4 +48,4 @@ If this policy changes, we'll update this page and the date at the top.
 
 ## Contact
 
-<email> or https://github.com/Sinkplane/sinkplane-mobile/issues
+Open an issue at https://github.com/Sinkplane/sinkplane-mobile/issues.

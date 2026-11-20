@@ -134,9 +134,21 @@ describe('useLiveStreams', () => {
   });
 
   it('treats a 404 as offline', async () => {
+    // Hold the request open: the mock fetch otherwise resolves within the async render, so a
+    // loaded machine can see 'offline' before the loading assertion.
+    let finish!: (response: Awaited<ReturnType<typeof fetchMock>>) => void;
+    fetchMock.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+    );
     const { result } = await renderStreams();
 
     expect(result.current[0]?.status).toBe('loading');
+    await act(() => {
+      finish(fakeResponse(404, { message: 'Not live' }));
+    });
     await waitFor(() => {
       expect(result.current[0]?.status).toBe('offline');
     });

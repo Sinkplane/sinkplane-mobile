@@ -1,0 +1,76 @@
+{
+  "fill-specializations": [
+    {
+      "value": {
+        "linear-gradient": [
+          "srgb:0.10588,0.20392,0.50196,1.00000",
+          "srgb:0.30196,0.48235,1.00000,1.00000"
+        ]
+      }
+    },
+    {
+      "appearance": "dark",
+      "value": {
+        "linear-gradient": [
+          "srgb:0.05098,0.10196,0.27059,1.00000",
+          "srgb:0.16471,0.29412,0.72157,1.00000"
+        ]
+      }
+    }
+  ],
+  "groups": [
+    {
+      "name": "Plane",
+      "layers": [
+        {
+          "image-name": "ios-plane.svg",
+          "name": "plane",
+          "fill-specializations": [
+            {
+              "appearance": "dark",
+              "value": {
+                "solid": "srgb:1.00000,1.00000,1.00000,1.00000"
+              }
+            }
+          ]
+        }
+      ],
+      "shadow": {
+        "kind": "neutral",
+        "opacity": 0.5
+      },
+      "translucency": {
+        "enabled": true,
+        "value": 0.2
+      }
+    },
+    {
+      "name": "Water",
+      "layers": [
+        {
+          "image-name": "ios-ripples.svg",
+          "name": "ripples"
+        },
+        {
+          "image-name": "ios-under.svg",
+          "name": "submerged plane"
+        },
+        {
+          "image-name": "ios-sea.svg",
+          "name": "sea"
+        }
+      ],
+      "shadow": {
+        "kind": "none",
+        "opacity": 0.5
+      },
+      "translucency": {
+        "enabled": false,
+        "value": 0.5
+      }
+    }
+  ],
+  "supported-platforms": {
+    "squares": "shared"
+  }
+}
