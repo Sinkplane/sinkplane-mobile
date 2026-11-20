@@ -54,7 +54,7 @@ function postCounters(video: Video, options: MakeVideoPostOptions) {
   return {
     likes: options.likes ?? video.likes,
     dislikes: options.dislikes ?? video.dislikes,
-    comments: options.comments ?? 0,
+    comments: options.comments ?? video.comments,
     userInteraction: options.userInteraction ?? [],
     progress: options.progress ?? null,
   };

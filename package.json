@@ -17,7 +17,8 @@
     "test:unit:watch": "jest -c jest.config.unit.js --watch",
     "check": "make check",
     "link:shared": "./scripts/link-shared-dist.sh",
-    "unlink:shared": "./scripts/link-shared-dist.sh --unlink"
+    "unlink:shared": "./scripts/link-shared-dist.sh --unlink",
+    "eas-build-pre-install": "echo \"//npm.pkg.github.com/:_authToken=${NPM_TOKEN}\" >> ~/.npmrc"
   },
   "dependencies": {
     "@sinkplane/shared": "^0.1.3",

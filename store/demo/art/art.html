@@ -1,0 +1,601 @@
+<!doctype html>
+<!--
+  Demo-mode artwork (store/demo/make-media.sh renders it). Open with a hash naming one asset:
+    #thumb/<video slug>  1280x720 video thumbnail
+    #icon/<name>         512x512 creator icon or user avatar
+    #live/<creator>      1280x720 live thumbnail  (#live/<creator>-offline: offline card)
+    #scene/<name>        1280x720 frame the demo HLS streams are made from
+  Everything is drawn here (shapes and system fonts): no third-party images or content.
+-->
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <style>
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        overflow: hidden;
+        background: #000;
+      }
+      .canvas {
+        position: relative;
+        overflow: hidden;
+        font-family: 'Avenir Next', 'Helvetica Neue', Helvetica, Arial, sans-serif;
+      }
+      .wide {
+        width: 1280px;
+        height: 720px;
+      }
+      .square {
+        width: 512px;
+        height: 512px;
+      }
+      svg {
+        position: absolute;
+        inset: 0;
+      }
+      .headline {
+        position: absolute;
+        left: 64px;
+        top: 50%;
+        transform: translateY(-50%);
+        width: 560px;
+        font-family: 'Avenir Next Condensed', 'Avenir Next', 'Helvetica Neue', sans-serif;
+        font-weight: 800;
+        font-size: 112px;
+        line-height: 0.95;
+        letter-spacing: -1px;
+        text-transform: uppercase;
+        color: #fff;
+        text-shadow: 0 6px 0 rgba(0, 0, 0, 0.35);
+      }
+      .headline em {
+        font-style: normal;
+        display: inline-block;
+        padding: 0 14px;
+        margin-top: 10px;
+        border-radius: 10px;
+        color: var(--ink);
+        background: var(--accent);
+        text-shadow: none;
+      }
+      .initials {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: 700;
+        font-size: 220px;
+        color: #fff;
+        letter-spacing: -6px;
+      }
+      .offline {
+        position: absolute;
+        left: 0;
+        right: 0;
+        bottom: 96px;
+        text-align: center;
+        font-weight: 700;
+        font-size: 64px;
+        color: #fff;
+        text-shadow: 0 4px 0 rgba(0, 0, 0, 0.3);
+      }
+      .offline small {
+        display: block;
+        font-size: 30px;
+        font-weight: 600;
+        letter-spacing: 6px;
+        text-transform: uppercase;
+        opacity: 0.75;
+        margin-bottom: 12px;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script>
+      const PALETTES = {
+        'bench-notes': { bg1: '#0b2236', bg2: '#16618f', accent: '#ffb43b', ink: '#1b1205' },
+        'slow-kitchen': { bg1: '#4e170d', bg2: '#c4532f', accent: '#ffe2a8', ink: '#3a1408' },
+        'night-signal': { bg1: '#120930', bg2: '#5b1f8a', accent: '#4ef0ff', ink: '#0b0620' },
+        'trail-log': { bg1: '#0c2416', bg2: '#2f7a45', accent: '#ffb04a', ink: '#1d1205' },
+      };
+
+      // -- shape helpers (600x600 motif boxes) ------------------------------------------
+      const rect = (x, y, w, h, fill, rx = 0, extra = '') =>
+        `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${rx}" fill="${fill}" ${extra}/>`;
+      const circle = (cx, cy, r, fill, extra = '') =>
+        `<circle cx="${cx}" cy="${cy}" r="${r}" fill="${fill}" ${extra}/>`;
+      const path = (d, fill, extra = '') => `<path d="${d}" fill="${fill}" ${extra}/>`;
+      const line = (x1, y1, x2, y2, stroke, w = 6) =>
+        `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${stroke}" stroke-width="${w}" stroke-linecap="round"/>`;
+      const range = (n) => Array.from({ length: n }, (_, i) => i);
+      const shadow = 'filter="url(#drop)"';
+
+      const knob = (cx, cy, r, color) =>
+        circle(cx, cy, r, color) +
+        circle(cx, cy, r * 0.62, '#11161c') +
+        line(cx, cy, cx + r * 0.45, cy - r * 0.45, '#fff', 4);
+
+      // -- motifs ----------------------------------------------------------------------------
+      const MOTIFS = {
+        synth: (p) => {
+          const whites = range(14).map((i) => rect(44 + i * 37, 300, 33, 140, '#f5f1e8', 5));
+          const blacks = range(13)
+            .filter((i) => [0, 1, 3, 4, 5].includes(i % 7))
+            .map((i) => rect(66 + i * 37, 300, 22, 86, '#11161c', 3));
+          const knobs = range(5).map((i) =>
+            knob(78 + i * 82, 238, 24, i % 2 ? '#d9dee5' : p.accent),
+          );
+          return `<g transform="rotate(-7 300 320)" ${shadow}>
+            ${rect(20, 190, 560, 270, '#232a33', 26)}
+            ${rect(20, 190, 560, 96, '#303a46', 26)}
+            ${rect(36, 290, 528, 158, '#0d1116', 8)}
+            ${knobs.join('')}${whites.join('')}${blacks.join('')}
+            ${rect(440, 205, 120, 30, '#0f1a12', 6)}${rect(450, 213, 70, 14, '#6dff9c', 3)}
+          </g>`;
+        },
+        charger: (p) => `<g ${shadow}>
+            <path d="M210 330 C 210 470, 420 470, 440 380 S 520 250, 470 200" stroke="#e9edf2" stroke-width="22" fill="none" stroke-linecap="round"/>
+            ${rect(90, 150, 220, 250, '#f4f6f9', 34)}${rect(90, 150, 220, 70, '#dfe4ea', 34)}
+            ${rect(150, 110, 24, 50, '#b9c1cb', 6)}${rect(226, 110, 24, 50, '#b9c1cb', 6)}
+            ${rect(440, 150, 70, 70, '#d5dbe2', 16)}${rect(456, 120, 38, 40, '#9aa4b0', 10)}
+            ${path('M380 420 L470 580 L290 580 Z', p.accent, 'stroke="#1b1205" stroke-width="10" stroke-linejoin="round"')}
+            ${path('M392 455 L352 520 L382 520 L362 565 L414 498 L384 498 L404 455 Z', '#1b1205')}
+          </g>`,
+        crt: (p) => `<g ${shadow}>
+            ${rect(60, 120, 420, 340, '#5a4636', 30)}${rect(60, 400, 420, 60, '#463629', 30)}
+            ${rect(92, 150, 300, 230, '#0d1a12', 40)}
+            <rect x="104" y="162" width="276" height="206" rx="34" fill="url(#crtglow)"/>
+            ${range(9)
+              .map((i) => rect(110, 175 + i * 22, 264, 3, 'rgba(0,0,0,0.18)'))
+              .join('')}
+            ${knob(436, 200, 22, '#c9c2b4')}${knob(436, 262, 22, '#c9c2b4')}
+            ${range(5)
+              .map((i) => rect(414, 314 + i * 14, 46, 6, '#2f241b', 3))
+              .join('')}
+            ${line(160, 120, 110, 50, '#9aa4b0', 6)}${line(330, 120, 380, 50, '#9aa4b0', 6)}
+            ${rect(400, 410, 120, 170, '#2b5cc4', 18)}${rect(400, 410, 120, 34, '#c7d0db', 12)}
+            ${rect(486, 444, 20, 136, '#e6ecf3')}${line(430, 580, 430, 600, '#c7d0db', 8)}${line(490, 580, 490, 600, '#c7d0db', 8)}
+            ${circle(460, 520, 52, 'none', `stroke="${p.accent}" stroke-width="10"`)}
+          </g>`,
+        pc: (p) => `<g ${shadow}>
+            ${rect(140, 60, 320, 500, '#1a1f26', 30)}${rect(160, 80, 280, 460, '#232a33', 22)}
+            ${[200, 360]
+              .map(
+                (cy) =>
+                  circle(300, cy, 92, '#11161c') +
+                  circle(300, cy, 26, '#3a4452') +
+                  range(7)
+                    .map(
+                      (k) =>
+                        `<path d="M300 ${cy} q ${60 * Math.cos(k)} ${-30 + 60 * Math.sin(k)} ${80 * Math.cos(k * 0.9 + 0.6)} ${80 * Math.sin(k * 0.9 + 0.6)}" stroke="#4a5666" stroke-width="12" fill="none" stroke-linecap="round"/>`,
+                    )
+                    .join(''),
+              )
+              .join('')}
+            ${rect(180, 480, 240, 14, p.accent, 7)}
+            ${circle(500, 120, 50, p.accent)}${path('M478 120 h44', 'none', 'stroke="#1b1205" stroke-width="12" stroke-linecap="round"')}
+          </g>`,
+        solder: (p) => `<g ${shadow}>
+            ${rect(40, 140, 520, 360, '#1f6b3f', 22)}
+            ${range(8)
+              .map(
+                (i) =>
+                  `<path d="M${70 + i * 60} 170 v ${80 + (i % 3) * 40} h 40" stroke="#c8a24a" stroke-width="7" fill="none"/>`,
+              )
+              .join('')}
+            ${rect(110, 320, 140, 90, '#151a20', 8)}${rect(320, 330, 170, 70, '#151a20', 8)}
+            ${range(7)
+              .map((i) => rect(120 + i * 18, 410, 8, 22, '#c9ced6'))
+              .join('')}
+            ${[
+              [150, 250, 34],
+              [260, 270, 46],
+              [420, 250, 30],
+              [210, 450, 28],
+            ]
+              .map(
+                ([x, y, r]) =>
+                  circle(x, y, r, '#aeb6c1') + circle(x - r * 0.3, y - r * 0.3, r * 0.3, '#e8ecf1'),
+              )
+              .join('')}
+            <g transform="rotate(35 430 140)">${rect(400, -40, 60, 220, '#2b2f36', 20)}${rect(412, 180, 36, 80, '#9aa4b0', 10)}${path('M420 260 L440 260 L430 300 Z', '#c9ced6')}</g>
+            ${circle(470, 430, 40, p.accent)}${path('M455 415 l30 30 m0 -30 l-30 30', 'none', 'stroke="#1b1205" stroke-width="10" stroke-linecap="round"')}
+          </g>`,
+        amp: (p) => `<g ${shadow}>
+            ${rect(60, 130, 440, 360, '#7a4b2a', 26)}${rect(84, 154, 392, 230, '#2a2622', 14)}
+            ${range(9)
+              .map((r) =>
+                range(14)
+                  .map((c) => circle(108 + c * 27, 176 + r * 24, 6, '#3d3832'))
+                  .join(''),
+              )
+              .join('')}
+            ${range(5)
+              .map((i) => knob(120 + i * 80, 432, 22, '#e5dccb'))
+              .join('')}
+            <g transform="rotate(-14 470 120)">${path('M400 80 h130 a14 14 0 0 1 14 14 v70 a14 14 0 0 1 -14 14 h-130 l-40 -49 z', p.accent)}${circle(392, 129, 9, '#1b1205')}<text x="452" y="150" font-size="62" font-weight="800" fill="#1b1205" text-anchor="middle" font-family="Avenir Next Condensed, Avenir Next, sans-serif">$12</text></g>
+          </g>`,
+        lock: (p) => `<g ${shadow}>
+            ${rect(150, 70, 240, 440, '#2a3038', 40)}${rect(170, 92, 200, 120, '#11161c', 18)}
+            ${circle(270, 152, 34, '#1b2a3a')}${circle(270, 152, 14, p.accent)}
+            ${range(4)
+              .map((r) =>
+                range(3)
+                  .map((c) => circle(214 + c * 56, 262 + r * 56, 20, '#3d4652'))
+                  .join(''),
+              )
+              .join('')}
+            <g transform="rotate(-20 470 380)">${path('M410 300 v110 a60 60 0 0 0 120 0 v-110 h-40 v110 a20 20 0 0 1 -40 0 v-110 z', '#d6343c')}${rect(410, 290, 40, 34, '#dfe4ea')}${rect(490, 290, 40, 34, '#dfe4ea')}</g>
+          </g>`,
+        pager: (p) => `<g ${shadow} transform="rotate(-10 300 300)">
+            ${rect(90, 170, 420, 260, '#1b1f25', 36)}${rect(118, 200, 300, 120, '#a7c48a', 12)}
+            <text x="138" y="282" font-family="Menlo, monospace" font-size="56" font-weight="700" fill="#24301a">555-0199</text>
+            ${rect(436, 200, 48, 120, '#2c333c', 14)}${rect(136, 350, 90, 44, '#2c333c', 14)}${rect(246, 350, 90, 44, '#2c333c', 14)}${rect(356, 350, 90, 44, p.accent, 14)}
+          </g>`,
+        speaker: (p) => `<g ${shadow}>
+            ${rect(150, 120, 300, 380, '#2a3038', 150)}${rect(150, 300, 300, 200, '#23292f', 150)}
+            ${range(9)
+              .map((r) =>
+                range(9)
+                  .map((c) => circle(200 + c * 25, 190 + r * 25, 5, '#4a5462'))
+                  .join(''),
+              )
+              .join('')}
+            ${rect(220, 430, 160, 22, p.accent, 11)}
+            ${circle(470, 460, 70, '#f4f6f9')}<text x="470" y="485" font-size="68" font-weight="800" text-anchor="middle" fill="#1b1205" font-family="Avenir Next Condensed, sans-serif">$3</text>
+          </g>`,
+        skillet: (p) => `<g ${shadow} transform="rotate(-18 300 300)">
+            ${rect(430, 270, 190, 50, '#1a1a1a', 20)}${circle(270, 295, 220, '#1d1d1f')}${circle(270, 295, 186, '#2b2b2e')}
+            ${path('M150 210 a170 170 0 0 1 120 -80', 'none', 'stroke="rgba(255,255,255,0.18)" stroke-width="14" stroke-linecap="round"')}
+            ${path('M200 300 c -40 -80 120 -120 150 -40 c 30 70 -110 120 -150 40 z', '#fffaf0')}${circle(275, 290, 40, '#ffb21e')}
+            ${circle(505, 140, 46, p.accent)}<text x="505" y="160" font-size="58" font-weight="800" text-anchor="middle" fill="#3a1408" font-family="Avenir Next, sans-serif">?</text>
+          </g>`,
+        ramen: (p) => `<g ${shadow}>
+            ${line(380, 60, 230, 330, '#d9b07a', 14)}${line(440, 80, 270, 330, '#c99a62', 14)}
+            ${path('M60 300 h480 a240 240 0 0 1 -480 0 z', '#f2ece2')}${path('M90 300 h420 a210 200 0 0 1 -420 0 z', '#e7dccb')}
+            ${rect(70, 280, 460, 34, '#c96b2c', 17)}
+            ${range(6)
+              .map(
+                (i) =>
+                  `<path d="M${150 + i * 50} 290 q 15 -30 30 0 t 30 0" stroke="#ffe08a" stroke-width="9" fill="none"/>`,
+              )
+              .join('')}
+            ${circle(190, 280, 38, '#fff')}${circle(190, 280, 20, '#ff9d1e')}${circle(400, 278, 32, '#2f6b3a')}
+            ${path('M60 300 h480 a240 240 0 0 1 -480 0 z', 'none', `stroke="${p.accent}" stroke-width="0"`)}
+            ${path('M240 470 h120 l-10 40 h-100 z', '#d6cdbf')}
+          </g>`,
+        bread: (p) => `<g ${shadow}>
+            ${path('M80 400 c 0 -170 440 -170 440 0 c 0 50 -440 50 -440 0 z', '#b8722f')}
+            ${path('M100 390 c 10 -130 400 -130 400 0', '#d18f45')}
+            ${[
+              [190, 300],
+              [270, 285],
+              [350, 285],
+              [430, 300],
+            ]
+              .map(
+                ([x, y]) =>
+                  `<path d="M${x - 40} ${y + 20} q 40 -40 80 -20" stroke="#f3d9a8" stroke-width="12" fill="none" stroke-linecap="round"/>`,
+              )
+              .join('')}
+            ${range(14)
+              .map((i) =>
+                circle(130 + ((i * 53) % 340), 270 + ((i * 37) % 90), 4, 'rgba(255,255,255,0.7)'),
+              )
+              .join('')}
+            ${rect(60, 440, 480, 30, '#7b4a22', 15)}
+            ${circle(470, 150, 60, p.accent)}${path('M445 150 l18 18 l34 -40', 'none', 'stroke="#3a1408" stroke-width="12" stroke-linecap="round" stroke-linejoin="round" fill="none"')}
+          </g>`,
+        sheetpan: (p) => `<g ${shadow} transform="rotate(-6 300 300)">
+            ${rect(40, 150, 520, 330, '#9aa4b0', 22)}${rect(62, 172, 476, 286, '#c6ccd4', 12)}
+            ${['#e34a2f', '#f6b93b', '#4caf50', '#8e44ad', '#ff8c3a']
+              .map((c, i) =>
+                range(3)
+                  .map((k) => circle(110 + i * 95, 220 + k * 85, 30 - (k % 2) * 4, c))
+                  .join(''),
+              )
+              .join('')}
+            ${rect(400, 470, 150, 70, p.accent, 16)}<text x="475" y="522" font-size="46" font-weight="800" text-anchor="middle" fill="#3a1408" font-family="Avenir Next Condensed, sans-serif">x5</text>
+          </g>`,
+        field: (p) => `<g ${shadow}>
+            ${range(12)
+              .map((i) =>
+                path(
+                  `M${60 + ((i * 97) % 480)} ${40 + ((i * 61) % 200)} q 10 22 0 32 q -10 -10 0 -32 z`,
+                  'rgba(78,240,255,0.65)',
+                ),
+              )
+              .join('')}
+            ${rect(240, 170, 120, 200, '#d9dee5', 60)}${range(7)
+              .map((i) => rect(250, 190 + i * 22, 100, 6, '#9aa4b0', 3))
+              .join('')}
+            ${path('M210 300 v20 a90 90 0 0 0 180 0 v-20', 'none', 'stroke="#d9dee5" stroke-width="14" fill="none"')}
+            ${rect(292, 410, 16, 90, '#d9dee5')}${rect(230, 500, 140, 16, '#d9dee5', 8)}
+            ${range(40)
+              .map((i) =>
+                rect(
+                  40 + i * 13,
+                  560 - (Math.abs(Math.sin(i * 0.7)) * 50 + 8),
+                  7,
+                  Math.abs(Math.sin(i * 0.7)) * 100 + 16,
+                  i % 5 ? p.accent : '#ff4fa3',
+                  3,
+                ),
+              )
+              .join('')}
+          </g>`,
+        modular: (p) => `<g ${shadow}>
+            ${rect(50, 90, 500, 420, '#1d2027', 16)}
+            ${range(5)
+              .map((c) => rect(64 + c * 98, 104, 88, 392, '#2a2e37', 8))
+              .join('')}
+            ${range(5)
+              .map(
+                (c) =>
+                  range(3)
+                    .map((r) =>
+                      knob(108 + c * 98, 150 + r * 70, 22, r === 0 ? p.accent : '#d9dee5'),
+                    )
+                    .join('') +
+                  range(2)
+                    .map(
+                      (r) =>
+                        circle(108 + c * 98, 390 + r * 56, 14, '#0c0e12') +
+                        circle(108 + c * 98, 390 + r * 56, 6, '#9aa4b0'),
+                    )
+                    .join(''),
+              )
+              .join('')}
+            <path d="M108 390 C 108 560, 304 560, 304 446" stroke="#ff4fa3" stroke-width="12" fill="none" stroke-linecap="round"/>
+            <path d="M206 446 C 206 600, 500 560, 500 390" stroke="${p.accent}" stroke-width="12" fill="none" stroke-linecap="round"/>
+            <path d="M402 390 C 402 520, 304 520, 304 390" stroke="#ffd23f" stroke-width="12" fill="none" stroke-linecap="round"/>
+          </g>`,
+        cassette: (p) => `<g ${shadow} transform="rotate(-8 300 300)">
+            ${rect(60, 160, 480, 300, '#e9e4d8', 24)}${rect(100, 190, 400, 110, '#ff4fa3', 10)}${rect(100, 250, 400, 50, '#5b1f8a')}
+            ${rect(170, 310, 260, 90, '#2a2e37', 40)}${circle(225, 355, 34, '#f4f6f9')}${circle(375, 355, 34, '#f4f6f9')}
+            ${range(6)
+              .map(
+                (k) =>
+                  line(225, 355, 225 + 26 * Math.cos(k), 355 + 26 * Math.sin(k), '#2a2e37', 5) +
+                  line(
+                    375,
+                    355,
+                    375 + 26 * Math.cos(k + 0.5),
+                    355 + 26 * Math.sin(k + 0.5),
+                    '#2a2e37',
+                    5,
+                  ),
+              )
+              .join('')}
+            ${path('M160 460 l20 -40 h240 l20 40 z', '#cfc8b8')}
+            <path d="M225 420 C 140 560, 470 600, 375 420" stroke="${p.accent}" stroke-width="10" fill="none"/>
+          </g>`,
+        coast: (p) => `<g ${shadow}>
+            ${circle(420, 190, 90, p.accent)}
+            ${path('M0 380 h600 v220 h-600 z', '#1f5f7a')}${range(5)
+              .map(
+                (i) =>
+                  `<path d="M${-20 + i * 130} ${420 + (i % 2) * 40} q 30 -14 60 0 t 60 0" stroke="rgba(255,255,255,0.5)" stroke-width="6" fill="none"/>`,
+              )
+              .join('')}
+            ${path('M60 400 l30 -170 l40 -30 l30 50 l10 150 z', '#1a2a22')}${path('M200 400 l14 -110 l30 -20 l20 40 l6 90 z', '#22382c')}
+            ${path('M300 470 l70 -90 l70 90 z', '#ff8c3a')}${path('M370 380 l0 90', 'none', 'stroke="#1d1205" stroke-width="6"')}
+          </g>`,
+        backpack: (p) => `<g ${shadow}>
+            ${path('M220 120 a80 80 0 0 1 160 0', 'none', 'stroke="#1d3a26" stroke-width="22" fill="none"')}
+            ${rect(150, 120, 300, 400, '#3c8a52', 70)}${rect(185, 300, 230, 170, '#2f6b3a', 30)}${rect(185, 180, 230, 60, '#2f6b3a', 24)}
+            ${rect(270, 340, 60, 14, '#1d3a26', 7)}${line(150, 300, 120, 470, '#1d3a26', 18)}${line(450, 300, 480, 470, '#1d3a26', 18)}
+            <g transform="rotate(12 470 150)">${path('M400 110 h130 a14 14 0 0 1 14 14 v62 a14 14 0 0 1 -14 14 h-130 l-36 -45 z', p.accent)}${circle(394, 155, 9, '#1d1205')}<text x="460" y="174" font-size="50" font-weight="800" fill="#1d1205" text-anchor="middle" font-family="Avenir Next Condensed, sans-serif">$300</text></g>
+          </g>`,
+        stove: (p) => `<g ${shadow}>
+            ${path('M0 420 l140 -230 l90 120 l80 -170 l150 280 z', 'rgba(255,255,255,0.12)')}
+            ${path('M180 120 q 20 -30 0 -60 M240 110 q 20 -30 0 -60 M300 120 q 20 -30 0 -60', 'none', 'stroke="rgba(255,255,255,0.7)" stroke-width="10" fill="none" stroke-linecap="round"')}
+            ${rect(140, 150, 220, 150, '#b9c1cb', 20)}${rect(130, 140, 240, 30, '#dfe4ea', 15)}${rect(360, 170, 110, 16, '#2a2f36', 8)}
+            ${path('M180 330 h140 l-20 40 h-100 z', '#f4f6f9')}${range(5)
+              .map((i) =>
+                path(
+                  `M${200 + i * 25} 330 q -10 -24 0 -36 q 10 12 0 36 z`,
+                  i % 2 ? '#4ab4ff' : '#ffb04a',
+                ),
+              )
+              .join('')}
+            ${rect(160, 370, 180, 120, '#2a2f36', 20)}${rect(170, 490, 30, 50, '#2a2f36', 6)}${rect(300, 490, 30, 50, '#2a2f36', 6)}
+            ${circle(470, 430, 76, p.accent)}<text x="470" y="448" font-size="44" font-weight="800" text-anchor="middle" fill="#1d1205" font-family="Avenir Next Condensed, sans-serif">3000m</text>
+          </g>`,
+        chip: (
+          p,
+        ) => `<g>${rect(170, 170, 260, 260, p.accent, 30)}${rect(225, 225, 150, 150, '#1b1205', 14)}
+            ${range(5)
+              .map(
+                (i) =>
+                  rect(195 + i * 45, 120, 20, 50, '#f4f6f9', 6) +
+                  rect(195 + i * 45, 430, 20, 50, '#f4f6f9', 6) +
+                  rect(120, 195 + i * 45, 50, 20, '#f4f6f9', 6) +
+                  rect(430, 195 + i * 45, 50, 20, '#f4f6f9', 6),
+              )
+              .join('')}</g>`,
+        pot: (
+          p,
+        ) => `<g>${path('M150 280 h300 v130 a60 60 0 0 1 -60 60 h-180 a60 60 0 0 1 -60 -60 z', p.accent)}${rect(120, 250, 360, 40, '#fff4dc', 20)}${rect(270, 210, 60, 40, '#fff4dc', 14)}
+            ${path('M230 190 q 20 -40 0 -80 M300 180 q 20 -40 0 -80 M370 190 q 20 -40 0 -80', 'none', 'stroke="#fff4dc" stroke-width="16" fill="none" stroke-linecap="round"')}</g>`,
+        wave: (p) =>
+          `<g>${range(15)
+            .map((i) => {
+              const h = 40 + Math.abs(Math.sin(i * 0.75 + 0.4)) * 300;
+              return rect(110 + i * 26, 300 - h / 2, 14, h, i % 4 === 1 ? '#ff4fa3' : p.accent, 7);
+            })
+            .join('')}</g>`,
+        mountain: (p) =>
+          `<g>${circle(390, 210, 60, p.accent)}${path('M90 440 l150 -230 l70 100 l60 -70 l140 200 z', '#f4f6f9')}${path('M240 210 l38 58 l-32 -12 l-24 24 l-26 -14 z', '#cfd8d2')}</g>`,
+      };
+
+      // -- catalog (kept in step with jest/demo/catalog.ts) ------------------------------------
+      const THUMBS = {
+        'synth-rebuild': ['bench-notes', 'synth', '$40 synth', 'rebuild'],
+        'usb-chargers': ['bench-notes', 'charger', '3 of 9', 'failed'],
+        'tv-capacitor': ['bench-notes', 'crt', 'the CRT', 'killer'],
+        'quiet-pc': ['bench-notes', 'pc', 'zero', 'noise'],
+        'worst-solder': ['bench-notes', 'solder', 'worst', 'solder?'],
+        'thrift-amp': ['bench-notes', 'amp', 'thrift', 'rescue'],
+        'smart-lock': ['bench-notes', 'lock', 'not so', 'smart'],
+        pager: ['bench-notes', 'pager', 'inside', '1994'],
+        speaker: ['bench-notes', 'speaker', "what's", 'inside?'],
+        'cast-iron': ['slow-kitchen', 'skillet', 'myths', 'tested'],
+        ramen: ['slow-kitchen', 'ramen', '20 min', 'ramen'],
+        sourdough: ['slow-kitchen', 'bread', 'easy', 'sourdough'],
+        'sheet-pan': ['slow-kitchen', 'sheetpan', 'one pan', '5 dinners'],
+        'field-track': ['night-signal', 'field', 'one', 'sound'],
+        'modular-basics': ['night-signal', 'modular', 'modular', '101'],
+        'tape-loops': ['night-signal', 'cassette', 'tape', 'loops'],
+        'coast-trail': ['trail-log', 'coast', '3 days', 'coastline'],
+        ultralight: ['trail-log', 'backpack', 'ultra', 'light'],
+        'altitude-cooking': ['trail-log', 'stove', 'cooking', 'up high'],
+      };
+      const CREATOR_GLYPH = {
+        'bench-notes': 'chip',
+        'slow-kitchen': 'pot',
+        'night-signal': 'wave',
+        'trail-log': 'mountain',
+      };
+      const PEOPLE = {
+        alexkim: ['AK', '#3b82f6', '#8b5cf6'],
+        maya_builds: ['M', '#f97316', '#ef4444'],
+        retrowire: ['R', '#10b981', '#0ea5e9'],
+        lowpass: ['L', '#ec4899', '#8b5cf6'],
+        ohm_sweet_ohm: ['O', '#eab308', '#f97316'],
+        'kj.solders': ['K', '#06b6d4', '#3b82f6'],
+        'dana.fixes': ['D', '#84cc16', '#10b981'],
+      };
+      const OFFLINE = {
+        'bench-notes': ['Bench Notes', 'Back Friday at 7pm'],
+        'night-signal': ['Night Signal', 'Live most nights at 10pm'],
+        'slow-kitchen': ['Slow Kitchen', 'Cook-along Sundays at noon'],
+        'trail-log': ['Trail Log', 'Next Q&A after the trip'],
+      };
+
+      // -- composition -----------------------------------------------------------------------
+      const defs = (p) => `<defs>
+          <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="${p.bg1}"/><stop offset="1" stop-color="${p.bg2}"/></linearGradient>
+          <radialGradient id="crtglow" cx="0.5" cy="0.45" r="0.7"><stop offset="0" stop-color="#9ff7c1"/><stop offset="0.6" stop-color="#2fae6b"/><stop offset="1" stop-color="#0d3a22"/></radialGradient>
+          <radialGradient id="glow" cx="0.72" cy="0.45" r="0.6"><stop offset="0" stop-color="#fff" stop-opacity="0.22"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></radialGradient>
+          <filter id="drop" x="-20%" y="-20%" width="140%" height="140%"><feDropShadow dx="0" dy="18" stdDeviation="16" flood-color="#000" flood-opacity="0.45"/></filter>
+        </defs>`;
+      const backdrop = (p, w, h) =>
+        `${rect(0, 0, w, h, 'url(#bg)')}${rect(0, 0, w, h, 'url(#glow)')}` +
+        range(Math.ceil(w / 64))
+          .map((i) => rect(i * 64, 0, 1, h, 'rgba(255,255,255,0.05)'))
+          .join('') +
+        range(Math.ceil(h / 64))
+          .map((i) => rect(0, i * 64, w, 1, 'rgba(255,255,255,0.05)'))
+          .join('');
+      const motif = (name, p, x, y, size) =>
+        `<svg x="${x}" y="${y}" width="${size}" height="${size}" viewBox="0 0 600 600" overflow="visible">${MOTIFS[name](p)}</svg>`;
+      const wide = (svg, html = '') =>
+        `<div class="canvas wide"><svg width="1280" height="720" viewBox="0 0 1280 720">${svg}</svg>${html}</div>`;
+      const square = (svg, html = '') =>
+        `<div class="canvas square"><svg width="512" height="512" viewBox="0 0 512 512">${svg}</svg>${html}</div>`;
+      const vars = (p) => `style="--accent:${p.accent};--ink:${p.ink}"`;
+
+      function thumb(slug) {
+        const [creator, name, top, bottom] = THUMBS[slug];
+        const p = PALETTES[creator];
+        return wide(
+          defs(p) + backdrop(p, 1280, 720) + motif(name, p, 640, 50, 620),
+          `<div class="headline" ${vars(p)}>${top}<br/><em>${bottom}</em></div>`,
+        );
+      }
+
+      function icon(name) {
+        if (PEOPLE[name]) {
+          const [letters, a, b] = PEOPLE[name];
+          return square(
+            `<defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="${a}"/><stop offset="1" stop-color="${b}"/></linearGradient></defs>${rect(0, 0, 512, 512, 'url(#g)')}`,
+            `<div class="initials">${letters}</div>`,
+          );
+        }
+        const p = PALETTES[name];
+        return square(
+          defs(p) + rect(0, 0, 512, 512, 'url(#bg)') + motif(CREATOR_GLYPH[name], p, 26, 26, 460),
+        );
+      }
+
+      function scene(name) {
+        if (name === 'live' || name === 'night-signal') {
+          const p = PALETTES['night-signal'];
+          const beams = range(5)
+            .map((i) =>
+              path(
+                `M${200 + i * 220} 0 L${100 + i * 240} 720 L${300 + i * 240} 720 Z`,
+                i % 2 ? 'rgba(255,79,163,0.10)' : 'rgba(78,240,255,0.10)',
+              ),
+            )
+            .join('');
+          return wide(
+            defs(p) +
+              backdrop(p, 1280, 720) +
+              beams +
+              motif('modular', p, 140, 120, 520) +
+              motif('wave', p, 640, 140, 520) +
+              rect(0, 620, 1280, 100, 'rgba(0,0,0,0.35)'),
+          );
+        }
+        const p = PALETTES['bench-notes'];
+        return wide(
+          defs(p) +
+            rect(0, 0, 1280, 720, '#123047') +
+            rect(0, 0, 1280, 720, 'url(#glow)') +
+            path('M980 0 l-120 210 h240 z', 'rgba(255,214,140,0.25)') +
+            rect(960, 0, 16, 60, '#2a2f36') +
+            path('M900 60 h140 l-30 60 h-80 z', '#3a414b') +
+            rect(0, 520, 1280, 200, '#6b4a30') +
+            rect(0, 520, 1280, 18, '#82603f') +
+            motif('synth', p, 200, 170, 620) +
+            `<g transform="translate(860 300)">${rect(0, 0, 300, 230, '#2a2f36', 18)}${rect(20, 20, 200, 150, '#0b1a10', 8)}<path d="M30 95 ${range(
+              19,
+            )
+              .map((i) => `L${40 + i * 9} ${95 + Math.sin(i * 0.9) * 40}`)
+              .join(
+                ' ',
+              )}" stroke="#6dff9c" stroke-width="4" fill="none"/>${knob(260, 60, 18, '#d9dee5')}${knob(260, 130, 18, p.accent)}</g>`,
+        );
+      }
+
+      function live(name) {
+        const [creator, state] = name.endsWith('-offline')
+          ? [name.slice(0, -8), 'offline']
+          : [name, 'live'];
+        if (state === 'live') {
+          return scene(creator);
+        }
+        const p = PALETTES[creator];
+        const [kicker, text] = OFFLINE[creator];
+        return wide(
+          defs(p) + backdrop(p, 1280, 720) + motif(CREATOR_GLYPH[creator], p, 490, 90, 300),
+          `<div class="offline">${kicker ? `<small>${kicker}</small>` : ''}${text}</div>`,
+        );
+      }
+
+      const RENDER = { thumb, icon, scene, live };
+      const LIST = [
+        ...Object.keys(THUMBS).map((s) => `thumb/${s} thumbs/${s}.jpg 1280 720`),
+        ...[...Object.keys(PALETTES), ...Object.keys(PEOPLE)].map(
+          (s) => `icon/${s} icons/${s}.png 512 512`,
+        ),
+        ...Object.keys(PALETTES).flatMap((s) => [
+          `live/${s} live/${s}.jpg 1280 720`,
+          `live/${s}-offline live/${s}-offline.jpg 1280 720`,
+        ]),
+        'scene/video scenes/video.png 1280 720',
+        'scene/live scenes/live.png 1280 720',
+      ];
+
+      const [kind, name] = decodeURIComponent(location.hash.slice(1)).split('/');
+      document.getElementById('root').innerHTML =
+        kind === 'list' ? `<pre id="list">${LIST.join('\n')}</pre>` : RENDER[kind](name);
+    </script>
+  </body>
+</html>

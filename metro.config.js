@@ -45,4 +45,22 @@ if (hasSharedClone) {
   };
 }
 
+// Demo mode (store screenshots, see store/README.md): with SINKPLANE_DEMO=1 the dev server bundles
+// store/demo/entry.ts instead of index.ts, so the app runs against the E2E suite's in-memory
+// Floatplane API filled with made-up creators. Builds never set it, so they never include it.
+if (process.env.SINKPLANE_DEMO === '1') {
+  const rewriteRequestUrl = config.server.rewriteRequestUrl;
+  config.server.rewriteRequestUrl = (url) => {
+    const rewritten = rewriteRequestUrl ? rewriteRequestUrl(url) : url;
+    return rewritten.replace(/\/index\.(bundle|map)\?/, '/store/demo/entry.$1?');
+  };
+  // Expo keeps __tests__ out of bundles; the demo reuses the E2E mock API from there.
+  const blockList = [config.resolver.blockList].flat();
+  config.resolver.blockList = blockList.map((pattern) =>
+    pattern.source.includes('__tests__')
+      ? new RegExp(pattern.source.replace('|\\/__tests__\\/.*', ''), pattern.flags)
+      : pattern,
+  );
+}
+
 module.exports = config;
